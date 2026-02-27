@@ -187,9 +187,15 @@ EchoChat/
 
 ### 4.1 PostgreSQL 核心表
 
+> 所有表和字段均添加 `COMMENT` 注释，枚举类字段详细标注各值含义。
+
 #### auth 模块 — 用户与权限
 
 ```sql
+-- ============================================================
+-- auth_users: 用户主表
+-- 存储系统所有用户（包括普通用户和管理员），通过角色表区分权限
+-- ============================================================
 CREATE TABLE auth_users (
     id              BIGSERIAL PRIMARY KEY,
     username        VARCHAR(50)  UNIQUE NOT NULL,
@@ -197,46 +203,105 @@ CREATE TABLE auth_users (
     password_hash   VARCHAR(255) NOT NULL,
     nickname        VARCHAR(50)  NOT NULL DEFAULT '',
     avatar          VARCHAR(500) NOT NULL DEFAULT '',
-    gender          SMALLINT     NOT NULL DEFAULT 0,       -- 0:未知 1:男 2:女
+    gender          SMALLINT     NOT NULL DEFAULT 0,
     phone           VARCHAR(20)  DEFAULT NULL,
-    status          SMALLINT     NOT NULL DEFAULT 1,       -- 1:正常 2:禁用 3:注销
+    status          SMALLINT     NOT NULL DEFAULT 1,
     last_login_at   TIMESTAMPTZ  DEFAULT NULL,
     last_login_ip   VARCHAR(50)  DEFAULT NULL,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
+COMMENT ON TABLE  auth_users                IS '用户主表，存储所有用户信息（普通用户与管理员共用）';
+COMMENT ON COLUMN auth_users.id             IS '用户唯一标识，自增主键';
+COMMENT ON COLUMN auth_users.username       IS '用户名，全局唯一，用于登录';
+COMMENT ON COLUMN auth_users.email          IS '邮箱地址，全局唯一，用于登录和通知';
+COMMENT ON COLUMN auth_users.password_hash  IS '密码哈希值，使用 bcrypt 加密存储';
+COMMENT ON COLUMN auth_users.nickname       IS '用户昵称，用于前端显示';
+COMMENT ON COLUMN auth_users.avatar         IS '头像 URL 地址';
+COMMENT ON COLUMN auth_users.gender         IS '性别：0=未知，1=男，2=女';
+COMMENT ON COLUMN auth_users.phone          IS '手机号码，可选';
+COMMENT ON COLUMN auth_users.status         IS '账号状态：1=正常，2=禁用（管理员封禁），3=注销（用户主动注销）';
+COMMENT ON COLUMN auth_users.last_login_at  IS '最后一次登录时间';
+COMMENT ON COLUMN auth_users.last_login_ip  IS '最后一次登录 IP 地址';
+COMMENT ON COLUMN auth_users.created_at     IS '账号创建时间';
+COMMENT ON COLUMN auth_users.updated_at     IS '信息最后更新时间';
+
+-- ============================================================
+-- auth_roles: 角色表
+-- 系统预置角色，用于 RBAC 权限控制
+-- ============================================================
 CREATE TABLE auth_roles (
     id          SERIAL PRIMARY KEY,
-    code        VARCHAR(50) UNIQUE NOT NULL,               -- user, admin, super_admin
+    code        VARCHAR(50) UNIQUE NOT NULL,
     name        VARCHAR(50) NOT NULL,
     description VARCHAR(200) DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+COMMENT ON TABLE  auth_roles             IS '角色表，定义系统中所有角色类型';
+COMMENT ON COLUMN auth_roles.id          IS '角色唯一标识，自增主键';
+COMMENT ON COLUMN auth_roles.code        IS '角色代码，唯一标识：user=普通用户，admin=管理员，super_admin=超级管理员';
+COMMENT ON COLUMN auth_roles.name        IS '角色显示名称，如"普通用户""管理员""超级管理员"';
+COMMENT ON COLUMN auth_roles.description IS '角色描述说明';
+COMMENT ON COLUMN auth_roles.created_at  IS '创建时间';
+
+-- 预置角色数据
+INSERT INTO auth_roles (code, name, description) VALUES
+    ('user',        '普通用户',   '系统普通用户，可以使用聊天、会议等功能'),
+    ('admin',       '管理员',    '后台管理员，可以管理用户、监控会议等'),
+    ('super_admin', '超级管理员', '最高权限管理员，可以管理角色和系统配置');
+
+-- ============================================================
+-- auth_user_roles: 用户角色关联表
+-- 多对多关系，一个用户可拥有多个角色
+-- ============================================================
 CREATE TABLE auth_user_roles (
     user_id    BIGINT NOT NULL REFERENCES auth_users(id),
     role_id    INT    NOT NULL REFERENCES auth_roles(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, role_id)
 );
+
+COMMENT ON TABLE  auth_user_roles            IS '用户角色关联表，建立用户与角色的多对多关系';
+COMMENT ON COLUMN auth_user_roles.user_id    IS '关联的用户 ID';
+COMMENT ON COLUMN auth_user_roles.role_id    IS '关联的角色 ID';
+COMMENT ON COLUMN auth_user_roles.created_at IS '角色分配时间';
 ```
 
 #### contact 模块 — 联系人与好友
 
 ```sql
+-- ============================================================
+-- contact_friendships: 好友关系表
+-- 双向存储：A→B 和 B→A 各一条记录，便于查询"我的好友列表"
+-- ============================================================
 CREATE TABLE contact_friendships (
     id          BIGSERIAL PRIMARY KEY,
     user_id     BIGINT   NOT NULL REFERENCES auth_users(id),
     friend_id   BIGINT   NOT NULL REFERENCES auth_users(id),
     remark      VARCHAR(50) DEFAULT '',
     group_id    BIGINT   DEFAULT NULL,
-    status      SMALLINT NOT NULL DEFAULT 0,               -- 0:待确认 1:已接受 2:已拒绝 3:已拉黑
+    status      SMALLINT NOT NULL DEFAULT 0,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (user_id, friend_id)
 );
 
+COMMENT ON TABLE  contact_friendships            IS '好友关系表，双向存储（A→B和B→A各一条记录）';
+COMMENT ON COLUMN contact_friendships.id         IS '记录唯一标识';
+COMMENT ON COLUMN contact_friendships.user_id    IS '发起方用户 ID';
+COMMENT ON COLUMN contact_friendships.friend_id  IS '好友用户 ID';
+COMMENT ON COLUMN contact_friendships.remark     IS '好友备注名，仅对当前用户可见';
+COMMENT ON COLUMN contact_friendships.group_id   IS '所属好友分组 ID，关联 contact_groups 表';
+COMMENT ON COLUMN contact_friendships.status     IS '好友关系状态：0=待确认（已发送申请），1=已接受（互为好友），2=已拒绝，3=已拉黑';
+COMMENT ON COLUMN contact_friendships.created_at IS '记录创建时间（申请发送时间）';
+COMMENT ON COLUMN contact_friendships.updated_at IS '最后更新时间（状态变更时间）';
+
+-- ============================================================
+-- contact_groups: 好友分组表
+-- 每个用户可自定义好友分组
+-- ============================================================
 CREATE TABLE contact_groups (
     id         BIGSERIAL PRIMARY KEY,
     user_id    BIGINT      NOT NULL REFERENCES auth_users(id),
@@ -244,6 +309,13 @@ CREATE TABLE contact_groups (
     sort_order INT         NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+COMMENT ON TABLE  contact_groups            IS '好友分组表，用户可自定义分组管理好友';
+COMMENT ON COLUMN contact_groups.id         IS '分组唯一标识';
+COMMENT ON COLUMN contact_groups.user_id    IS '所属用户 ID';
+COMMENT ON COLUMN contact_groups.name       IS '分组名称，如"同事""家人""朋友"等';
+COMMENT ON COLUMN contact_groups.sort_order IS '排序权重，数值越小越靠前';
+COMMENT ON COLUMN contact_groups.created_at IS '创建时间';
 ```
 
 #### im 模块 — 即时通讯（统一会话模型）
@@ -251,23 +323,42 @@ CREATE TABLE contact_groups (
 单聊和群聊统一抽象为"会话"，本质都是"一组人在一个空间里收发消息"。这是微信、钉钉、Slack 等主流 IM 的标准模型。
 
 ```sql
+-- ============================================================
+-- im_conversations: 会话表
+-- 统一抽象单聊和群聊，单聊时 name/avatar 为空（前端用对方信息展示）
+-- ============================================================
 CREATE TABLE im_conversations (
     id          BIGSERIAL PRIMARY KEY,
-    type        SMALLINT    NOT NULL,                      -- 1:单聊 2:群聊
+    type        SMALLINT    NOT NULL,
     name        VARCHAR(100) DEFAULT '',
     avatar      VARCHAR(500) DEFAULT '',
     owner_id    BIGINT      DEFAULT NULL,
     max_members INT         NOT NULL DEFAULT 200,
-    status      SMALLINT    NOT NULL DEFAULT 1,            -- 1:正常 2:已解散
+    status      SMALLINT    NOT NULL DEFAULT 1,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+COMMENT ON TABLE  im_conversations             IS '会话表，统一管理单聊和群聊会话';
+COMMENT ON COLUMN im_conversations.id          IS '会话唯一标识';
+COMMENT ON COLUMN im_conversations.type        IS '会话类型：1=单聊（两人私聊），2=群聊（多人群组）';
+COMMENT ON COLUMN im_conversations.name        IS '会话名称，群聊时为群名，单聊时为空（前端取对方昵称展示）';
+COMMENT ON COLUMN im_conversations.avatar      IS '会话头像 URL，群聊时为群头像，单聊时为空（前端取对方头像展示）';
+COMMENT ON COLUMN im_conversations.owner_id    IS '群主用户 ID，仅群聊时有值，单聊时为 NULL';
+COMMENT ON COLUMN im_conversations.max_members IS '最大成员数，单聊固定为2，群聊默认200';
+COMMENT ON COLUMN im_conversations.status      IS '会话状态：1=正常，2=已解散（仅群聊可解散）';
+COMMENT ON COLUMN im_conversations.created_at  IS '会话创建时间';
+COMMENT ON COLUMN im_conversations.updated_at  IS '最后更新时间';
+
+-- ============================================================
+-- im_conversation_members: 会话成员表
+-- 记录每个会话中的参与成员及其个性化设置
+-- ============================================================
 CREATE TABLE im_conversation_members (
     id              BIGSERIAL PRIMARY KEY,
     conversation_id BIGINT   NOT NULL REFERENCES im_conversations(id),
     user_id         BIGINT   NOT NULL REFERENCES auth_users(id),
-    role            SMALLINT NOT NULL DEFAULT 0,           -- 0:普通成员 1:管理员 2:群主
+    role            SMALLINT NOT NULL DEFAULT 0,
     nickname        VARCHAR(50) DEFAULT '',
     is_muted        BOOLEAN  NOT NULL DEFAULT FALSE,
     is_pinned       BOOLEAN  NOT NULL DEFAULT FALSE,
@@ -276,74 +367,154 @@ CREATE TABLE im_conversation_members (
     UNIQUE (conversation_id, user_id)
 );
 
+COMMENT ON TABLE  im_conversation_members                  IS '会话成员表，记录成员列表及每人的个性化设置';
+COMMENT ON COLUMN im_conversation_members.id               IS '记录唯一标识';
+COMMENT ON COLUMN im_conversation_members.conversation_id  IS '所属会话 ID';
+COMMENT ON COLUMN im_conversation_members.user_id          IS '成员用户 ID';
+COMMENT ON COLUMN im_conversation_members.role             IS '成员角色：0=普通成员，1=管理员（群聊可设置），2=群主';
+COMMENT ON COLUMN im_conversation_members.nickname         IS '群内昵称，仅在该群聊中生效，为空则使用用户全局昵称';
+COMMENT ON COLUMN im_conversation_members.is_muted         IS '是否被禁言：false=正常发言，true=已被禁言（仅管理员/群主可操作）';
+COMMENT ON COLUMN im_conversation_members.is_pinned        IS '是否置顶该会话：false=不置顶，true=置顶（个人设置，不影响他人）';
+COMMENT ON COLUMN im_conversation_members.last_read_msg_id IS '最后已读消息 ID，用于计算未读消息数';
+COMMENT ON COLUMN im_conversation_members.joined_at        IS '加入会话的时间';
+
+-- ============================================================
+-- im_messages: 消息表
+-- 系统数据量最大的表，存储所有聊天消息内容
+-- ============================================================
 CREATE TABLE im_messages (
     id              BIGSERIAL PRIMARY KEY,
     conversation_id BIGINT   NOT NULL,
     sender_id       BIGINT   NOT NULL,
-    type            SMALLINT NOT NULL DEFAULT 1,           -- 1:文本 2:图片 3:文件 4:语音 5:系统消息
+    type            SMALLINT NOT NULL DEFAULT 1,
     content         TEXT     NOT NULL DEFAULT '',
     extra           JSONB    DEFAULT '{}',
-    status          SMALLINT NOT NULL DEFAULT 1,           -- 1:正常 2:已撤回 3:已删除
+    status          SMALLINT NOT NULL DEFAULT 1,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+COMMENT ON TABLE  im_messages                 IS '聊天消息表，存储所有会话的消息记录（系统数据量最大的表）';
+COMMENT ON COLUMN im_messages.id              IS '消息唯一标识，全局自增';
+COMMENT ON COLUMN im_messages.conversation_id IS '所属会话 ID';
+COMMENT ON COLUMN im_messages.sender_id       IS '发送者用户 ID';
+COMMENT ON COLUMN im_messages.type            IS '消息类型：1=文本消息，2=图片消息，3=文件消息，4=语音消息，5=系统通知消息';
+COMMENT ON COLUMN im_messages.content         IS '消息内容，文本消息为文字，其他类型为描述文字或为空';
+COMMENT ON COLUMN im_messages.extra           IS '附加数据（JSON），图片消息存 {url,width,height}，文件消息存 {url,name,size}，语音消息存 {url,duration}';
+COMMENT ON COLUMN im_messages.status          IS '消息状态：1=正常，2=已撤回（发送者撤回），3=已删除（管理员删除）';
+COMMENT ON COLUMN im_messages.created_at      IS '消息发送时间';
+
 CREATE INDEX idx_im_messages_conv_time ON im_messages(conversation_id, created_at DESC);
+COMMENT ON INDEX idx_im_messages_conv_time IS '会话消息时间索引，用于按时间倒序查询会话历史消息';
 ```
 
 #### meeting 模块 — 音视频会议
 
 ```sql
+-- ============================================================
+-- meeting_rooms: 会议房间表
+-- 存储所有会议信息，支持即时会议和预约会议两种类型
+-- ============================================================
 CREATE TABLE meeting_rooms (
     id            BIGSERIAL PRIMARY KEY,
-    room_code     VARCHAR(20) UNIQUE NOT NULL,             -- 会议号
+    room_code     VARCHAR(20) UNIQUE NOT NULL,
     title         VARCHAR(200) NOT NULL,
     host_id       BIGINT      NOT NULL REFERENCES auth_users(id),
-    type          SMALLINT    NOT NULL DEFAULT 1,          -- 1:即时会议 2:预约会议
+    type          SMALLINT    NOT NULL DEFAULT 1,
     password      VARCHAR(50) DEFAULT NULL,
     max_members   INT         NOT NULL DEFAULT 50,
-    status        SMALLINT    NOT NULL DEFAULT 0,          -- 0:未开始 1:进行中 2:已结束
-    scheduled_at  TIMESTAMPTZ DEFAULT NULL,                -- 预约时间（即时会议为NULL）
+    status        SMALLINT    NOT NULL DEFAULT 0,
+    scheduled_at  TIMESTAMPTZ DEFAULT NULL,
     started_at    TIMESTAMPTZ DEFAULT NULL,
     ended_at      TIMESTAMPTZ DEFAULT NULL,
-    settings      JSONB       DEFAULT '{}',                -- 会议设置
+    settings      JSONB       DEFAULT '{}',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+COMMENT ON TABLE  meeting_rooms               IS '会议房间表，存储所有会议的基本信息和状态';
+COMMENT ON COLUMN meeting_rooms.id            IS '会议唯一标识，自增主键';
+COMMENT ON COLUMN meeting_rooms.room_code     IS '会议号（用户可见），如"123-456-789"，用于分享和加入会议';
+COMMENT ON COLUMN meeting_rooms.title         IS '会议标题';
+COMMENT ON COLUMN meeting_rooms.host_id       IS '会议创建者/主持人用户 ID';
+COMMENT ON COLUMN meeting_rooms.type          IS '会议类型：1=即时会议（立即创建立即开始），2=预约会议（设定未来时间）';
+COMMENT ON COLUMN meeting_rooms.password      IS '会议密码，NULL 表示无密码，任何人可直接加入';
+COMMENT ON COLUMN meeting_rooms.max_members   IS '最大参会人数，默认50人';
+COMMENT ON COLUMN meeting_rooms.status        IS '会议状态：0=未开始（仅预约会议），1=进行中，2=已结束';
+COMMENT ON COLUMN meeting_rooms.scheduled_at  IS '预约时间，仅预约会议有值，即时会议为 NULL';
+COMMENT ON COLUMN meeting_rooms.started_at    IS '实际开始时间';
+COMMENT ON COLUMN meeting_rooms.ended_at      IS '实际结束时间';
+COMMENT ON COLUMN meeting_rooms.settings      IS '会议设置（JSON），如 {mute_on_join: true, allow_recording: false, auto_start: true}';
+COMMENT ON COLUMN meeting_rooms.created_at    IS '会议创建时间';
+COMMENT ON COLUMN meeting_rooms.updated_at    IS '信息最后更新时间';
+
+-- ============================================================
+-- meeting_participants: 会议参与者表
+-- 记录每场会议的参与者及其参会信息
+-- ============================================================
 CREATE TABLE meeting_participants (
     id           BIGSERIAL PRIMARY KEY,
     room_id      BIGINT   NOT NULL REFERENCES meeting_rooms(id),
     user_id      BIGINT   NOT NULL REFERENCES auth_users(id),
-    role         SMALLINT NOT NULL DEFAULT 0,              -- 0:参与者 1:主持人 2:联合主持人
+    role         SMALLINT NOT NULL DEFAULT 0,
     joined_at    TIMESTAMPTZ DEFAULT NULL,
     left_at      TIMESTAMPTZ DEFAULT NULL,
     duration     INT      DEFAULT 0,
     UNIQUE (room_id, user_id)
 );
+
+COMMENT ON TABLE  meeting_participants           IS '会议参与者表，记录每场会议的所有参与者信息';
+COMMENT ON COLUMN meeting_participants.id        IS '记录唯一标识';
+COMMENT ON COLUMN meeting_participants.room_id   IS '所属会议 ID';
+COMMENT ON COLUMN meeting_participants.user_id   IS '参与者用户 ID';
+COMMENT ON COLUMN meeting_participants.role      IS '参会角色：0=普通参与者，1=主持人（会议创建者），2=联合主持人（主持人指定）';
+COMMENT ON COLUMN meeting_participants.joined_at IS '加入会议的时间';
+COMMENT ON COLUMN meeting_participants.left_at   IS '离开会议的时间，NULL 表示仍在会议中';
+COMMENT ON COLUMN meeting_participants.duration  IS '累计参会时长（秒），离开时自动计算';
 ```
 
 会议类型状态流转：
-- 即时会议：创建 → 进行中(1) → 已结束(2)
-- 预约会议：创建 → 未开始(0) → 进行中(1) → 已结束(2)
+- **即时会议**（type=1）：创建 → 进行中(status=1) → 已结束(status=2)
+- **预约会议**（type=2）：创建 → 未开始(status=0) → 进行中(status=1) → 已结束(status=2)
 
 #### notify 模块 — 消息通知
 
 ```sql
+-- ============================================================
+-- notify_notifications: 通知表
+-- 存储所有推送给用户的通知消息
+-- ============================================================
 CREATE TABLE notify_notifications (
     id          BIGSERIAL PRIMARY KEY,
     user_id     BIGINT      NOT NULL REFERENCES auth_users(id),
-    type        VARCHAR(50) NOT NULL,                      -- meeting_invite, friend_request, system
+    type        VARCHAR(50) NOT NULL,
     title       VARCHAR(200) NOT NULL,
     content     TEXT        DEFAULT '',
     extra       JSONB       DEFAULT '{}',
     is_read     BOOLEAN     NOT NULL DEFAULT FALSE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+COMMENT ON TABLE  notify_notifications            IS '通知消息表，存储推送给用户的所有类型通知';
+COMMENT ON COLUMN notify_notifications.id         IS '通知唯一标识';
+COMMENT ON COLUMN notify_notifications.user_id    IS '接收通知的用户 ID';
+COMMENT ON COLUMN notify_notifications.type       IS '通知类型：meeting_invite=会议邀请，friend_request=好友申请，friend_accepted=好友已接受，meeting_reminder=会议提醒，system=系统通知';
+COMMENT ON COLUMN notify_notifications.title      IS '通知标题';
+COMMENT ON COLUMN notify_notifications.content    IS '通知正文内容';
+COMMENT ON COLUMN notify_notifications.extra      IS '附加数据（JSON），如会议邀请存 {room_code, room_title}，好友申请存 {from_user_id, from_username}';
+COMMENT ON COLUMN notify_notifications.is_read    IS '是否已读：false=未读，true=已读';
+COMMENT ON COLUMN notify_notifications.created_at IS '通知创建时间';
+
 CREATE INDEX idx_notify_user_read ON notify_notifications(user_id, is_read, created_at DESC);
+COMMENT ON INDEX idx_notify_user_read IS '用户未读通知索引，优化"获取未读通知列表"查询';
 ```
 
 #### admin 模块 — 管理操作日志
 
 ```sql
+-- ============================================================
+-- admin_operation_logs: 管理操作日志表
+-- 记录后台管理员的所有操作行为，用于审计和追踪
+-- ============================================================
 CREATE TABLE admin_operation_logs (
     id          BIGSERIAL PRIMARY KEY,
     admin_id    BIGINT      NOT NULL REFERENCES auth_users(id),
@@ -355,6 +526,17 @@ CREATE TABLE admin_operation_logs (
     ip          VARCHAR(50) DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+COMMENT ON TABLE  admin_operation_logs             IS '管理操作日志表，记录所有后台管理员的操作行为';
+COMMENT ON COLUMN admin_operation_logs.id          IS '日志唯一标识';
+COMMENT ON COLUMN admin_operation_logs.admin_id    IS '操作管理员的用户 ID';
+COMMENT ON COLUMN admin_operation_logs.module      IS '操作所属模块：user=用户管理，meeting=会议管理，permission=权限管理，system=系统配置';
+COMMENT ON COLUMN admin_operation_logs.action      IS '操作类型：create=创建，update=修改，delete=删除，disable=禁用，enable=启用，close=关闭';
+COMMENT ON COLUMN admin_operation_logs.target_type IS '操作目标类型：user=用户，meeting=会议，role=角色，config=配置';
+COMMENT ON COLUMN admin_operation_logs.target_id   IS '操作目标 ID，关联对应表的主键';
+COMMENT ON COLUMN admin_operation_logs.detail      IS '操作详情（JSON），如 {before: {...}, after: {...}} 记录变更前后数据';
+COMMENT ON COLUMN admin_operation_logs.ip          IS '操作者 IP 地址';
+COMMENT ON COLUMN admin_operation_logs.created_at  IS '操作时间';
 ```
 
 ### 4.2 Redis 数据结构
