@@ -109,10 +109,14 @@ git commit -m "infra: Docker Compose 开发环境（PostgreSQL + Redis）"
 - Create: `backend/go-service/pkg/db/postgres.go`
 - Create: `backend/go-service/pkg/db/redis.go`
 - Create: `backend/go-service/pkg/logs/logger.go`
+- Create: `backend/go-service/pkg/logs/trace.go`
 - Create: `backend/go-service/pkg/utils/response.go`
 - Create: `backend/go-service/pkg/middleware/cors.go`
 - Create: `backend/go-service/pkg/middleware/recovery.go`
 - Create: `backend/go-service/pkg/middleware/logger.go`
+- Create: `backend/go-service/pkg/middleware/trace.go`
+
+> **日志系统详细设计见** `docs/architecture/system-architecture.md` 第八节
 
 **Step 1: 初始化 Go Module**
 
@@ -121,7 +125,7 @@ Run: `cd backend/go-service && go mod init github.com/echochat/backend`
 **Step 2: 创建配置管理**
 
 创建 `config/config.go` 使用 viper 读取 YAML 配置 + 环境变量覆盖。
-创建 `config/config.dev.yaml` 包含开发环境默认配置（数据库连接、Redis 连接、JWT 密钥、服务端口等）。
+创建 `config/config.dev.yaml` 包含开发环境默认配置（数据库连接、Redis 连接、JWT 密钥、服务端口、日志级别等）。
 
 ```go
 // config/config.go
@@ -132,44 +136,80 @@ type Config struct {
     JWT      JWTConfig      `mapstructure:"jwt"`
     Log      LogConfig      `mapstructure:"log"`
 }
+
+type LogConfig struct {
+    Level      string `mapstructure:"level"`       // debug/info/warn/error
+    Format     string `mapstructure:"format"`      // text(开发)/json(生产)
+    OutputPath string `mapstructure:"output_path"` // stdout 或文件路径
+}
 ```
 
-**Step 3: 创建日志系统**
+**Step 3: 创建日志系统（核心）**
 
-创建 `pkg/logs/logger.go` 使用 zap 结构化日志，包含 LogFunctionEntry 和 LogFunctionExit 工具函数。
+创建 `pkg/logs/logger.go`：
+- 基于 zap 的结构化日志封装
+- 支持从 context 中提取 trace_id 自动附加到每条日志
+- 提供分级日志方法：`Debug(ctx, func, msg, fields...)` / `Info(...)` / `Warn(...)` / `Error(...)`
+- 敏感信息脱敏工具函数（邮箱、手机号、Token）
+- 开发环境输出彩色可读文本，生产环境输出 JSON 结构化格式
+
+创建 `pkg/logs/trace.go`：
+- `GenerateTraceID()` — 生成唯一 trace ID（UUID v4 或雪花算法）
+- `WithTraceID(ctx, traceID)` — 将 trace_id 注入 context
+- `GetTraceID(ctx)` — 从 context 提取 trace_id
+
+**日志输出格式示例（开发环境）：**
+```
+2026-02-27 10:30:00.123 INFO  [abc-123] auth | service.Login | 用户登录成功 | account=zhangsan | latency=25ms
+```
+
+**日志输出格式示例（生产环境 JSON）：**
+```json
+{"level":"info","ts":"2026-02-27T10:30:00.123Z","trace_id":"abc-123","module":"auth","func":"service.Login","msg":"用户登录成功","account":"zhangsan","latency_ms":25}
+```
 
 **Step 4: 创建数据库连接**
 
-创建 `pkg/db/postgres.go` — GORM + PostgreSQL 连接池。
-创建 `pkg/db/redis.go` — go-redis 客户端。
+创建 `pkg/db/postgres.go` — GORM + PostgreSQL 连接池。GORM 日志适配 zap，SQL 查询日志携带 trace_id。
+创建 `pkg/db/redis.go` — go-redis 客户端。Redis 操作日志携带 trace_id。
 
 **Step 5: 创建统一响应工具**
 
-创建 `pkg/utils/response.go` 包含 ResponseOK、ResponseBadRequest、ResponseUnauthorized、ResponseForbidden、ResponseError 等统一响应函数。
+创建 `pkg/utils/response.go` 包含 ResponseOK、ResponseBadRequest、ResponseUnauthorized、ResponseForbidden、ResponseError 等统一响应函数。响应中包含 trace_id 便于前端反馈问题时定位。
 
 ```go
 type Response struct {
     Code      int         `json:"code"`
     Message   string      `json:"message"`
     Data      interface{} `json:"data,omitempty"`
+    TraceID   string      `json:"trace_id,omitempty"`
     Timestamp int64       `json:"timestamp"`
 }
 ```
 
 **Step 6: 创建中间件**
 
+创建 `pkg/middleware/trace.go` — **链路追踪中间件**：
+  - 从请求头提取 `X-Request-ID`，不存在则自动生成
+  - 注入 context，后续所有日志自动携带 trace_id
+  - 在响应头中返回 `X-Request-ID`
+
+创建 `pkg/middleware/logger.go` — **请求日志中间件**：
+  - 记录每个请求的完整信息：方法、路径、状态码、耗时、IP、User-Agent
+  - 自动携带 trace_id
+  - 慢请求告警（>500ms 记录 WARN）
+
 创建 `pkg/middleware/cors.go` — CORS 跨域中间件。
-创建 `pkg/middleware/recovery.go` — Panic 恢复中间件。
-创建 `pkg/middleware/logger.go` — 请求日志中间件。
+创建 `pkg/middleware/recovery.go` — Panic 恢复中间件（捕获 panic 后记录 ERROR 日志含堆栈信息）。
 
 **Step 7: 创建 main.go 入口**
 
 创建 `cmd/server/main.go`：
 1. 加载配置
-2. 初始化日志
+2. 初始化日志系统（根据配置设置级别和输出格式）
 3. 连接数据库和 Redis
 4. 创建 Gin Engine
-5. 注册中间件
+5. 注册中间件（顺序：Trace → Logger → CORS → Recovery）
 6. 注册路由（暂时只有健康检查 GET /health）
 7. 启动 HTTP 服务
 
