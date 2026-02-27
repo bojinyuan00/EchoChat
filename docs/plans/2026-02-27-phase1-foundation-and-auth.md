@@ -6,7 +6,7 @@
 
 **架构：** Go 单体模块化服务 + uniapp 前台 + Vue3 管理端 + PostgreSQL + Redis，Docker Compose 编排。
 
-**技术栈：** Go 1.22+ (Gin + GORM + Wire + zap) / Vue 3.4+ / uniapp 3.0 / Element Plus / PostgreSQL 16 / Redis 7 / Docker Compose
+**技术栈：** Go 1.22+ (Gin + GORM + Wire + zap) / Vue 3.4+ / uniapp 3.0 / Element Plus / PostgreSQL 17 / Redis 7 / Docker Compose
 
 **设计文档：** `docs/plans/2026-02-27-echochat-system-design.md`
 
@@ -22,14 +22,14 @@
 
 **Step 1: 创建 Docker Compose 开发环境配置**
 
-创建 `deploy/docker-compose.dev.yml`，包含 PostgreSQL 16 和 Redis 7 两个服务：
+创建 `deploy/docker-compose.dev.yml`，包含 PostgreSQL 17 和 Redis 7 两个服务：
 
 ```yaml
 version: '3.8'
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: echochat-postgres
     environment:
       POSTGRES_DB: echochat

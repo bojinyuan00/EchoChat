@@ -18,7 +18,7 @@
 | 前台前端 | uniapp (Vue 3) + mediasoup-client |
 | 后台前端 | 独立 Vue 3 + Vite + Element Plus（PC 端专注） |
 | 媒体层 | Node.js + mediasoup（保留官方 Node 中间层） |
-| 存储 | PostgreSQL 16 + Redis 7 |
+| 存储 | PostgreSQL 17 + Redis 7 |
 | 认证 | 邮箱+密码、用户名+密码（微信授权后期迭代） |
 | MVP 功能 | 用户体系、即时聊天、好友管理、音视频会议、消息通知 |
 | 多端优先级 | H5 > 桌面端 > 微信小程序 > Android |
