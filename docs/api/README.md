@@ -41,7 +41,7 @@
 
 | 环境 | 地址 |
 |------|------|
-| 开发环境 | `http://localhost:8080` |
+| 开发环境 | `http://localhost:8085` |
 | 生产环境 | `https://api.echochat.com`（待定） |
 
 ### 认证方式
@@ -73,8 +73,20 @@ yyyy-MM-dd HH:mm:ss
 ```json
 {
     "code": 0,
-    "message": "ok",
+    "message": "success",
     "data": { ... },
+    "trace_id": "6478824e-2926-4d35-aa5f-047c8cfbb36b",
+    "time": "2026-02-27 18:00:00"
+}
+```
+
+**创建成功响应（如注册）：**
+```json
+{
+    "code": 0,
+    "message": "created",
+    "data": { ... },
+    "trace_id": "6478824e-2926-4d35-aa5f-047c8cfbb36b",
     "time": "2026-02-27 18:00:00"
 }
 ```
@@ -84,10 +96,12 @@ yyyy-MM-dd HH:mm:ss
 {
     "code": 1001,
     "message": "参数错误：邮箱格式不正确",
-    "data": null,
+    "trace_id": "66564073-c0b7-4cf6-a200-5df94e1d01f3",
     "time": "2026-02-27 18:00:00"
 }
 ```
+
+> **trace_id** 字段在所有响应中都返回，用于追踪同一请求在各层级日志中的关联。
 
 ### 错误码定义
 

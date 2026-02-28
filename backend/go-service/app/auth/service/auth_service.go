@@ -378,13 +378,18 @@ func (s *AuthService) buildUserInfo(user *model.User, roles []string) *dto.UserI
 	if roles == nil {
 		roles = []string{}
 	}
-	return &dto.UserInfo{
-		ID:       user.ID,
-		Username: user.Username,
-		Email:    user.Email,
-		Nickname: user.Nickname,
-		Avatar:   user.Avatar,
-		Gender:   user.Gender,
-		Roles:    roles,
+	info := &dto.UserInfo{
+		ID:        user.ID,
+		Username:  user.Username,
+		Email:     user.Email,
+		Nickname:  user.Nickname,
+		Avatar:    user.Avatar,
+		Gender:    user.Gender,
+		Roles:     roles,
+		CreatedAt: user.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
+	if user.Phone != nil {
+		info.Phone = *user.Phone
+	}
+	return info
 }

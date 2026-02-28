@@ -25,13 +25,15 @@ type LoginResponse struct {
 
 // UserInfo 用户基本信息（用于响应返回，不含敏感字段）
 type UserInfo struct {
-	ID       int64    `json:"id"`       // 用户 ID
-	Username string   `json:"username"` // 用户名
-	Email    string   `json:"email"`    // 邮箱
-	Nickname string   `json:"nickname"` // 昵称
-	Avatar   string   `json:"avatar"`   // 头像 URL
-	Gender   int      `json:"gender"`   // 性别：0=未知, 1=男, 2=女
-	Roles    []string `json:"roles"`    // 角色代码列表
+	ID        int64    `json:"id"`                    // 用户 ID
+	Username  string   `json:"username"`              // 用户名
+	Email     string   `json:"email"`                 // 邮箱
+	Nickname  string   `json:"nickname"`              // 昵称
+	Avatar    string   `json:"avatar"`                // 头像 URL
+	Gender    int      `json:"gender"`                // 性别：0=未知, 1=男, 2=女
+	Phone     string   `json:"phone,omitempty"`       // 手机号（可能为空）
+	Roles     []string `json:"roles"`                 // 角色代码列表
+	CreatedAt string   `json:"created_at,omitempty"`  // 注册时间（格式：yyyy-MM-dd HH:mm:ss）
 }
 
 // RefreshTokenRequest 刷新 Token 请求参数
