@@ -13,8 +13,8 @@ import (
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/logs"
 	"github.com/echochat/backend/pkg/middleware"
-	"github.com/echochat/backend/pkg/utils"
 	"github.com/echochat/backend/app/provider"
+	"github.com/echochat/backend/router"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -45,7 +45,6 @@ func main() {
 	if err != nil {
 		logs.Fatal(ctx, "main", "初始化应用失败", zap.Error(err))
 	}
-	_ = app
 
 	// 4. 创建 Gin Engine
 	if cfg.Server.Mode == "release" {
@@ -61,14 +60,8 @@ func main() {
 		middleware.Recovery(),
 	)
 
-	// 6. 注册路由
-	engine.GET("/health", func(c *gin.Context) {
-		utils.ResponseOK(c, gin.H{
-			"status":  "ok",
-			"service": "echochat",
-			"time":    time.Now().Format("2006-01-02 15:04:05"),
-		})
-	})
+	// 6. 注册路由（由 router.Setup 统一汇总各模块路由）
+	router.Setup(engine, app)
 
 	// 7. 启动 HTTP 服务（优雅关闭）
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

@@ -7,6 +7,9 @@
 package provider
 
 import (
+	"github.com/echochat/backend/app/auth/controller"
+	"github.com/echochat/backend/app/auth/dao"
+	"github.com/echochat/backend/app/auth/service"
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/db"
 )
@@ -25,6 +28,12 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	app := NewApp(cfg, gormDB, client)
+	userDAO := dao.NewUserDAO(gormDB)
+	roleDAO := dao.NewRoleDAO(gormDB)
+	jwtConfig := provideJWTConfig(cfg)
+	authService := service.NewAuthService(userDAO, roleDAO, jwtConfig)
+	authController := controller.NewAuthController(authService)
+	adminAuthController := controller.NewAdminAuthController(authService)
+	app := NewApp(cfg, gormDB, client, authService, authController, adminAuthController)
 	return app, nil
 }
