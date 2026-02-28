@@ -28,7 +28,7 @@ func main() {
 	}
 
 	// 2. 初始化日志系统
-	if err := logs.Init(cfg.Log.Level, cfg.Log.Format, cfg.Log.OutputPath); err != nil {
+	if err := logs.Init(&cfg.Log); err != nil {
 		fmt.Printf("初始化日志失败: %v\n", err)
 		os.Exit(1)
 	}

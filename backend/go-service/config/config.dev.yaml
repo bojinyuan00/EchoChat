@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8085
   mode: debug
 
 database:
@@ -28,3 +28,10 @@ log:
   level: debug
   format: text
   output_path: stdout
+  file:
+    enable: true
+    dir: logs
+    max_size: 50
+    max_backups: 10
+    max_age: 30
+    compress: false

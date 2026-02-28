@@ -59,17 +59,28 @@ func (r *RedisConfig) Addr() string {
 
 // JWTConfig JWT 认证配置
 type JWTConfig struct {
-	Secret           string `mapstructure:"secret"`            // 签名密钥
-	AccessExpireMin  int    `mapstructure:"access_expire_min"` // Access Token 有效期（分钟）
+	Secret           string `mapstructure:"secret"`             // 签名密钥
+	AccessExpireMin  int    `mapstructure:"access_expire_min"`  // Access Token 有效期（分钟）
 	RefreshExpireDay int    `mapstructure:"refresh_expire_day"` // Refresh Token 有效期（天）
 	Issuer           string `mapstructure:"issuer"`             // 签发者
 }
 
 // LogConfig 日志配置
 type LogConfig struct {
-	Level      string `mapstructure:"level"`       // debug/info/warn/error
-	Format     string `mapstructure:"format"`      // text(开发)/json(生产)
-	OutputPath string `mapstructure:"output_path"` // stdout 或文件路径
+	Level      string        `mapstructure:"level"`       // debug/info/warn/error
+	Format     string        `mapstructure:"format"`      // text(开发)/json(生产)
+	OutputPath string        `mapstructure:"output_path"` // stdout 或文件路径
+	File       LogFileConfig `mapstructure:"file"`        // 日志文件轮转配置
+}
+
+// LogFileConfig 日志文件轮转配置（基于 lumberjack）
+type LogFileConfig struct {
+	Enable     bool   `mapstructure:"enable"`      // 是否启用文件日志
+	Dir        string `mapstructure:"dir"`          // 日志文件目录
+	MaxSize    int    `mapstructure:"max_size"`     // 单个文件最大大小（MB），超过后自动切割
+	MaxBackups int    `mapstructure:"max_backups"`  // 保留的旧日志文件最大数量
+	MaxAge     int    `mapstructure:"max_age"`      // 旧日志文件保留天数
+	Compress   bool   `mapstructure:"compress"`     // 是否压缩归档的旧日志文件
 }
 
 // Load 加载配置文件并返回 Config 实例
