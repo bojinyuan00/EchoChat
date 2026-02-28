@@ -263,6 +263,37 @@ CREATE TABLE auth_user_roles (
     PRIMARY KEY (user_id, role_id)
 );
 
+#### 权限扩展规划（后期迭代）
+
+> 当前 MVP 阶段使用粗粒度 3 角色（user / admin / super_admin）即可满足需求。
+> 后期管理员增多、需要区分职责时，引入细粒度权限点机制，扩展如下两张表：
+
+```sql
+-- 预留：权限点表（后期扩展）
+-- CREATE TABLE auth_permissions (
+--     id          SERIAL PRIMARY KEY,
+--     code        VARCHAR(100) UNIQUE NOT NULL,     -- 权限点代码，如 admin:user:list
+--     name        VARCHAR(100) NOT NULL,            -- 权限点名称，如"查看用户列表"
+--     module      VARCHAR(50)  NOT NULL,            -- 所属模块：user / meeting / system
+--     description VARCHAR(200) DEFAULT '',
+--     created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+-- );
+--
+-- 预留：角色权限关联表（后期扩展）
+-- CREATE TABLE auth_role_permissions (
+--     role_id       INT NOT NULL REFERENCES auth_roles(id),
+--     permission_id INT NOT NULL REFERENCES auth_permissions(id),
+--     PRIMARY KEY (role_id, permission_id)
+-- );
+```
+
+扩展时的权限点示例：
+- `admin:user:list` / `admin:user:detail` / `admin:user:disable` / `admin:user:role`
+- `admin:meeting:list` / `admin:meeting:close` / `admin:meeting:stats`
+- `admin:system:config` / `admin:log:list` / `admin:dashboard`
+
+中间件从 `RequireRole("admin")` 扩展为 `RequirePermission("admin:user:list")`，前端管理端菜单根据权限点动态渲染。
+
 COMMENT ON TABLE  auth_user_roles            IS '用户角色关联表，建立用户与角色的多对多关系';
 COMMENT ON COLUMN auth_user_roles.user_id    IS '关联的用户 ID';
 COMMENT ON COLUMN auth_user_roles.role_id    IS '关联的角色 ID';
