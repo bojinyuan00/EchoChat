@@ -431,11 +431,88 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Lo
 
 ### 8.6 请求日志中间件
 
-HTTP 请求日志中间件自动记录每个请求的完整信息：
+HTTP 请求日志中间件自动记录每个请求的完整信息，包含请求参数和响应数据。
 
+#### 请求参数记录策略（INFO 级别，所有环境生效）
+
+| 内容 | 记录时机 | 限制 |
+|------|---------|------|
+| **Query 参数** (`?key=val`) | GET/POST/PUT 等所有请求方式 | 无限制 |
+| **Request Body** | POST/PUT/PATCH 等有 Body 的请求 | 最大 4KB，超出自动截断并标记 `[truncated]` |
+| 文件上传 Body | 自动跳过（Content-Type 为 multipart/form-data） | 仅标记 `[file upload]` |
+| 敏感路径密码 | 登录/注册/改密码接口的 Body | `password` 等字段自动替换为 `***` |
+
+#### 响应数据记录策略
+
+| 状态码 | 日志级别 | 记录内容 |
+|--------|---------|---------|
+| 200-399（正常） | DEBUG | 响应 Body（最大 2KB） |
+| 400-499（客户端错误） | WARN | 请求信息 + 响应 Body |
+| 500+（服务器错误） | ERROR | 请求信息 + 响应 Body |
+
+#### 状态码分级输出
+
+| 情况 | 日志级别 |
+|------|---------|
+| 5xx 服务器错误 | ERROR |
+| 4xx 客户端错误 | WARN |
+| 请求耗时 > 500ms | WARN（慢请求告警） |
+| 正常请求 | INFO |
+
+#### 日志输出示例
+
+**GET 请求（带 Query 参数）：**
+
+```json
+{
+    "level": "INFO",
+    "ts": "2026-02-28 15:47:59",
+    "trace_id": "178fa038-90bd-4038-b526-e2243ac82408",
+    "func": "middleware.Logger",
+    "msg": "请求完成",
+    "method": "GET",
+    "path": "/health",
+    "status": 200,
+    "latency": 0.000346,
+    "ip": "192.168.1.100",
+    "user_agent": "Mozilla/5.0",
+    "query": "foo=bar&debug=true"
+}
 ```
-[INFO] trace_id=abc-123 | POST /api/v1/auth/login | status=200 | latency=25ms | ip=192.168.1.100 | user_agent=Mozilla/5.0
-[ERROR] trace_id=def-456 | POST /api/v1/meetings/join | status=500 | latency=150ms | ip=10.0.0.5 | error="mediasoup service unavailable"
+
+**POST 登录请求（密码已脱敏）：**
+
+```json
+{
+    "level": "INFO",
+    "ts": "2026-02-28 15:48:00",
+    "trace_id": "abc-123-def-456",
+    "func": "middleware.Logger",
+    "msg": "请求完成",
+    "method": "POST",
+    "path": "/api/v1/auth/login",
+    "status": 200,
+    "latency": 0.025,
+    "ip": "192.168.1.100",
+    "req_body": "{\"account\":\"testuser\",\"password\":\"***\"}"
+}
+```
+
+**错误响应（4xx/5xx 自动记录响应 Body）：**
+
+```json
+{
+    "level": "WARN",
+    "ts": "2026-02-28 15:48:01",
+    "trace_id": "def-456-ghi-789",
+    "func": "middleware.Logger",
+    "msg": "客户端错误",
+    "method": "POST",
+    "path": "/api/v1/auth/register",
+    "status": 400,
+    "req_body": "{\"username\":\"a\",\"email\":\"bad\",\"password\":\"***\"}",
+    "resp_body": "{\"code\":400,\"message\":\"邮箱格式不正确\"}"
+}
 ```
 
 ### 8.7 WebSocket 日志
