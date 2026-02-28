@@ -224,9 +224,9 @@ type LogConfig struct {
 type Response struct {
     Code      int         `json:"code"`
     Message   string      `json:"message"`
-    Data      interface{} `json:"data,omitempty"`
-    TraceID   string      `json:"trace_id,omitempty"`
-    Timestamp int64       `json:"timestamp"`
+    Data    interface{} `json:"data,omitempty"`
+    TraceID string      `json:"trace_id,omitempty"`
+    Time    string      `json:"time"`
 }
 ```
 

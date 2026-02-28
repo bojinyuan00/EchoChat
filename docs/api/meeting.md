@@ -55,7 +55,7 @@
         "status": 1,
         "host_id": 1,
         "max_members": 50,
-        "created_at": "2026-02-27T10:00:00Z"
+        "created_at": "2026-02-27 10:00:00"
     }
 }
 ```
@@ -73,7 +73,7 @@
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | title | string | 是 | 会议标题 |
-| scheduled_at | string | 是 | 预约时间（ISO 8601，如 "2026-03-01T14:00:00Z"） |
+| scheduled_at | string | 是 | 预约时间，格式：`yyyy-MM-dd HH:mm:ss`，如 `"2026-03-01 14:00:00"` |
 | password | string | 否 | 会议密码 |
 | max_members | int | 否 | 最大人数 |
 | invite_user_ids | int[] | 否 | 预先邀请的用户 ID 列表 |
@@ -110,10 +110,10 @@
         "has_password": true,
         "max_members": 50,
         "current_members": 5,
-        "started_at": "2026-02-27T10:00:00Z",
+        "started_at": "2026-02-27 10:00:00",
         "participants": [
-            { "user_id": 1, "nickname": "张三", "role": 1, "joined_at": "2026-02-27T10:00:00Z" },
-            { "user_id": 2, "nickname": "李四", "role": 0, "joined_at": "2026-02-27T10:01:00Z" }
+            { "user_id": 1, "nickname": "张三", "role": 1, "joined_at": "2026-02-27 10:00:00" },
+            { "user_id": 2, "nickname": "李四", "role": 0, "joined_at": "2026-02-27 10:01:00" }
         ]
     }
 }

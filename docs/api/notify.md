@@ -49,7 +49,7 @@
                     "from_username": "zhangsan"
                 },
                 "is_read": false,
-                "created_at": "2026-02-27T10:00:00Z"
+                "created_at": "2026-02-27 10:00:00"
             },
             {
                 "id": 2,
@@ -62,7 +62,7 @@
                     "message": "我是你的同事"
                 },
                 "is_read": false,
-                "created_at": "2026-02-27T09:30:00Z"
+                "created_at": "2026-02-27 09:30:00"
             }
         ],
         "total": 15,

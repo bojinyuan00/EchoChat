@@ -49,7 +49,7 @@
                 "type": 1,
                 "content": "你好",
                 "sender_id": 2,
-                "created_at": "2026-02-27T10:30:00Z"
+                "created_at": "2026-02-27 10:30:00"
             },
             "unread_count": 3,
             "is_pinned": false
@@ -65,7 +65,7 @@
                 "type": 1,
                 "content": "明天开会",
                 "sender_id": 3,
-                "created_at": "2026-02-27T11:00:00Z"
+                "created_at": "2026-02-27 11:00:00"
             },
             "unread_count": 0,
             "is_pinned": true,
@@ -117,7 +117,7 @@
             { "user_id": 1, "nickname": "张三", "role": 2, "online": true },
             { "user_id": 2, "nickname": "李四", "role": 0, "online": false }
         ],
-        "created_at": "2026-02-20T09:00:00Z"
+        "created_at": "2026-02-20 09:00:00"
     }
 }
 ```
@@ -153,7 +153,7 @@
                 "content": "明天几点开会？",
                 "extra": {},
                 "status": 1,
-                "created_at": "2026-02-27T10:28:00Z"
+                "created_at": "2026-02-27 10:28:00"
             },
             {
                 "id": 99,
@@ -169,7 +169,7 @@
                     "thumbnail": "https://cdn.echochat.com/img/xxx_thumb.jpg"
                 },
                 "status": 1,
-                "created_at": "2026-02-27T10:29:00Z"
+                "created_at": "2026-02-27 10:29:00"
             }
         ],
         "has_more": true

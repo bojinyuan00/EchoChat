@@ -587,7 +587,7 @@ echo:ws:conn:{conn_id}              → 连接信息 JSON (STRING)
     "event": "im.message.send",
     "seq": 1001,
     "data": {},
-    "timestamp": 1740700000
+    "time": "2026-02-27 18:06:40"
 }
 ```
 
@@ -720,7 +720,7 @@ DELETE /media/room/:id
     "code": 0,
     "message": "ok",
     "data": {},
-    "timestamp": 1740700000
+    "time": "2026-02-27 18:00:00"
 }
 ```
 

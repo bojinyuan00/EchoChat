@@ -37,6 +37,21 @@
 Authorization: Bearer <access_token>
 ```
 
+### 时间格式规范
+
+系统所有时间字段统一使用 **亚洲友好的日期时间字符串格式**：
+
+```
+yyyy-MM-dd HH:mm:ss
+```
+
+示例：`"2026-03-01 14:12:12"`
+
+- 所有 API 响应中的时间字段（`created_at`、`updated_at`、`last_login_at`、`started_at` 等）均使用此格式
+- 所有 API 请求中的时间参数（如预约会议时间）也使用此格式
+- WebSocket 消息中的时间字段同样遵循此格式
+- 时区统一采用 **Asia/Shanghai (UTC+8)**
+
 ### 统一响应格式
 
 **成功响应：**
@@ -45,7 +60,7 @@ Authorization: Bearer <access_token>
     "code": 0,
     "message": "ok",
     "data": { ... },
-    "timestamp": 1740700000
+    "time": "2026-02-27 18:00:00"
 }
 ```
 
@@ -55,7 +70,7 @@ Authorization: Bearer <access_token>
     "code": 1001,
     "message": "参数错误：邮箱格式不正确",
     "data": null,
-    "timestamp": 1740700000
+    "time": "2026-02-27 18:00:00"
 }
 ```
 

@@ -435,7 +435,7 @@ POST /api/v1/client/log    # 前端错误上报接口
     "stack": "Error: ICE connection failed...",
     "page": "/meeting/room",
     "user_agent": "...",
-    "timestamp": 1740700000
+    "time": "2026-02-27 18:06:40"
 }
 ```
 

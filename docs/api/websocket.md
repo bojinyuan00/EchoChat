@@ -41,7 +41,7 @@
     "event": "im.message.send",
     "seq": 1001,
     "data": { ... },
-    "timestamp": 1740700000
+    "time": "2026-02-27 18:06:40"
 }
 ```
 
@@ -50,7 +50,7 @@
 | event | string | 事件名称，格式：`{模块}.{对象}.{动作}` |
 | seq | int | 消息序列号，客户端自增，用于匹配请求和响应 |
 | data | object | 事件数据 |
-| timestamp | int | 发送时间戳（秒） |
+| time | string | 发送时间，格式：`yyyy-MM-dd HH:mm:ss`，时区 Asia/Shanghai |
 
 ### 服务端响应格式（ACK）
 
@@ -70,7 +70,7 @@
 {
     "event": "im.message.new",
     "data": { ... },
-    "timestamp": 1740700000
+    "time": "2026-02-27 18:06:40"
 }
 ```
 
@@ -117,7 +117,7 @@
     "type": 1,
     "content": "你好",
     "extra": {},
-    "created_at": "2026-02-27T10:30:00Z"
+    "created_at": "2026-02-27 10:30:00"
 }
 ```
 
