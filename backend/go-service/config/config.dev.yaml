@@ -1,37 +1,47 @@
+# ============================================================
+# EchoChat 开发环境配置
+# 环境变量覆盖规则：ECHOCHAT_{节}_{字段} 如 ECHOCHAT_SERVER_PORT=9090
+# ============================================================
+
+# HTTP 服务配置
 server:
-  port: 8085
-  mode: debug
+  port: 8085          # 服务监听端口
+  mode: debug         # 运行模式：debug（开发）/ release（生产）
 
+# PostgreSQL 数据库配置
 database:
-  host: localhost
-  port: 5432
-  user: echochat
-  password: echochat_dev_2026
-  dbname: echochat
-  sslmode: disable
-  max_idle_conns: 10
-  max_open_conns: 100
+  host: localhost      # 数据库地址
+  port: 5432           # 数据库端口
+  user: echochat       # 数据库用户名
+  password: echochat_dev_2026  # 数据库密码
+  dbname: echochat     # 数据库名称
+  sslmode: disable     # SSL 模式：disable（开发）/ require（生产）
+  max_idle_conns: 10   # 连接池最大空闲连接数
+  max_open_conns: 100  # 连接池最大打开连接数
 
+# Redis 配置
 redis:
-  host: localhost
-  port: 6379
-  password: ""
-  db: 0
+  host: localhost      # Redis 地址
+  port: 6379           # Redis 端口
+  password: ""         # Redis 密码，开发环境为空
+  db: 0                # Redis 数据库编号（0-15）
 
+# JWT 认证配置
 jwt:
-  secret: echochat-dev-jwt-secret-2026-please-change-in-production
-  access_expire_min: 120
-  refresh_expire_day: 7
-  issuer: echochat
+  secret: echochat-dev-jwt-secret-2026-please-change-in-production  # JWT 签名密钥，生产环境必须更换
+  access_expire_min: 120    # Access Token 有效期（分钟），即 2 小时
+  refresh_expire_day: 7     # Refresh Token 有效期（天），即 7 天
+  issuer: echochat          # JWT 签发者标识
 
+# 日志配置
 log:
-  level: debug
-  format: text
-  output_path: stdout
+  level: debug         # 最低输出级别：debug / info / warn / error
+  format: text         # 控制台输出格式：text（彩色可读）/ json（结构化）
+  output_path: stdout  # 控制台输出目标（保留字段，始终输出到 stdout）
   file:
-    enable: true
-    dir: logs
-    max_size: 50
-    max_backups: 10
-    max_age: 30
-    compress: false
+    enable: true       # 是否启用日志文件输出（true 时同时写入控制台和文件）
+    dir: logs          # 日志文件存放目录（相对于 go-service 工作目录）
+    max_size: 50       # 单个日志文件最大大小（MB），超过后自动切割产生新文件
+    max_backups: 10    # 保留的旧日志归档文件最大数量，超出的自动删除
+    max_age: 30        # 旧日志归档文件保留天数，超过天数的自动删除
+    compress: false    # 是否对归档的旧日志文件进行 gzip 压缩（生产环境建议 true）
