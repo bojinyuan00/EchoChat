@@ -70,7 +70,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17
     container_name: echochat-postgres
     environment:
       POSTGRES_DB: echochat
@@ -88,7 +88,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:7
     container_name: echochat-redis
     ports:
       - "6379:6379"
