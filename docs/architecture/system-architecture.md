@@ -327,7 +327,7 @@ func TraceMiddleware() gin.HandlerFunc {
 ```json
 {
     "level": "info",
-    "ts": "2026-02-27 10:30:00.123",
+    "ts": "2026-02-27 10:30:00",
     "trace_id": "abc-123-def-456",
     "module": "auth",
     "func": "service.auth_service.Login",

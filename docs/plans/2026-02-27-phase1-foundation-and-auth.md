@@ -203,12 +203,12 @@ type LogConfig struct {
 
 **日志输出格式示例（开发环境）：**
 ```
-2026-02-27 10:30:00.123 INFO  [abc-123] auth | service.Login | 用户登录成功 | account=zhangsan | latency=25ms
+2026-02-27 10:30:00 INFO  [abc-123] auth | service.Login | 用户登录成功 | account=zhangsan | latency=25ms
 ```
 
 **日志输出格式示例（生产环境 JSON）：**
 ```json
-{"level":"info","ts":"2026-02-27 10:30:00.123","trace_id":"abc-123","module":"auth","func":"service.Login","msg":"用户登录成功","account":"zhangsan","latency_ms":25}
+{"level":"info","ts":"2026-02-27 10:30:00","trace_id":"abc-123","module":"auth","func":"service.Login","msg":"用户登录成功","account":"zhangsan","latency_ms":25}
 ```
 
 **Step 4: 创建数据库连接**
