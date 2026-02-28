@@ -206,10 +206,10 @@ CREATE TABLE auth_users (
     gender          SMALLINT     NOT NULL DEFAULT 0,
     phone           VARCHAR(20)  DEFAULT NULL,
     status          SMALLINT     NOT NULL DEFAULT 1,
-    last_login_at   TIMESTAMPTZ  DEFAULT NULL,
+    last_login_at   TIMESTAMP  DEFAULT NULL,
     last_login_ip   VARCHAR(50)  DEFAULT NULL,
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    created_at      TIMESTAMP  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP  NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE  auth_users                IS '用户主表，存储所有用户信息（普通用户与管理员共用）';
@@ -236,7 +236,7 @@ CREATE TABLE auth_roles (
     code        VARCHAR(50) UNIQUE NOT NULL,
     name        VARCHAR(50) NOT NULL,
     description VARCHAR(200) DEFAULT '',
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE  auth_roles             IS '角色表，定义系统中所有角色类型';
@@ -259,7 +259,7 @@ INSERT INTO auth_roles (code, name, description) VALUES
 CREATE TABLE auth_user_roles (
     user_id    BIGINT NOT NULL REFERENCES auth_users(id),
     role_id    INT    NOT NULL REFERENCES auth_roles(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, role_id)
 );
 
@@ -283,8 +283,8 @@ CREATE TABLE contact_friendships (
     remark      VARCHAR(50) DEFAULT '',
     group_id    BIGINT   DEFAULT NULL,
     status      SMALLINT NOT NULL DEFAULT 0,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMP NOT NULL DEFAULT NOW(),
     UNIQUE (user_id, friend_id)
 );
 
@@ -307,7 +307,7 @@ CREATE TABLE contact_groups (
     user_id    BIGINT      NOT NULL REFERENCES auth_users(id),
     name       VARCHAR(50) NOT NULL,
     sort_order INT         NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE  contact_groups            IS '好友分组表，用户可自定义分组管理好友';
@@ -335,8 +335,8 @@ CREATE TABLE im_conversations (
     owner_id    BIGINT      DEFAULT NULL,
     max_members INT         NOT NULL DEFAULT 200,
     status      SMALLINT    NOT NULL DEFAULT 1,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE  im_conversations             IS '会话表，统一管理单聊和群聊会话';
@@ -363,7 +363,7 @@ CREATE TABLE im_conversation_members (
     is_muted        BOOLEAN  NOT NULL DEFAULT FALSE,
     is_pinned       BOOLEAN  NOT NULL DEFAULT FALSE,
     last_read_msg_id BIGINT  DEFAULT 0,
-    joined_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    joined_at       TIMESTAMP NOT NULL DEFAULT NOW(),
     UNIQUE (conversation_id, user_id)
 );
 
@@ -390,7 +390,7 @@ CREATE TABLE im_messages (
     content         TEXT     NOT NULL DEFAULT '',
     extra           JSONB    DEFAULT '{}',
     status          SMALLINT NOT NULL DEFAULT 1,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE  im_messages                 IS '聊天消息表，存储所有会话的消息记录（系统数据量最大的表）';
@@ -423,12 +423,12 @@ CREATE TABLE meeting_rooms (
     password      VARCHAR(50) DEFAULT NULL,
     max_members   INT         NOT NULL DEFAULT 50,
     status        SMALLINT    NOT NULL DEFAULT 0,
-    scheduled_at  TIMESTAMPTZ DEFAULT NULL,
-    started_at    TIMESTAMPTZ DEFAULT NULL,
-    ended_at      TIMESTAMPTZ DEFAULT NULL,
+    scheduled_at  TIMESTAMP DEFAULT NULL,
+    started_at    TIMESTAMP DEFAULT NULL,
+    ended_at      TIMESTAMP DEFAULT NULL,
     settings      JSONB       DEFAULT '{}',
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at    TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE  meeting_rooms               IS '会议房间表，存储所有会议的基本信息和状态';
@@ -456,8 +456,8 @@ CREATE TABLE meeting_participants (
     room_id      BIGINT   NOT NULL REFERENCES meeting_rooms(id),
     user_id      BIGINT   NOT NULL REFERENCES auth_users(id),
     role         SMALLINT NOT NULL DEFAULT 0,
-    joined_at    TIMESTAMPTZ DEFAULT NULL,
-    left_at      TIMESTAMPTZ DEFAULT NULL,
+    joined_at    TIMESTAMP DEFAULT NULL,
+    left_at      TIMESTAMP DEFAULT NULL,
     duration     INT      DEFAULT 0,
     UNIQUE (room_id, user_id)
 );
@@ -491,7 +491,7 @@ CREATE TABLE notify_notifications (
     content     TEXT        DEFAULT '',
     extra       JSONB       DEFAULT '{}',
     is_read     BOOLEAN     NOT NULL DEFAULT FALSE,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE  notify_notifications            IS '通知消息表，存储推送给用户的所有类型通知';
@@ -524,7 +524,7 @@ CREATE TABLE admin_operation_logs (
     target_id   BIGINT      DEFAULT NULL,
     detail      JSONB       DEFAULT '{}',
     ip          VARCHAR(50) DEFAULT '',
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE  admin_operation_logs             IS '管理操作日志表，记录所有后台管理员的操作行为';
