@@ -208,7 +208,7 @@ type LogConfig struct {
 
 **日志输出格式示例（生产环境 JSON）：**
 ```json
-{"level":"info","ts":"2026-02-27T10:30:00.123Z","trace_id":"abc-123","module":"auth","func":"service.Login","msg":"用户登录成功","account":"zhangsan","latency_ms":25}
+{"level":"info","ts":"2026-02-27 10:30:00.123","trace_id":"abc-123","module":"auth","func":"service.Login","msg":"用户登录成功","account":"zhangsan","latency_ms":25}
 ```
 
 **Step 4: 创建数据库连接**
@@ -298,12 +298,12 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 
 Run: `cd backend/go-service && go mod tidy`
 
-**Step 9: 运行验证**
+**Step 10: 运行验证**
 
 Run: `cd backend/go-service && go run cmd/server/main.go`
 Expected: 服务启动在 :8080，访问 /health 返回 200
 
-**Step 10: Commit**
+**Step 11: Commit**
 
 ```bash
 git add backend/go-service/
