@@ -1,0 +1,30 @@
+server:
+  port: 8080
+  mode: debug
+
+database:
+  host: localhost
+  port: 5432
+  user: echochat
+  password: echochat_dev_2026
+  dbname: echochat
+  sslmode: disable
+  max_idle_conns: 10
+  max_open_conns: 100
+
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  db: 0
+
+jwt:
+  secret: echochat-dev-jwt-secret-2026-please-change-in-production
+  access_expire_min: 120
+  refresh_expire_day: 7
+  issuer: echochat
+
+log:
+  level: debug
+  format: text
+  output_path: stdout
