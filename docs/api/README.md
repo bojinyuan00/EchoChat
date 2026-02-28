@@ -1,6 +1,6 @@
 # EchoChat API 接口文档
 
-> 本目录包含 EchoChat 系统所有接口定义，按功能模块拆分为独立文档，便于维护和查阅。
+> 本目录包含 EchoChat 系统所有接口定义，按**端 + 功能模块**两级目录组织，便于维护和查阅。
 > 架构设计见 `docs/architecture/system-architecture.md`
 > 完整设计方案见 `docs/plans/2026-02-27-echochat-system-design.md`
 
@@ -8,15 +8,30 @@
 
 ## 文档导航
 
+### 前台用户端 (`frontend/`)
+
 | 文档 | 模块 | 说明 |
 |------|------|------|
-| [auth.md](auth.md) | 认证模块 | 用户注册、登录、Token 管理、个人信息 |
-| [contact.md](contact.md) | 联系人模块 | 好友管理、好友分组 |
-| [im.md](im.md) | 即时通讯模块 | 会话管理、消息历史、群聊管理 |
-| [meeting.md](meeting.md) | 会议模块 | 即时会议、预约会议、加入/离开会议 |
-| [notify.md](notify.md) | 通知模块 | 通知列表、已读管理 |
-| [admin.md](admin.md) | 后台管理模块 | 用户管理、会议监控、系统配置、操作日志 |
-| [websocket.md](websocket.md) | WebSocket 协议 | 实时消息、会议信令、在线状态事件 |
+| [frontend/auth.md](frontend/auth.md) | 用户认证 | 注册、登录、Token 刷新、个人信息管理 |
+| [frontend/contact.md](frontend/contact.md) | 联系人 | 好友申请/管理、好友分组 |
+| [frontend/im.md](frontend/im.md) | 即时通讯 | 会话列表、消息历史、群聊创建与管理 |
+| [frontend/meeting.md](frontend/meeting.md) | 会议 | 即时会议、预约会议、加入/离开、会议列表 |
+| [frontend/notify.md](frontend/notify.md) | 通知 | 通知列表、标记已读 |
+
+### 后台管理端 (`admin/`)
+
+| 文档 | 模块 | 说明 |
+|------|------|------|
+| [admin/auth.md](admin/auth.md) | 管理员认证 | 管理员登录（验证 admin 角色） |
+| [admin/user.md](admin/user.md) | 用户管理 | 用户列表/详情、状态管理、角色分配、创建用户 |
+| [admin/meeting.md](admin/meeting.md) | 会议管理 | 会议列表/详情、强制结束、会议统计 |
+| [admin/system.md](admin/system.md) | 系统管理 | 仪表盘数据、操作日志、系统配置 |
+
+### 跨端通用
+
+| 文档 | 说明 |
+|------|------|
+| [websocket.md](websocket.md) | WebSocket 实时事件协议（IM 消息、会议信令、在线状态） |
 
 ---
 
@@ -147,7 +162,27 @@ yyyy-MM-dd HH:mm:ss
 
 ## 文档维护规则
 
-1. **新增接口时**：在对应模块文档中追加，保持格式一致
+1. **新增接口时**：在对应端+模块的文档中追加，保持格式一致
 2. **接口变更时**：同步更新文档，必要时在接口描述中标注版本信息
-3. **新增模块时**：创建新的模块文档，在本 README 导航表中添加链接
-4. **错误码新增时**：在本文档的错误码定义中追加，保持各模块错误码区间不重叠
+3. **新增模块时**：在对应端目录下创建新文档，在本 README 导航表中添加链接
+4. **新增端时**：创建新的端目录（如 `open/` 开放 API），在导航中添加新分区
+5. **错误码新增时**：在本文档的错误码定义中追加，保持各模块错误码区间不重叠
+
+### 目录结构
+
+```
+docs/api/
+├── README.md              # 通用规范（本文件）
+├── frontend/              # 前台用户端 API
+│   ├── auth.md            # 用户认证
+│   ├── contact.md         # 联系人管理
+│   ├── im.md              # 即时通讯
+│   ├── meeting.md         # 会议
+│   └── notify.md          # 通知
+├── admin/                 # 后台管理端 API
+│   ├── auth.md            # 管理员认证
+│   ├── user.md            # 用户管理
+│   ├── meeting.md         # 会议管理
+│   └── system.md          # 系统管理
+└── websocket.md           # WebSocket 事件协议
+```

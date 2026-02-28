@@ -1,7 +1,7 @@
 # 会议模块 API (Meeting)
 
-> 通用规范（认证方式、响应格式、错误码）见 [README.md](README.md)
-> 会议中的实时信令（Transport/Producer/Consumer）通过 WebSocket 完成，见 [websocket.md](websocket.md)
+> 通用规范（认证方式、响应格式、错误码）见 [README.md](../README.md)
+> 会议中的实时信令（Transport/Producer/Consumer）通过 WebSocket 完成，见 [websocket.md](../websocket.md)
 
 ---
 

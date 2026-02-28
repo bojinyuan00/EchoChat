@@ -1,7 +1,7 @@
 # 即时通讯模块 API (IM)
 
-> 通用规范（认证方式、响应格式、错误码）见 [README.md](README.md)
-> 消息的实时收发通过 WebSocket 完成，见 [websocket.md](websocket.md)
+> 通用规范（认证方式、响应格式、错误码）见 [README.md](../README.md)
+> 消息的实时收发通过 WebSocket 完成，见 [websocket.md](../websocket.md)
 > 本文档中的接口用于会话管理和消息历史查询等非实时操作。
 
 ---

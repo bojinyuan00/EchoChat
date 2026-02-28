@@ -138,7 +138,7 @@ npm run dev
 | 整体设计方案 | [docs/plans/2026-02-27-echochat-system-design.md](docs/plans/2026-02-27-echochat-system-design.md) | 系统完整设计方案 |
 | 第一阶段实施计划 | [docs/plans/2026-02-27-phase1-foundation-and-auth.md](docs/plans/2026-02-27-phase1-foundation-and-auth.md) | 基础设施+用户体系实施步骤 |
 | 系统架构文档 | [docs/architecture/system-architecture.md](docs/architecture/system-architecture.md) | 架构分层与技术选型 |
-| API 接口文档 | [docs/api/](docs/api/) | 按模块拆分的 REST API + WebSocket 事件定义 |
+| API 接口文档 | [docs/api/](docs/api/) | 按端+模块拆分的 REST API + WebSocket 事件定义 |
 
 ---
 

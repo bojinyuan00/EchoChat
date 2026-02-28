@@ -1,6 +1,6 @@
 # 联系人模块 API (Contact)
 
-> 通用规范（认证方式、响应格式、错误码）见 [README.md](README.md)
+> 通用规范（认证方式、响应格式、错误码）见 [README.md](../README.md)
 
 ---
 

@@ -1,7 +1,7 @@
 # 通知模块 API (Notify)
 
-> 通用规范（认证方式、响应格式、错误码）见 [README.md](README.md)
-> 新通知的实时推送通过 WebSocket 完成，见 [websocket.md](websocket.md)
+> 通用规范（认证方式、响应格式、错误码）见 [README.md](../README.md)
+> 新通知的实时推送通过 WebSocket 完成，见 [websocket.md](../websocket.md)
 
 ---
 
