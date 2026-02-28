@@ -466,14 +466,16 @@ HTTP 请求日志中间件自动记录每个请求的完整信息，包含请求
 ```json
 {
     "level": "INFO",
-    "ts": "2026-02-28 15:47:59",
-    "trace_id": "178fa038-90bd-4038-b526-e2243ac82408",
+    "ts": "2026-02-28 15:55:48",
+    "caller": "middleware/logger.go:135",
+    "trace_id": "a6f0a744-eb14-4ac8-9e7a-5162ce7be842",
     "func": "middleware.Logger",
     "msg": "请求完成",
     "method": "GET",
     "path": "/health",
+    "handler": "main.main.func1",
     "status": 200,
-    "latency": 0.000346,
+    "latency": 0.000422,
     "ip": "192.168.1.100",
     "user_agent": "Mozilla/5.0",
     "query": "foo=bar&debug=true"
@@ -486,11 +488,13 @@ HTTP 请求日志中间件自动记录每个请求的完整信息，包含请求
 {
     "level": "INFO",
     "ts": "2026-02-28 15:48:00",
+    "caller": "middleware/logger.go:135",
     "trace_id": "abc-123-def-456",
     "func": "middleware.Logger",
     "msg": "请求完成",
     "method": "POST",
     "path": "/api/v1/auth/login",
+    "handler": "controller.auth_controller.Login",
     "status": 200,
     "latency": 0.025,
     "ip": "192.168.1.100",
@@ -504,16 +508,20 @@ HTTP 请求日志中间件自动记录每个请求的完整信息，包含请求
 {
     "level": "WARN",
     "ts": "2026-02-28 15:48:01",
+    "caller": "middleware/logger.go:125",
     "trace_id": "def-456-ghi-789",
     "func": "middleware.Logger",
     "msg": "客户端错误",
     "method": "POST",
     "path": "/api/v1/auth/register",
+    "handler": "controller.auth_controller.Register",
     "status": 400,
     "req_body": "{\"username\":\"a\",\"email\":\"bad\",\"password\":\"***\"}",
     "resp_body": "{\"code\":400,\"message\":\"邮箱格式不正确\"}"
 }
 ```
+
+> **关于 `caller` 和 `handler` 字段**：`caller` 字段固定指向中间件源码行号（因为请求日志由中间件发出），`handler` 字段则显示实际处理请求的 Controller 函数名（如 `controller.auth_controller.Login`），通过 `handler` + `trace_id` 可快速定位到具体的业务处理代码。
 
 ### 8.7 WebSocket 日志
 

@@ -71,9 +71,13 @@ func Logger() gin.HandlerFunc {
 		status := rbw.Status()
 		path := c.Request.URL.Path
 
+		// handler 名称：如 "main.main.func1" 或 "controller.auth_controller.Login"
+		handler := c.HandlerName()
+
 		fields := []zap.Field{
 			zap.String("method", c.Request.Method),
 			zap.String("path", path),
+			zap.String("handler", handler),
 			zap.Int("status", status),
 			zap.Duration("latency", latency),
 			zap.String("ip", c.ClientIP()),
