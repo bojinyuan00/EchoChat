@@ -181,9 +181,19 @@ type Config struct {
 }
 
 type LogConfig struct {
-    Level      string `mapstructure:"level"`       // debug/info/warn/error
-    Format     string `mapstructure:"format"`      // text(开发)/json(生产)
-    OutputPath string `mapstructure:"output_path"` // stdout 或文件路径
+    Level      string        `mapstructure:"level"`       // debug/info/warn/error
+    Format     string        `mapstructure:"format"`      // text(开发)/json(生产)
+    OutputPath string        `mapstructure:"output_path"` // stdout 或文件路径
+    File       LogFileConfig `mapstructure:"file"`        // 日志文件轮转配置
+}
+
+type LogFileConfig struct {
+    Enable     bool   `mapstructure:"enable"`      // 是否启用文件日志
+    Dir        string `mapstructure:"dir"`          // 日志文件目录
+    MaxSize    int    `mapstructure:"max_size"`     // 单文件最大大小（MB）
+    MaxBackups int    `mapstructure:"max_backups"`  // 保留旧日志文件数量
+    MaxAge     int    `mapstructure:"max_age"`      // 旧日志保留天数
+    Compress   bool   `mapstructure:"compress"`     // 是否压缩归档文件
 }
 ```
 
@@ -194,7 +204,11 @@ type LogConfig struct {
 - 支持从 context 中提取 trace_id 自动附加到每条日志
 - 提供分级日志方法：`Debug(ctx, func, msg, fields...)` / `Info(...)` / `Warn(...)` / `Error(...)`
 - 敏感信息脱敏工具函数（邮箱、手机号、Token）
-- 开发环境输出彩色可读文本，生产环境输出 JSON 结构化格式
+- 控制台输出（始终启用）：开发环境彩色可读文本，生产环境 JSON 结构化
+- 文件输出（可配置启用）：基于 lumberjack 自动轮转
+  - `logs/app.log` — 全量日志（JSON 格式），便于接入 ELK/Loki
+  - `logs/error.log` — 仅 WARN 及以上级别，便于快速定位问题
+  - 支持按文件大小切割、保留数量、过期天数、压缩归档
 
 创建 `pkg/logs/trace.go`：
 - `GenerateTraceID()` — 生成唯一 trace ID（UUID v4 或雪花算法）
