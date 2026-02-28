@@ -251,15 +251,13 @@ type Response struct {
   - 注入 context，后续所有日志自动携带 trace_id
   - 在响应头中返回 `X-Request-ID`
 
-创建 `pkg/middleware/logger.go` — **请求日志中间件**：
-  - 记录每个请求的完整信息：方法、路径、状态码、耗时、IP、User-Agent
-  - **请求参数记录**：Query 参数 + Request Body 在 INFO 级别始终记录（所有环境生效）
-    - 文件上传自动跳过，仅标记 `[file upload]`
-    - 敏感路径（登录/注册/改密码）自动脱敏 password 字段
-    - Body 超过 4KB 自动截断
-  - **响应数据记录**：正常响应 DEBUG 级别记录，错误响应(4xx/5xx)在 WARN/ERROR 也记录
-    - 响应 Body 最大记录 2KB
-  - 自动携带 trace_id
+创建 `pkg/middleware/logger.go` — **请求日志中间件（Access Log 层）**：
+  - 采用社区标准「分层不重复」策略，只记录 HTTP 请求级元信息
+  - 记录字段：method / path / handler / status / latency / ip / user_agent / query
+  - **不记录 Request Body**（由 Controller 层在 ShouldBindJSON 后以结构化参数形式记录，caller 可精确指向业务代码行号）
+  - 错误响应(4xx/5xx)额外记录 Response Body（最大 2KB），便于排查接口返回内容
+  - handler 字段通过 `c.HandlerName()` 获取，显示实际处理请求的函数名
+  - 自动携带 trace_id，通过 trace_id 串联同一请求的各层日志
   - 状态码分级：5xx→ERROR / 4xx→WARN / 慢请求(>500ms)→WARN / 正常→INFO
 
 创建 `pkg/middleware/cors.go` — CORS 跨域中间件。

@@ -429,26 +429,35 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Lo
 }
 ```
 
-### 8.6 请求日志中间件
+### 8.6 请求日志中间件（Access Log 层）
 
-HTTP 请求日志中间件自动记录每个请求的完整信息，包含请求参数和响应数据。
+HTTP 请求日志中间件采用社区标准的「分层不重复」策略，只记录 HTTP 请求级元信息，不记录请求 Body。
 
-#### 请求参数记录策略（INFO 级别，所有环境生效）
+#### 分层日志架构
 
-| 内容 | 记录时机 | 限制 |
-|------|---------|------|
-| **Query 参数** (`?key=val`) | GET/POST/PUT 等所有请求方式 | 无限制 |
-| **Request Body** | POST/PUT/PATCH 等有 Body 的请求 | 最大 4KB，超出自动截断并标记 `[truncated]` |
-| 文件上传 Body | 自动跳过（Content-Type 为 multipart/form-data） | 仅标记 `[file upload]` |
-| 敏感路径密码 | 登录/注册/改密码接口的 Body | `password` 等字段自动替换为 `***` |
+| 层级 | 职责 | caller 指向 | 记录内容 |
+|------|------|------------|---------|
+| **中间件层（Access Log）** | HTTP 请求元信息 | 中间件源码 | method / path / handler / status / latency / ip / query |
+| **Controller 层** | 结构化请求参数 | Controller 代码行号 | ShouldBindJSON 后的业务参数（可精准脱敏） |
+| **Service 层** | 业务逻辑关键节点 | Service 代码行号 | 业务状态变更、外部调用等 |
+| **DAO 层** | 数据操作 | DAO 代码行号 | SQL 操作、缓存操作等 |
 
-#### 响应数据记录策略
+> 同一请求的各层日志通过 `trace_id` 串联，可完整追踪请求的处理链路。
 
-| 状态码 | 日志级别 | 记录内容 |
-|--------|---------|---------|
-| 200-399（正常） | DEBUG | 响应 Body（最大 2KB） |
-| 400-499（客户端错误） | WARN | 请求信息 + 响应 Body |
-| 500+（服务器错误） | ERROR | 请求信息 + 响应 Body |
+#### 中间件记录字段
+
+| 字段 | 说明 | 记录时机 |
+|------|------|---------|
+| `method` | HTTP 方法 | 始终记录 |
+| `path` | 请求路径 | 始终记录 |
+| `handler` | 处理函数名（如 `controller.auth_controller.Login`） | 始终记录 |
+| `status` | HTTP 状态码 | 始终记录 |
+| `latency` | 请求耗时 | 始终记录 |
+| `ip` | 客户端 IP | 始终记录 |
+| `user_agent` | 客户端 User-Agent | 始终记录 |
+| `query` | URL Query 参数 | 有 Query 时记录 |
+| `resp_body` | 响应 Body（最大 2KB） | 仅 4xx/5xx 错误响应 |
+| `error` | Gin 错误信息 | 有 c.Errors 时记录 |
 
 #### 状态码分级输出
 
@@ -461,34 +470,34 @@ HTTP 请求日志中间件自动记录每个请求的完整信息，包含请求
 
 #### 日志输出示例
 
-**GET 请求（带 Query 参数）：**
+**正常 GET 请求（带 Query 参数）：**
 
 ```json
 {
     "level": "INFO",
-    "ts": "2026-02-28 15:55:48",
-    "caller": "middleware/logger.go:135",
-    "trace_id": "a6f0a744-eb14-4ac8-9e7a-5162ce7be842",
+    "ts": "2026-02-28 16:08:40",
+    "caller": "middleware/logger.go:108",
+    "trace_id": "b94a08f8-3c1e-4567-96ab-7bfe1057239a",
     "func": "middleware.Logger",
     "msg": "请求完成",
     "method": "GET",
     "path": "/health",
     "handler": "main.main.func1",
     "status": 200,
-    "latency": 0.000422,
+    "latency": 0.000530,
     "ip": "192.168.1.100",
-    "user_agent": "Mozilla/5.0",
+    "user_agent": "curl/8.7.1",
     "query": "foo=bar&debug=true"
 }
 ```
 
-**POST 登录请求（密码已脱敏）：**
+**POST 请求（中间件只记录元信息，参数由 Controller 层记录）：**
 
 ```json
 {
     "level": "INFO",
-    "ts": "2026-02-28 15:48:00",
-    "caller": "middleware/logger.go:135",
+    "ts": "2026-02-28 16:08:41",
+    "caller": "middleware/logger.go:108",
     "trace_id": "abc-123-def-456",
     "func": "middleware.Logger",
     "msg": "请求完成",
@@ -496,32 +505,43 @@ HTTP 请求日志中间件自动记录每个请求的完整信息，包含请求
     "path": "/api/v1/auth/login",
     "handler": "controller.auth_controller.Login",
     "status": 200,
-    "latency": 0.025,
-    "ip": "192.168.1.100",
-    "req_body": "{\"account\":\"testuser\",\"password\":\"***\"}"
+    "latency": 0.025
 }
 ```
 
-**错误响应（4xx/5xx 自动记录响应 Body）：**
+**错误响应（4xx/5xx 额外记录响应 Body）：**
 
 ```json
 {
     "level": "WARN",
-    "ts": "2026-02-28 15:48:01",
-    "caller": "middleware/logger.go:125",
-    "trace_id": "def-456-ghi-789",
+    "ts": "2026-02-28 16:08:42",
+    "caller": "middleware/logger.go:99",
+    "trace_id": "79f3f6fb-6997-4645-9c33-23f832dc6af2",
     "func": "middleware.Logger",
     "msg": "客户端错误",
     "method": "POST",
     "path": "/api/v1/auth/register",
     "handler": "controller.auth_controller.Register",
     "status": 400,
-    "req_body": "{\"username\":\"a\",\"email\":\"bad\",\"password\":\"***\"}",
     "resp_body": "{\"code\":400,\"message\":\"邮箱格式不正确\"}"
 }
 ```
 
-> **关于 `caller` 和 `handler` 字段**：`caller` 字段固定指向中间件源码行号（因为请求日志由中间件发出），`handler` 字段则显示实际处理请求的 Controller 函数名（如 `controller.auth_controller.Login`），通过 `handler` + `trace_id` 可快速定位到具体的业务处理代码。
+**Controller 层日志（caller 精确指向业务代码行号）：**
+
+```json
+{
+    "level": "INFO",
+    "ts": "2026-02-28 16:08:41",
+    "caller": "controller/auth_controller.go:35",
+    "trace_id": "abc-123-def-456",
+    "func": "controller.auth_controller.Login",
+    "msg": "开始处理登录",
+    "account": "testuser"
+}
+```
+
+> **设计理念**：中间件层关注"哪个接口被调用、结果如何"，业务层关注"具体做了什么、哪里出错"。两者通过 `trace_id` 串联，既避免日志重复，又能完整追踪请求链路。
 
 ### 8.7 WebSocket 日志
 
