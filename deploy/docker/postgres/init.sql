@@ -17,10 +17,10 @@ CREATE TABLE auth_users (
     gender          SMALLINT     NOT NULL DEFAULT 0,
     phone           VARCHAR(20)  DEFAULT NULL,
     status          SMALLINT     NOT NULL DEFAULT 1,
-    last_login_at   TIMESTAMP    DEFAULT NULL,
+    last_login_at   TIMESTAMP(0) DEFAULT NULL,
     last_login_ip   VARCHAR(50)  DEFAULT NULL,
-    created_at      TIMESTAMP    NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMP    NOT NULL DEFAULT NOW()
+    created_at      TIMESTAMP(0) NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP(0) NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE  auth_users                IS '用户主表，存储所有用户信息（普通用户与管理员共用）';
@@ -47,7 +47,7 @@ CREATE TABLE auth_roles (
     code        VARCHAR(50) UNIQUE NOT NULL,
     name        VARCHAR(50) NOT NULL,
     description VARCHAR(200) DEFAULT '',
-    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at  TIMESTAMP(0) NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE  auth_roles             IS '角色表，定义系统中所有角色类型';
@@ -70,7 +70,7 @@ INSERT INTO auth_roles (code, name, description) VALUES
 CREATE TABLE auth_user_roles (
     user_id    BIGINT NOT NULL REFERENCES auth_users(id),
     role_id    INT    NOT NULL REFERENCES auth_roles(id),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMP(0) NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, role_id)
 );
 
