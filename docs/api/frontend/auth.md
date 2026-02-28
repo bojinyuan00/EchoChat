@@ -43,11 +43,11 @@
 }
 ```
 
-**成功响应（201 Created）：**
+**成功响应（200 OK）：**
 ```json
 {
     "code": 0,
-    "message": "created",
+    "message": "success",
     "data": {
         "token": "eyJhbGciOiJIUzI1NiIs...",
         "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
@@ -139,7 +139,7 @@
 
 **权限：** 需认证
 
-**说明：** 当前采用无状态 JWT 方案，服务端不存储 Token 状态。退出登录由客户端主动删除本地存储的 Token 即可。后续可扩展为将 Token 加入 Redis 黑名单实现服务端主动失效。
+**说明：** 采用有状态 JWT 方案，Token 存储在 Redis 中（`echo:auth:token:{user_id}` 和 `echo:auth:refresh:{user_id}`）。登出时服务端会从 Redis 中删除该用户的 Access Token 和 Refresh Token，使其立即失效。客户端也应同步清除本地存储的 Token。
 
 **成功响应：**
 ```json

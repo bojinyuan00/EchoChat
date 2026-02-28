@@ -28,17 +28,19 @@ var (
 
 // AuthService 认证服务，处理注册、登录、Token 管理、个人信息等业务逻辑
 type AuthService struct {
-	userDAO *dao.UserDAO
-	roleDAO *dao.RoleDAO
-	jwtCfg  *config.JWTConfig
+	userDAO    *dao.UserDAO
+	roleDAO    *dao.RoleDAO
+	jwtCfg     *config.JWTConfig
+	tokenStore *TokenStore
 }
 
 // NewAuthService 创建认证服务实例
-func NewAuthService(userDAO *dao.UserDAO, roleDAO *dao.RoleDAO, jwtCfg *config.JWTConfig) *AuthService {
+func NewAuthService(userDAO *dao.UserDAO, roleDAO *dao.RoleDAO, jwtCfg *config.JWTConfig, tokenStore *TokenStore) *AuthService {
 	return &AuthService{
-		userDAO: userDAO,
-		roleDAO: roleDAO,
-		jwtCfg:  jwtCfg,
+		userDAO:    userDAO,
+		roleDAO:    roleDAO,
+		jwtCfg:     jwtCfg,
+		tokenStore: tokenStore,
 	}
 }
 
@@ -110,7 +112,7 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 
 	// 获取角色列表并生成 Token
 	roles, _ := s.roleDAO.GetUserRoleCodes(ctx, user.ID)
-	resp, err := s.buildLoginResponse(user, roles)
+	resp, err := s.buildLoginResponse(ctx, user, roles)
 	if err != nil {
 		return nil, err
 	}
@@ -162,9 +164,9 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest, clientIP
 	// 更新最后登录信息
 	_ = s.userDAO.UpdateLastLogin(ctx, user.ID, clientIP)
 
-	// 获取角色列表并生成 Token
+	// 获取角色列表并生成 Token（同时存入 Redis）
 	roles, _ := s.roleDAO.GetUserRoleCodes(ctx, user.ID)
-	resp, err := s.buildLoginResponse(user, roles)
+	resp, err := s.buildLoginResponse(ctx, user, roles)
 	if err != nil {
 		return nil, err
 	}
@@ -227,6 +229,14 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 		return nil, ErrRefreshTokenType
 	}
 
+	// 验证 Refresh Token 是否与 Redis 中存储的一致
+	if !s.tokenStore.ValidateRefreshToken(ctx, claims.UserID, refreshToken) {
+		logs.Warn(ctx, funcName, "Refresh Token 已失效（不在 Redis 中）",
+			zap.Int64("user_id", claims.UserID),
+		)
+		return nil, ErrRefreshTokenType
+	}
+
 	// 查找用户（确保用户仍然有效）
 	user, err := s.userDAO.FindByID(ctx, claims.UserID)
 	if err != nil {
@@ -240,15 +250,29 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 		return nil, err
 	}
 
-	// 获取角色并生成新 Token
+	// 获取角色并生成新 Token（同时存入 Redis 覆盖旧 Token）
 	roles, _ := s.roleDAO.GetUserRoleCodes(ctx, user.ID)
-	resp, err := s.buildLoginResponse(user, roles)
+	resp, err := s.buildLoginResponse(ctx, user, roles)
 	if err != nil {
 		return nil, err
 	}
 
 	logs.Info(ctx, funcName, "Token 刷新成功", zap.Int64("user_id", user.ID))
 	return resp, nil
+}
+
+// Logout 用户登出
+// 从 Redis 中删除该用户的 Access Token 和 Refresh Token
+func (s *AuthService) Logout(ctx context.Context, userID int64) error {
+	funcName := "service.auth_service.Logout"
+	logs.Info(ctx, funcName, "用户登出", zap.Int64("user_id", userID))
+	return s.tokenStore.RemoveTokens(ctx, userID)
+}
+
+// ValidateAccessToken 校验 Access Token 是否在 Redis 中有效
+// 供 JWT 中间件调用，实现有状态 JWT 验证
+func (s *AuthService) ValidateAccessToken(ctx context.Context, userID int64, token string) bool {
+	return s.tokenStore.ValidateAccessToken(ctx, userID, token)
 }
 
 // GetProfile 获取用户个人信息
@@ -349,8 +373,8 @@ func (s *AuthService) checkUserStatus(status int) error {
 	}
 }
 
-// buildLoginResponse 构建登录响应（生成 Token + 用户信息）
-func (s *AuthService) buildLoginResponse(user *model.User, roles []string) (*dto.LoginResponse, error) {
+// buildLoginResponse 构建登录响应（生成 Token + 存入 Redis + 用户信息）
+func (s *AuthService) buildLoginResponse(ctx context.Context, user *model.User, roles []string) (*dto.LoginResponse, error) {
 	if roles == nil {
 		roles = []string{}
 	}
@@ -362,6 +386,11 @@ func (s *AuthService) buildLoginResponse(user *model.User, roles []string) (*dto
 
 	refreshToken, err := utils.GenerateRefreshToken(s.jwtCfg, user.ID)
 	if err != nil {
+		return nil, err
+	}
+
+	// 将 Token 存入 Redis（有状态 JWT，支持主动失效和单设备登录）
+	if err = s.tokenStore.SaveTokens(ctx, user.ID, token, refreshToken); err != nil {
 		return nil, err
 	}
 

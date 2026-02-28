@@ -25,8 +25,8 @@ func Setup(engine *gin.Engine, app *provider.App) {
 		})
 	})
 
-	// JWT 认证中间件实例
-	jwtAuth := middleware.JWTAuth(&app.Config.JWT)
+	// JWT 认证中间件实例（有状态 JWT，通过 AuthService 校验 Redis）
+	jwtAuth := middleware.JWTAuth(&app.Config.JWT, app.AuthService)
 
 	// --- 各模块路由注册 ---
 	auth.RegisterRoutes(engine, app.AuthController, app.AdminAuthController, jwtAuth)

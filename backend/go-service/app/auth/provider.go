@@ -13,6 +13,7 @@ import (
 var AuthSet = wire.NewSet(
 	dao.NewUserDAO,
 	dao.NewRoleDAO,
+	service.NewTokenStore,
 	service.NewAuthService,
 	controller.NewAuthController,
 	controller.NewAdminAuthController,

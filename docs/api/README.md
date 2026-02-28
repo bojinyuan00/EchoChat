@@ -80,17 +80,6 @@ yyyy-MM-dd HH:mm:ss
 }
 ```
 
-**创建成功响应（如注册）：**
-```json
-{
-    "code": 0,
-    "message": "created",
-    "data": { ... },
-    "trace_id": "6478824e-2926-4d35-aa5f-047c8cfbb36b",
-    "time": "2026-02-27 18:00:00"
-}
-```
-
 **错误响应：**
 ```json
 {

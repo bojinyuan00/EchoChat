@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"strings"
 
 	"github.com/echochat/backend/config"
@@ -16,9 +17,15 @@ const (
 	ContextKeyRoles    = "roles"     // Context 中存储当前用户角色列表的 Key
 )
 
-// JWTAuth JWT 认证中间件
-// 从 Authorization Header 中提取 Bearer Token，验证后将用户信息注入 Gin Context
-func JWTAuth(jwtCfg *config.JWTConfig) gin.HandlerFunc {
+// TokenValidator Token 有效性校验接口
+// 由 AuthService 实现，中间件通过此接口检查 Token 是否在 Redis 中有效
+type TokenValidator interface {
+	ValidateAccessToken(ctx context.Context, userID int64, token string) bool
+}
+
+// JWTAuth JWT 认证中间件（有状态 JWT）
+// 验证流程：解析 Token → 检查类型 → 校验 Redis 有效性 → 注入用户信息
+func JWTAuth(jwtCfg *config.JWTConfig, validator TokenValidator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		funcName := "middleware.JWTAuth"
 		ctx := c.Request.Context()
@@ -30,7 +37,6 @@ func JWTAuth(jwtCfg *config.JWTConfig) gin.HandlerFunc {
 			return
 		}
 
-		// 提取 Bearer Token
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
 			utils.ResponseUnauthorized(c, "认证格式错误，应为 Bearer {token}")
@@ -50,14 +56,23 @@ func JWTAuth(jwtCfg *config.JWTConfig) gin.HandlerFunc {
 			return
 		}
 
-		// 验证 Token 类型（只允许 access token 访问接口）
 		if claims.Subject != "access" {
 			utils.ResponseUnauthorized(c, "无效的 Token 类型")
 			c.Abort()
 			return
 		}
 
-		// 将用户信息注入 Gin Context，供后续 Controller/Service 使用
+		// 校验 Token 是否在 Redis 中有效（有状态 JWT 核心逻辑）
+		if !validator.ValidateAccessToken(ctx, claims.UserID, tokenStr) {
+			logs.Warn(ctx, funcName, "Token 已失效（已登出或被覆盖）",
+				zap.Int64("user_id", claims.UserID),
+				zap.String("ip", c.ClientIP()),
+			)
+			utils.ResponseUnauthorized(c, "认证已失效，请重新登录")
+			c.Abort()
+			return
+		}
+
 		c.Set(ContextKeyUserID, claims.UserID)
 		c.Set(ContextKeyUsername, claims.Username)
 		c.Set(ContextKeyRoles, claims.Roles)
@@ -108,7 +123,6 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 }
 
 // GetCurrentUserID 从 Gin Context 获取当前登录用户 ID
-// 供 Controller 层调用的便捷方法
 func GetCurrentUserID(c *gin.Context) (int64, bool) {
 	val, exists := c.Get(ContextKeyUserID)
 	if !exists {

@@ -46,7 +46,7 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 		return
 	}
 
-	utils.ResponseCreated(c, resp)
+	utils.ResponseOK(c, resp)
 }
 
 // Login 用户登录
@@ -82,11 +82,19 @@ func (ctrl *AuthController) Logout(c *gin.Context) {
 	funcName := "controller.auth_controller.Logout"
 	ctx := c.Request.Context()
 
-	userID, _ := middleware.GetCurrentUserID(c)
+	userID, ok := middleware.GetCurrentUserID(c)
+	if !ok {
+		utils.ResponseUnauthorized(c, "无法获取用户信息")
+		return
+	}
+
 	logs.Info(ctx, funcName, "用户登出", zap.Int64("user_id", userID))
 
-	// 当前为无状态 JWT，登出由客户端删除 Token 实现
-	// 后续可扩展：将 Token 加入 Redis 黑名单
+	if err := ctrl.authService.Logout(ctx, userID); err != nil {
+		utils.ResponseError(c, "登出失败")
+		return
+	}
+
 	utils.ResponseOK(c, nil)
 }
 
