@@ -265,3 +265,50 @@ JWT Token 的 Claims 中包含 `client_type` 字段，用于：
 - [ ] JWT Claims 中包含 client_type 字段
 - [ ] 登出时只删除对应 clientType 的 Token
 - [ ] Token 刷新时保持原 clientType 不变
+
+---
+
+## 7. 角色等级与权限管控规范
+
+### 7.1 角色等级设计
+
+`auth_roles` 表 `level` 字段，值越小权限越高，预留间隔：
+
+| 角色 | Code | Level | 说明 |
+|------|------|-------|------|
+| 超级管理员 | super_admin | 1 | 最高权限 |
+| 管理员 | admin | 10 | 后台管理 |
+| 普通用户 | user | 100 | 基础权限 |
+
+用户可拥有多个角色，取**最小 level 值**作为有效权限等级。
+
+### 7.2 权限管控规则
+
+**核心原则：操作者的 level 必须严格小于目标用户的 level，才能执行管理操作。**
+
+1. **更新用户状态（禁用/启用）**：操作者 level < 目标用户 level
+2. **设置用户角色**：操作者 level < 目标用户 level，且不能分配 level <= 自身的角色
+3. **前端管控**：禁用/启用按钮对高等级用户隐藏，高等级角色 checkbox 禁用
+
+### 7.3 API 响应变更
+
+`AdminUserInfo` 的 `roles` 字段从 `[]string` 改为 `[]RoleInfo`：
+
+```json
+{
+    "roles": [
+        { "code": "admin", "name": "管理员", "level": 10 },
+        { "code": "user", "name": "普通用户", "level": 100 }
+    ],
+    "max_level": 10
+}
+```
+
+### 7.4 检查清单
+
+涉及用户管理操作时，必须确认：
+
+- [ ] 后端 Service 层调用 `checkPermissionLevel` 进行等级校验
+- [ ] 权限不足时返回 403（`ErrInsufficientPermission`）
+- [ ] 前端通过比较 `adminMaxLevel` 和 `targetMaxLevel` 控制 UI 可见性
+- [ ] 角色分配使用全量覆盖模式（`SetUserRoles`），非追加模式

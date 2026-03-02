@@ -89,12 +89,12 @@
           <template #default="{ row }">
             <el-tag
               v-for="role in row.roles"
-              :key="role"
-              :type="getRoleTagType(role)"
+              :key="role.code"
+              :type="getRoleTagType(role.code)"
               size="small"
               class="role-tag"
             >
-              {{ getRoleName(role) }}
+              {{ role.name }}
             </el-tag>
             <span v-if="!row.roles || row.roles.length === 0" class="no-role">未分配</span>
           </template>
@@ -121,24 +121,26 @@
             <el-button type="primary" link size="small" @click.stop="goDetail(row.id)">
               详情
             </el-button>
-            <el-button
-              v-if="row.status === 1"
-              type="danger"
-              link
-              size="small"
-              @click.stop="handleToggleStatus(row, 2)"
-            >
-              禁用
-            </el-button>
-            <el-button
-              v-else-if="row.status === 2"
-              type="success"
-              link
-              size="small"
-              @click.stop="handleToggleStatus(row, 1)"
-            >
-              启用
-            </el-button>
+            <template v-if="canManageRow(row)">
+              <el-button
+                v-if="row.status === 1"
+                type="danger"
+                link
+                size="small"
+                @click.stop="handleToggleStatus(row, 2)"
+              >
+                禁用
+              </el-button>
+              <el-button
+                v-else-if="row.status === 2"
+                type="success"
+                link
+                size="small"
+                @click.stop="handleToggleStatus(row, 1)"
+              >
+                启用
+              </el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -185,8 +187,12 @@
         </el-form-item>
         <el-form-item label="角色" prop="role_code">
           <el-select v-model="createForm.role_code" placeholder="选择角色" style="width: 100%">
-            <el-option label="普通用户" value="user" />
-            <el-option label="管理员" value="admin" />
+            <el-option
+              v-for="role in assignableRoles"
+              :key="role.code"
+              :label="role.name"
+              :value="role.code"
+            />
           </el-select>
         </el-form-item>
       </el-form>
@@ -207,12 +213,14 @@
  * 2. 搜索/筛选/分页变化时重新加载
  * 3. 操作（禁用/启用/创建）成功后刷新列表
  */
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getUserList, updateUserStatus, createUser } from '@/api/user'
+import { getUserList, updateUserStatus, createUser, getAllRoles } from '@/api/user'
+import { useUserStore } from '@/store/user'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 /** 加载状态 */
 const loading = ref(false)
@@ -232,6 +240,36 @@ const pagination = reactive({
   pageSize: 10,
   total: 0
 })
+
+/** 系统所有角色列表（从 API 获取，含 level） */
+const allRoles = ref([])
+
+/** 当前操作者的最高权限等级（最小 level 值） */
+const adminMaxLevel = computed(() => {
+  const adminRoleCodes = userStore.roles || []
+  if (!allRoles.value.length || !adminRoleCodes.length) return 999
+  let minLevel = 999
+  for (const r of allRoles.value) {
+    if (adminRoleCodes.includes(r.code) && r.level < minLevel) {
+      minLevel = r.level
+    }
+  }
+  return minLevel
+})
+
+/** 创建用户对话框中可选的角色列表（过滤掉高于操作者等级的角色） */
+const assignableRoles = computed(() => {
+  return allRoles.value.filter(r => r.level > adminMaxLevel.value)
+})
+
+/**
+ * 判断操作者是否有权管理目标用户（level 严格小于）
+ * @param {Object} row - 用户行数据（含 max_level）
+ */
+const canManageRow = (row) => {
+  const targetLevel = (row.max_level == null) ? 999 : row.max_level
+  return adminMaxLevel.value < targetLevel
+}
 
 /** 创建用户对话框显示状态 */
 const showCreateDialog = ref(false)
@@ -274,15 +312,6 @@ const createRules = {
 const getRoleTagType = (role) => {
   const map = { super_admin: 'danger', admin: 'warning', user: '' }
   return map[role] || 'info'
-}
-
-/**
- * 获取角色中文名称
- * @param {string} role - 角色代码
- */
-const getRoleName = (role) => {
-  const map = { super_admin: '超级管理员', admin: '管理员', user: '普通用户' }
-  return map[role] || role
 }
 
 /**
@@ -364,7 +393,7 @@ const handleToggleStatus = async (row, newStatus) => {
     ElMessage.success(`${action}成功`)
     fetchUserList()
   } catch (err) {
-    if (err !== 'cancel') {
+    if (err !== 'cancel' && err !== 'close') {
       console.error(`${action}用户失败:`, err)
     }
   }
@@ -405,8 +434,19 @@ const resetCreateForm = () => {
   createForm.role_code = 'user'
 }
 
+/** 获取角色列表（用于权限判断和创建用户的角色选项） */
+const fetchRoles = async () => {
+  try {
+    const res = await getAllRoles()
+    allRoles.value = res.data || []
+  } catch (err) {
+    console.error('获取角色列表失败:', err)
+  }
+}
+
 onMounted(() => {
   fetchUserList()
+  fetchRoles()
 })
 </script>
 

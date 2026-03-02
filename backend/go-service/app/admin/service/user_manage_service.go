@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"errors"
+	"math"
 
 	authDAO "github.com/echochat/backend/app/auth/dao"
 	"github.com/echochat/backend/app/auth/model"
@@ -17,11 +18,13 @@ import (
 )
 
 var (
-	ErrUserNotFound    = errors.New("用户不存在")
-	ErrUserExists      = errors.New("用户名或邮箱已被注册")
-	ErrInvalidStatus   = errors.New("无效的用户状态")
-	ErrInvalidRole     = errors.New("无效的角色代码")
-	ErrCannotDisableSelf = errors.New("不能禁用自己的账号")
+	ErrUserNotFound           = errors.New("用户不存在")
+	ErrUserExists             = errors.New("用户名或邮箱已被注册")
+	ErrInvalidStatus          = errors.New("无效的用户状态")
+	ErrInvalidRole            = errors.New("无效的角色代码")
+	ErrCannotDisableSelf      = errors.New("不能禁用自己的账号")
+	ErrInsufficientPermission = errors.New("权限不足，无法操作更高等级的用户")
+	ErrCannotAssignHigherRole = errors.New("不能分配高于自身等级的角色")
 )
 
 // UserManageService 管理端用户管理服务
@@ -56,11 +59,11 @@ func (s *UserManageService) GetUserList(ctx context.Context, req *dto.UserListRe
 
 	list := make([]dto.AdminUserInfo, 0, len(users))
 	for _, user := range users {
-		roles, roleErr := s.roleDAO.GetUserRoleCodes(ctx, user.ID)
+		roles, roleErr := s.roleDAO.GetUserRoles(ctx, user.ID)
 		if roleErr != nil {
 			logs.Warn(ctx, funcName, "获取用户角色失败，降级为空角色列表",
 				zap.Int64("user_id", user.ID), zap.Error(roleErr))
-			roles = []string{}
+			roles = []model.Role{}
 		}
 		list = append(list, *s.buildAdminUserInfo(&user, roles))
 	}
@@ -84,17 +87,17 @@ func (s *UserManageService) GetUserDetail(ctx context.Context, userID int64) (*d
 		return nil, err
 	}
 
-	roles, roleErr := s.roleDAO.GetUserRoleCodes(ctx, user.ID)
+	roles, roleErr := s.roleDAO.GetUserRoles(ctx, user.ID)
 	if roleErr != nil {
 		logs.Warn(ctx, funcName, "获取用户角色失败，降级为空角色列表",
 			zap.Int64("user_id", user.ID), zap.Error(roleErr))
-		roles = []string{}
+		roles = []model.Role{}
 	}
 	return s.buildAdminUserInfo(user, roles), nil
 }
 
 // UpdateUserStatus 启用/禁用用户
-// adminUserID 用于防止管理员禁用自己
+// adminUserID 用于防止管理员禁用自己；同时校验操作者权限等级必须高于目标用户
 func (s *UserManageService) UpdateUserStatus(ctx context.Context, userID int64, status int, adminUserID int64) error {
 	funcName := "service.user_manage_service.UpdateUserStatus"
 	logs.Info(ctx, funcName, "更新用户状态",
@@ -111,12 +114,15 @@ func (s *UserManageService) UpdateUserStatus(ctx context.Context, userID int64, 
 		return ErrInvalidStatus
 	}
 
-	// 确认用户存在
 	_, err := s.userDAO.FindByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrUserNotFound
 		}
+		return err
+	}
+
+	if err := s.checkPermissionLevel(ctx, adminUserID, userID); err != nil {
 		return err
 	}
 
@@ -131,15 +137,16 @@ func (s *UserManageService) UpdateUserStatus(ctx context.Context, userID int64, 
 	return nil
 }
 
-// AssignUserRole 分配角色给用户
-func (s *UserManageService) AssignUserRole(ctx context.Context, userID int64, roleCode string) error {
-	funcName := "service.user_manage_service.AssignUserRole"
-	logs.Info(ctx, funcName, "分配角色",
-		zap.Int64("user_id", userID),
-		zap.String("role_code", roleCode),
+// SetUserRoles 批量设置用户角色（事务内先清后设）
+// adminUserID 用于校验操作者等级，防止越权分配高等级角色
+func (s *UserManageService) SetUserRoles(ctx context.Context, userID int64, roleCodes []string, adminUserID int64) error {
+	funcName := "service.user_manage_service.SetUserRoles"
+	logs.Info(ctx, funcName, "设置用户角色",
+		zap.Int64("target_user_id", userID),
+		zap.Strings("role_codes", roleCodes),
+		zap.Int64("admin_user_id", adminUserID),
 	)
 
-	// 验证用户存在
 	_, err := s.userDAO.FindByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -148,33 +155,106 @@ func (s *UserManageService) AssignUserRole(ctx context.Context, userID int64, ro
 		return err
 	}
 
-	// 查找角色
-	role, err := s.roleDAO.FindByCode(ctx, roleCode)
+	if err := s.checkPermissionLevel(ctx, adminUserID, userID); err != nil {
+		return err
+	}
+
+	roles, err := s.roleDAO.FindByCodeList(ctx, roleCodes)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrInvalidRole
+		return err
+	}
+	if len(roles) != len(roleCodes) {
+		return ErrInvalidRole
+	}
+
+	adminLevel, err := s.roleDAO.GetUserMaxLevel(ctx, adminUserID)
+	if err != nil {
+		return err
+	}
+	for _, r := range roles {
+		if r.Level <= adminLevel {
+			logs.Warn(ctx, funcName, "尝试分配高于自身等级的角色",
+				zap.String("role_code", r.Code),
+				zap.Int("role_level", r.Level),
+				zap.Int("admin_level", adminLevel),
+			)
+			return ErrCannotAssignHigherRole
 		}
+	}
+
+	roleIDs := make([]int, 0, len(roles))
+	for _, r := range roles {
+		roleIDs = append(roleIDs, r.ID)
+	}
+	if err := s.roleDAO.SetUserRoles(ctx, userID, roleIDs); err != nil {
 		return err
 	}
 
-	// 分配角色（RoleDAO.AssignRole 内部会处理重复分配）
-	if err := s.roleDAO.AssignRole(ctx, userID, role.ID); err != nil {
-		return err
-	}
-
-	logs.Info(ctx, funcName, "角色分配成功",
+	logs.Info(ctx, funcName, "用户角色设置成功",
 		zap.Int64("user_id", userID),
-		zap.String("role_code", roleCode),
+		zap.Strings("role_codes", roleCodes),
 	)
 	return nil
 }
 
+// GetAllRoles 获取所有角色列表
+func (s *UserManageService) GetAllRoles(ctx context.Context) ([]dto.RoleInfo, error) {
+	funcName := "service.user_manage_service.GetAllRoles"
+	logs.Info(ctx, funcName, "获取所有角色列表")
+
+	roles, err := s.roleDAO.GetAllRoles(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]dto.RoleInfo, 0, len(roles))
+	for _, r := range roles {
+		result = append(result, dto.RoleInfo{
+			Code:  r.Code,
+			Name:  r.Name,
+			Level: r.Level,
+		})
+	}
+	return result, nil
+}
+
+// checkPermissionLevel 校验操作者的权限等级是否高于目标用户
+// 操作者 level 必须 < 目标用户 level（数值更小 = 权限更高）
+func (s *UserManageService) checkPermissionLevel(ctx context.Context, adminUserID, targetUserID int64) error {
+	funcName := "service.user_manage_service.checkPermissionLevel"
+
+	adminLevel, err := s.roleDAO.GetUserMaxLevel(ctx, adminUserID)
+	if err != nil {
+		logs.Error(ctx, funcName, "获取操作者权限等级失败", zap.Error(err))
+		return err
+	}
+
+	targetLevel, err := s.roleDAO.GetUserMaxLevel(ctx, targetUserID)
+	if err != nil {
+		logs.Error(ctx, funcName, "获取目标用户权限等级失败", zap.Error(err))
+		return err
+	}
+
+	if adminLevel >= targetLevel {
+		logs.Warn(ctx, funcName, "权限不足",
+			zap.Int64("admin_user_id", adminUserID),
+			zap.Int("admin_level", adminLevel),
+			zap.Int64("target_user_id", targetUserID),
+			zap.Int("target_level", targetLevel),
+		)
+		return ErrInsufficientPermission
+	}
+	return nil
+}
+
 // CreateUser 管理员手动创建用户
-func (s *UserManageService) CreateUser(ctx context.Context, req *dto.AdminCreateUserRequest) (*dto.AdminUserInfo, error) {
+// adminUserID 用于校验操作者权限等级，防止越权分配高等级角色
+func (s *UserManageService) CreateUser(ctx context.Context, req *dto.AdminCreateUserRequest, adminUserID int64) (*dto.AdminUserInfo, error) {
 	funcName := "service.user_manage_service.CreateUser"
 	logs.Info(ctx, funcName, "管理员创建用户",
 		zap.String("username", req.Username),
 		zap.String("email", logs.MaskEmail(req.Email)),
+		zap.Int64("admin_user_id", adminUserID),
 	)
 
 	existing, findErr := s.userDAO.FindByUsername(ctx, req.Username)
@@ -192,7 +272,28 @@ func (s *UserManageService) CreateUser(ctx context.Context, req *dto.AdminCreate
 		return nil, ErrUserExists
 	}
 
-	// 加密密码
+	roleCode := req.RoleCode
+	if roleCode == "" {
+		roleCode = constants.RoleUser
+	}
+	role, roleErr := s.roleDAO.FindByCode(ctx, roleCode)
+	if roleErr != nil {
+		return nil, ErrInvalidRole
+	}
+
+	adminLevel, err := s.roleDAO.GetUserMaxLevel(ctx, adminUserID)
+	if err != nil {
+		return nil, err
+	}
+	if role.Level <= adminLevel {
+		logs.Warn(ctx, funcName, "尝试为新用户分配高于自身等级的角色",
+			zap.String("role_code", roleCode),
+			zap.Int("role_level", role.Level),
+			zap.Int("admin_level", adminLevel),
+		)
+		return nil, ErrCannotAssignHigherRole
+	}
+
 	hashedPassword, err := utils.HashPassword(req.Password)
 	if err != nil {
 		return nil, err
@@ -214,35 +315,34 @@ func (s *UserManageService) CreateUser(ctx context.Context, req *dto.AdminCreate
 		return nil, err
 	}
 
-	roleCode := req.RoleCode
-	if roleCode == "" {
-		roleCode = constants.RoleUser
-	}
-	role, roleErr := s.roleDAO.FindByCode(ctx, roleCode)
-	if roleErr != nil {
-		logs.Warn(ctx, funcName, "角色查找失败，将跳过角色分配",
-			zap.String("role_code", roleCode), zap.Error(roleErr))
-	} else {
-		if assignErr := s.roleDAO.AssignRole(ctx, user.ID, role.ID); assignErr != nil {
-			logs.Warn(ctx, funcName, "角色分配失败",
-				zap.Int64("user_id", user.ID), zap.Error(assignErr))
-		}
+	if assignErr := s.roleDAO.AssignRole(ctx, user.ID, role.ID); assignErr != nil {
+		logs.Warn(ctx, funcName, "角色分配失败",
+			zap.Int64("user_id", user.ID), zap.Error(assignErr))
 	}
 
-	roles, rolesErr := s.roleDAO.GetUserRoleCodes(ctx, user.ID)
+	userRoles, rolesErr := s.roleDAO.GetUserRoles(ctx, user.ID)
 	if rolesErr != nil {
 		logs.Warn(ctx, funcName, "获取新建用户角色失败",
 			zap.Int64("user_id", user.ID), zap.Error(rolesErr))
-		roles = []string{}
+		userRoles = []model.Role{}
 	}
 	logs.Info(ctx, funcName, "管理员创建用户成功", zap.Int64("user_id", user.ID))
-	return s.buildAdminUserInfo(user, roles), nil
+	return s.buildAdminUserInfo(user, userRoles), nil
 }
 
-// buildAdminUserInfo 从 model.User 构建 dto.AdminUserInfo
-func (s *UserManageService) buildAdminUserInfo(user *model.User, roles []string) *dto.AdminUserInfo {
-	if roles == nil {
-		roles = []string{}
+// buildAdminUserInfo 从 model.User + []model.Role 构建 dto.AdminUserInfo
+func (s *UserManageService) buildAdminUserInfo(user *model.User, roles []model.Role) *dto.AdminUserInfo {
+	roleInfos := make([]dto.RoleInfo, 0, len(roles))
+	minLevel := math.MaxInt32
+	for _, r := range roles {
+		roleInfos = append(roleInfos, dto.RoleInfo{
+			Code:  r.Code,
+			Name:  r.Name,
+			Level: r.Level,
+		})
+		if r.Level < minLevel {
+			minLevel = r.Level
+		}
 	}
 
 	info := &dto.AdminUserInfo{
@@ -254,7 +354,8 @@ func (s *UserManageService) buildAdminUserInfo(user *model.User, roles []string)
 		Gender:     user.Gender,
 		Status:     user.Status,
 		StatusText: constants.UserStatusMap[user.Status],
-		Roles:      roles,
+		Roles:      roleInfos,
+		MaxLevel:   minLevel,
 		CreatedAt:  user.CreatedAt.Format("2006-01-02 15:04:05"),
 		UpdatedAt:  user.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}

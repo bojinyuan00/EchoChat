@@ -17,20 +17,28 @@ type UserListResponse struct {
 
 // AdminUserInfo 管理端用户信息（比 UserInfo 更详细，包含管理字段）
 type AdminUserInfo struct {
-	ID          int64    `json:"id"`                     // 用户 ID
-	Username    string   `json:"username"`               // 用户名
-	Email       string   `json:"email"`                  // 邮箱
-	Nickname    string   `json:"nickname"`               // 昵称
-	Avatar      string   `json:"avatar"`                 // 头像 URL
-	Gender      int      `json:"gender"`                 // 性别：0=未知, 1=男, 2=女
-	Phone       string   `json:"phone,omitempty"`        // 手机号
-	Status      int      `json:"status"`                 // 账号状态
-	StatusText  string   `json:"status_text"`            // 状态中文描述
-	Roles       []string `json:"roles"`                  // 角色代码列表
-	LastLoginAt string   `json:"last_login_at,omitempty"` // 最后登录时间
-	LastLoginIP string   `json:"last_login_ip,omitempty"` // 最后登录 IP
-	CreatedAt   string   `json:"created_at"`             // 注册时间
-	UpdatedAt   string   `json:"updated_at"`             // 更新时间
+	ID          int64      `json:"id"`                     // 用户 ID
+	Username    string     `json:"username"`               // 用户名
+	Email       string     `json:"email"`                  // 邮箱
+	Nickname    string     `json:"nickname"`               // 昵称
+	Avatar      string     `json:"avatar"`                 // 头像 URL
+	Gender      int        `json:"gender"`                 // 性别：0=未知, 1=男, 2=女
+	Phone       string     `json:"phone,omitempty"`        // 手机号
+	Status      int        `json:"status"`                 // 账号状态
+	StatusText  string     `json:"status_text"`            // 状态中文描述
+	Roles       []RoleInfo `json:"roles"`                  // 角色详情列表（含 code/name/level）
+	MaxLevel    int        `json:"max_level"`              // 用户最高权限等级（最小 level 值）
+	LastLoginAt string     `json:"last_login_at,omitempty"` // 最后登录时间
+	LastLoginIP string     `json:"last_login_ip,omitempty"` // 最后登录 IP
+	CreatedAt   string     `json:"created_at"`             // 注册时间
+	UpdatedAt   string     `json:"updated_at"`             // 更新时间
+}
+
+// RoleInfo 角色信息（用于前端角色列表展示和角色分配）
+type RoleInfo struct {
+	Code  string `json:"code"`  // 角色代码
+	Name  string `json:"name"`  // 角色中文名称
+	Level int    `json:"level"` // 角色等级，值越小权限越高
 }
 
 // UpdateUserStatusRequest 更新用户状态请求
@@ -38,9 +46,9 @@ type UpdateUserStatusRequest struct {
 	Status int `json:"status" binding:"required,oneof=1 2"` // 目标状态：1=正常, 2=禁用
 }
 
-// AssignRoleRequest 分配角色请求
-type AssignRoleRequest struct {
-	RoleCode string `json:"role_code" binding:"required"` // 角色代码：user/admin/super_admin
+// SetRolesRequest 批量设置用户角色请求（替换原有的单角色分配）
+type SetRolesRequest struct {
+	RoleCodes []string `json:"role_codes" binding:"required,min=1"` // 角色代码列表
 }
 
 // AdminCreateUserRequest 管理员手动创建用户请求

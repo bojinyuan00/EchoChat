@@ -5,14 +5,15 @@
   
   功能：
   - 基本信息展示（ID、用户名、邮箱、昵称、性别、手机、状态、注册/更新时间）
-  - 角色管理（查看当前角色 + 分配新角色）
-  - 状态切换（启用/禁用）
+  - 角色管理（Checkbox Group 多选，权限等级管控）
+  - 状态切换（启用/禁用，受角色层级约束）
   - 会议记录 Tab（占位，后续完善）
 
   对应后端 API：
   - GET /api/v1/admin/users/:id
   - PUT /api/v1/admin/users/:id/status
-  - PUT /api/v1/admin/users/:id/role
+  - PUT /api/v1/admin/users/:id/roles
+  - GET /api/v1/admin/roles
 -->
 <template>
   <div class="user-detail-page" v-loading="loading">
@@ -43,7 +44,7 @@
                   {{ userInfo.status_text }}
                 </el-tag>
               </div>
-              <div class="user-actions">
+              <div class="user-actions" v-if="canManageTarget">
                 <el-button
                   v-if="userInfo.status === 1"
                   type="danger"
@@ -58,6 +59,9 @@
                 >
                   启用账号
                 </el-button>
+              </div>
+              <div class="user-actions" v-else>
+                <el-tag type="info" size="small">权限不足，无法操作该用户</el-tag>
               </div>
             </div>
 
@@ -80,45 +84,39 @@
         <el-tab-pane label="角色管理" name="roles">
           <el-card shadow="never" class="role-card">
             <div class="role-section">
-              <h4 class="section-title">当前角色</h4>
-              <div class="current-roles">
-                <el-tag
-                  v-for="role in userInfo.roles"
-                  :key="role"
-                  :type="getRoleTagType(role)"
-                  size="large"
-                  class="role-tag"
+              <h4 class="section-title">角色分配</h4>
+              <p class="role-hint" v-if="!canManageTarget" style="margin-bottom: 12px">
+                该用户权限等级高于或等于您，无法修改其角色。
+              </p>
+              <el-checkbox-group v-model="selectedRoleCodes" class="role-checkbox-group">
+                <el-checkbox
+                  v-for="role in allRoles"
+                  :key="role.code"
+                  :value="role.code"
+                  :disabled="isRoleDisabled(role)"
+                  class="role-checkbox-item"
                 >
-                  {{ getRoleName(role) }}
-                </el-tag>
-                <span v-if="!userInfo.roles || userInfo.roles.length === 0" class="no-role">
-                  暂未分配角色
-                </span>
-              </div>
+                  <div class="role-checkbox-label">
+                    <el-tag :type="getRoleTagType(role.code)" size="small">{{ role.name }}</el-tag>
+                    <span class="role-level-badge">Lv.{{ role.level }}</span>
+                  </div>
+                </el-checkbox>
+              </el-checkbox-group>
+              <p class="role-hint" style="margin-top: 12px">
+                灰色不可选的角色等级高于或等于您的权限，无法分配。勾选后点击"保存"生效。
+              </p>
             </div>
 
-            <el-divider />
-
-            <div class="role-section">
-              <h4 class="section-title">分配角色</h4>
-              <div class="assign-role-form">
-                <el-select v-model="selectedRole" placeholder="选择角色" style="width: 200px">
-                  <el-option label="普通用户" value="user" />
-                  <el-option label="管理员" value="admin" />
-                  <el-option label="超级管理员" value="super_admin" />
-                </el-select>
-                <el-button
-                  type="primary"
-                  :loading="roleLoading"
-                  :disabled="!selectedRole"
-                  @click="handleAssignRole"
-                >
-                  分配角色
-                </el-button>
-              </div>
-              <p class="role-hint">
-                分配角色将为该用户添加所选角色权限。已有角色不会受影响。
-              </p>
+            <div class="role-actions" v-if="canManageTarget">
+              <el-button
+                type="primary"
+                :loading="roleLoading"
+                :disabled="!hasRoleChanges"
+                @click="handleSaveRoles"
+              >
+                保存角色
+              </el-button>
+              <el-button @click="resetRoleSelection">重置</el-button>
             </div>
           </el-card>
         </el-tab-pane>
@@ -143,103 +141,129 @@
  *
  * 数据流：
  * 1. 从路由参数获取 userId
- * 2. 调用 API 获取用户详情
- * 3. 支持状态切换和角色分配操作
+ * 2. 并行调用 getUserDetail + getAllRoles 获取用户详情和角色列表
+ * 3. 通过比较操作者 level 和目标用户 level 控制权限
+ * 4. 角色分配使用 Checkbox Group 多选，高等级角色禁用
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getUserDetail, updateUserStatus, assignUserRole } from '@/api/user'
+import { getUserDetail, updateUserStatus, setUserRoles, getAllRoles } from '@/api/user'
+import { useUserStore } from '@/store/user'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 
-/** 加载状态 */
 const loading = ref(false)
-
-/** 用户详情数据 */
 const userInfo = ref(null)
-
-/** 当前 Tab */
 const activeTab = ref('info')
-
-/** 角色分配选中值 */
-const selectedRole = ref('')
-
-/** 角色分配加载状态 */
 const roleLoading = ref(false)
 
-/** 路由参数中的用户 ID */
+/** 系统所有角色列表（从 API 获取，含 level） */
+const allRoles = ref([])
+
+/** Checkbox Group 绑定值：选中的角色 code 列表 */
+const selectedRoleCodes = ref([])
+
+/** 记录用户原始角色 codes，用于比较是否有变更 */
+const originalRoleCodes = ref([])
+
 const userId = computed(() => Number(route.params.id))
 
-/** 头像占位字母 */
 const avatarLetter = computed(() => {
   if (!userInfo.value) return '?'
   const name = userInfo.value.nickname || userInfo.value.username || '?'
   return name.charAt(0).toUpperCase()
 })
 
-/**
- * 获取状态 Tag 类型
- * @param {number} status
- */
+/** 当前操作者的最高权限等级（最小 level 值） */
+const adminMaxLevel = computed(() => {
+  const adminRoleCodes = userStore.roles || []
+  if (!allRoles.value.length || !adminRoleCodes.length) return 999
+  let minLevel = 999
+  for (const r of allRoles.value) {
+    if (adminRoleCodes.includes(r.code) && r.level < minLevel) {
+      minLevel = r.level
+    }
+  }
+  return minLevel
+})
+
+/** 目标用户的最高权限等级（后端无角色时返回 MaxInt32，前端以 999 作为等效兜底） */
+const targetMaxLevel = computed(() => {
+  if (!userInfo.value || userInfo.value.max_level == null) return 999
+  return userInfo.value.max_level
+})
+
+/** 操作者是否有权管理目标用户（level 严格小于） */
+const canManageTarget = computed(() => {
+  return adminMaxLevel.value < targetMaxLevel.value
+})
+
+/** Checkbox 是否有变更 */
+const hasRoleChanges = computed(() => {
+  if (selectedRoleCodes.value.length !== originalRoleCodes.value.length) return true
+  const sorted1 = [...selectedRoleCodes.value].sort()
+  const sorted2 = [...originalRoleCodes.value].sort()
+  return sorted1.some((v, i) => v !== sorted2[i])
+})
+
 const getStatusType = (status) => {
   const map = { 1: 'success', 2: 'danger', 3: 'info' }
   return map[status] || 'info'
 }
 
-/**
- * 获取性别文本
- * @param {number} gender
- */
 const getGenderText = (gender) => {
   const map = { 0: '未知', 1: '男', 2: '女' }
   return map[gender] || '未知'
 }
 
-/**
- * 获取角色 Tag 类型
- * @param {string} role
- */
 const getRoleTagType = (role) => {
   const map = { super_admin: 'danger', admin: 'warning', user: '' }
   return map[role] || 'info'
 }
 
 /**
- * 获取角色中文名称
- * @param {string} role
+ * 判断角色 checkbox 是否禁用
+ * 规则：角色 level <= 操作者 level 时禁用（不能分配高于或等于自身等级的角色）
+ * 如果无法管理目标用户，全部禁用
  */
-const getRoleName = (role) => {
-  const map = { super_admin: '超级管理员', admin: '管理员', user: '普通用户' }
-  return map[role] || role
+const isRoleDisabled = (role) => {
+  if (!canManageTarget.value) return true
+  return role.level <= adminMaxLevel.value
 }
 
-/**
- * 获取用户详情
- */
-const fetchUserDetail = async () => {
+/** 重置角色选择到原始状态 */
+const resetRoleSelection = () => {
+  selectedRoleCodes.value = [...originalRoleCodes.value]
+}
+
+const fetchData = async () => {
   loading.value = true
   try {
-    const res = await getUserDetail(userId.value)
-    userInfo.value = res.data
+    const [userRes, rolesRes] = await Promise.all([
+      getUserDetail(userId.value),
+      getAllRoles()
+    ])
+    userInfo.value = userRes.data
+    allRoles.value = rolesRes.data || []
+
+    const codes = (userRes.data.roles || []).map(r => r.code)
+    selectedRoleCodes.value = [...codes]
+    originalRoleCodes.value = [...codes]
   } catch (err) {
-    console.error('获取用户详情失败:', err)
+    console.error('获取数据失败:', err)
     userInfo.value = null
   } finally {
     loading.value = false
   }
 }
 
-/** 返回列表 */
 const goBack = () => {
   router.push('/user/list')
 }
 
-/**
- * 切换用户状态
- * @param {number} newStatus
- */
 const handleToggleStatus = async (newStatus) => {
   const action = newStatus === 2 ? '禁用' : '启用'
   try {
@@ -248,38 +272,33 @@ const handleToggleStatus = async (newStatus) => {
       `${action}确认`,
       { type: 'warning' }
     )
-
     await updateUserStatus(userId.value, newStatus)
     ElMessage.success(`${action}成功`)
-    fetchUserDetail()
+    fetchData()
   } catch (err) {
-    if (err !== 'cancel') {
+    if (err !== 'cancel' && err !== 'close') {
       console.error(`${action}失败:`, err)
     }
   }
 }
 
-/**
- * 分配角色
- */
-const handleAssignRole = async () => {
-  if (!selectedRole.value) return
+const handleSaveRoles = async () => {
+  if (!hasRoleChanges.value) return
 
   roleLoading.value = true
   try {
-    await assignUserRole(userId.value, selectedRole.value)
-    ElMessage.success('角色分配成功')
-    selectedRole.value = ''
-    fetchUserDetail()
+    await setUserRoles(userId.value, selectedRoleCodes.value)
+    ElMessage.success('角色设置成功')
+    fetchData()
   } catch (err) {
-    console.error('角色分配失败:', err)
+    console.error('角色设置失败:', err)
   } finally {
     roleLoading.value = false
   }
 }
 
 onMounted(() => {
-  fetchUserDetail()
+  fetchData()
 })
 </script>
 
@@ -369,7 +388,7 @@ onMounted(() => {
 }
 
 .role-section {
-  margin-bottom: 8px;
+  margin-bottom: 16px;
 }
 
 .section-title {
@@ -379,25 +398,35 @@ onMounted(() => {
   margin: 0 0 12px 0;
 }
 
-.current-roles {
+.role-checkbox-group {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.role-tag {
-  font-size: 14px;
-}
-
-.no-role {
-  color: #94A3B8;
-  font-size: 14px;
-}
-
-.assign-role-form {
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 12px;
+}
+
+.role-checkbox-item {
+  height: auto;
+}
+
+.role-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-level-badge {
+  font-size: 11px;
+  color: #94A3B8;
+  background: #F1F5F9;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.role-actions {
+  display: flex;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid #E2E8F0;
 }
 
 .role-hint {

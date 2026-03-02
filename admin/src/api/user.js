@@ -1,15 +1,16 @@
 /**
  * 用户管理 API 模块
  *
- * 对应后端路由：/api/v1/admin/users
+ * 对应后端路由：/api/v1/admin/users, /api/v1/admin/roles
  * 所有接口需要 JWT + admin 角色权限
  *
  * 接口列表：
- * - GET    /api/v1/admin/users          用户列表（分页 + 搜索 + 筛选）
- * - GET    /api/v1/admin/users/:id      用户详情
+ * - GET    /api/v1/admin/users            用户列表（分页 + 搜索 + 筛选）
+ * - GET    /api/v1/admin/users/:id        用户详情
  * - PUT    /api/v1/admin/users/:id/status 更新用户状态
- * - PUT    /api/v1/admin/users/:id/role   分配角色
- * - POST   /api/v1/admin/users          管理员创建用户
+ * - PUT    /api/v1/admin/users/:id/roles  批量设置角色
+ * - POST   /api/v1/admin/users            管理员创建用户
+ * - GET    /api/v1/admin/roles            获取所有角色列表
  */
 import request from '@/utils/request'
 
@@ -57,16 +58,27 @@ export function updateUserStatus(id, status) {
 }
 
 /**
- * 分配角色
+ * 批量设置用户角色（先清后设）
  * @param {number} id - 用户 ID
- * @param {string} roleCode - 角色代码：user/admin/super_admin
+ * @param {string[]} roleCodes - 角色代码列表
  * @returns {Promise}
  */
-export function assignUserRole(id, roleCode) {
+export function setUserRoles(id, roleCodes) {
   return request({
-    url: `/api/v1/admin/users/${id}/role`,
+    url: `/api/v1/admin/users/${id}/roles`,
     method: 'put',
-    data: { role_code: roleCode }
+    data: { role_codes: roleCodes }
+  })
+}
+
+/**
+ * 获取所有角色列表（含 level 等级信息）
+ * @returns {Promise<{data: Array<{code: string, name: string, level: number}>}>}
+ */
+export function getAllRoles() {
+  return request({
+    url: '/api/v1/admin/roles',
+    method: 'get'
   })
 }
 

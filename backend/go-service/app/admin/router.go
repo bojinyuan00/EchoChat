@@ -23,7 +23,10 @@ func RegisterRoutes(
 		adminGroup.GET("/users", ctrl.GetUserList)
 		adminGroup.GET("/users/:id", ctrl.GetUserDetail)
 		adminGroup.PUT("/users/:id/status", ctrl.UpdateUserStatus)
-		adminGroup.PUT("/users/:id/role", ctrl.AssignRole)
+		adminGroup.PUT("/users/:id/roles", ctrl.SetRoles)
 		adminGroup.POST("/users", ctrl.CreateUser)
+
+		// 角色管理
+		adminGroup.GET("/roles", ctrl.GetAllRoles)
 	}
 }

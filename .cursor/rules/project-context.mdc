@@ -27,14 +27,15 @@ EchoChat 是一个实时音视频通讯平台，包含三个子项目：
 
 ## 核心开发规则
 
-1. **前端设计**：必须使用 `ui-ux-pro-max` 技能包（`~/.agent/skills/ui-ux-pro-max/scripts/search.py`），禁止手动设计
+1. **前端设计**：必须使用 openskills 安装的 `ui-ux-pro-max` 技能包，脚本绝对路径为 `/Users/bojinyuan/.agent/skills/ui-ux-pro-max/scripts/search.py`。**严禁使用** `.cursor/skills/ui-ux-pro-max.bak/` 目录下的任何文件，该目录已废弃。禁止手动设计系统
 2. **工作流**：使用 superpowers 流程控制开发节奏
 3. **两端差异**：`frontend/` 和 `admin/` 是完全独立的项目，技术栈不需要统一
 4. **模块系统**：前端统一使用 ESM（`export`/`import`），禁止 CommonJS
 5. **Go 常量命名**：camelCase（`UserStatusActive`），非大写下划线
 6. **API 响应**：统一 `{ "code": 0, "message": "success", "data": ... }`
 7. **JWT 策略**：有状态 JWT，Token 存 Redis（按 clientType 隔离：`echo:auth:token:{frontend|admin}:{user_id}`），前后台互不影响
-8. **代码注释**：所有公开函数、组件、Store 必须有详细注释
+8. **角色等级体系**：`auth_roles.level` 字段（值越小权限越高：1=超管, 10=管理员, 100=普通用户），所有管理操作强制执行层级权限校验
+9. **代码注释**：所有公开函数、组件、Store 必须有详细注释
 9. **文档同步**：代码变更后必须同步更新 docs/ 下相关文档
 10. **验证方式**：使用 Playwright MCP 进行页面自动化验证
 11. **代码审查**：每个 Task 完成后，使用 `code-reviewer` 子代理进行结构化审查，确保代码质量和计划一致性

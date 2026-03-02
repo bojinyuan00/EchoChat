@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+	"math"
 
 	"github.com/echochat/backend/app/auth/model"
 	"github.com/echochat/backend/pkg/logs"
@@ -116,4 +117,88 @@ func (d *RoleDAO) RemoveUserRoles(ctx context.Context, userID int64) error {
 	return d.db.WithContext(ctx).
 		Where("user_id = ?", userID).
 		Delete(&model.UserRole{}).Error
+}
+
+// GetAllRoles 获取所有角色列表（按 level 升序排列）
+func (d *RoleDAO) GetAllRoles(ctx context.Context) ([]model.Role, error) {
+	funcName := "dao.role_dao.GetAllRoles"
+	logs.Debug(ctx, funcName, "获取所有角色列表")
+
+	var roles []model.Role
+	err := d.db.WithContext(ctx).Order("level ASC").Find(&roles).Error
+	if err != nil {
+		logs.Error(ctx, funcName, "获取所有角色失败", zap.Error(err))
+		return nil, err
+	}
+	return roles, nil
+}
+
+// GetUserMaxLevel 获取用户的最高权限等级（最小 level 值）
+// 如果用户无角色，返回 math.MaxInt32 表示无权限
+func (d *RoleDAO) GetUserMaxLevel(ctx context.Context, userID int64) (int, error) {
+	funcName := "dao.role_dao.GetUserMaxLevel"
+	logs.Debug(ctx, funcName, "获取用户最高权限等级", zap.Int64("user_id", userID))
+
+	var minLevel *int
+	err := d.db.WithContext(ctx).
+		Model(&model.UserRole{}).
+		Joins("JOIN auth_roles ON auth_roles.id = auth_user_roles.role_id").
+		Where("auth_user_roles.user_id = ?", userID).
+		Select("MIN(auth_roles.level)").
+		Scan(&minLevel).Error
+	if err != nil {
+		logs.Error(ctx, funcName, "获取用户权限等级失败", zap.Error(err))
+		return 0, err
+	}
+	if minLevel == nil {
+		return math.MaxInt32, nil
+	}
+	return *minLevel, nil
+}
+
+// SetUserRoles 事务内先清除再批量设置用户角色
+func (d *RoleDAO) SetUserRoles(ctx context.Context, userID int64, roleIDs []int) error {
+	funcName := "dao.role_dao.SetUserRoles"
+	logs.Info(ctx, funcName, "设置用户角色",
+		zap.Int64("user_id", userID),
+		zap.Ints("role_ids", roleIDs),
+	)
+
+	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", userID).Delete(&model.UserRole{}).Error; err != nil {
+			logs.Error(ctx, funcName, "清除用户角色失败", zap.Error(err))
+			return err
+		}
+
+		if len(roleIDs) == 0 {
+			return nil
+		}
+
+		userRoles := make([]model.UserRole, 0, len(roleIDs))
+		for _, rid := range roleIDs {
+			userRoles = append(userRoles, model.UserRole{
+				UserID: userID,
+				RoleID: rid,
+			})
+		}
+		if err := tx.Create(&userRoles).Error; err != nil {
+			logs.Error(ctx, funcName, "批量设置用户角色失败", zap.Error(err))
+			return err
+		}
+		return nil
+	})
+}
+
+// FindByCodeList 按角色代码列表批量查询角色
+func (d *RoleDAO) FindByCodeList(ctx context.Context, codes []string) ([]model.Role, error) {
+	funcName := "dao.role_dao.FindByCodeList"
+	logs.Debug(ctx, funcName, "批量查询角色", zap.Strings("codes", codes))
+
+	var roles []model.Role
+	err := d.db.WithContext(ctx).Where("code IN ?", codes).Find(&roles).Error
+	if err != nil {
+		logs.Error(ctx, funcName, "批量查询角色失败", zap.Error(err))
+		return nil, err
+	}
+	return roles, nil
 }

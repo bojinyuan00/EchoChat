@@ -119,6 +119,8 @@ func (ctl *UserManageController) UpdateUserStatus(c *gin.Context) {
 			utils.ResponseBadRequest(c, "不能禁用自己的账号")
 		case service.ErrInvalidStatus:
 			utils.ResponseBadRequest(c, "无效的用户状态")
+		case service.ErrInsufficientPermission:
+			utils.ResponseForbidden(c, "权限不足，无法操作更高等级的用户")
 		default:
 			logs.Error(ctx, funcName, "更新用户状态失败", zap.Error(err))
 			utils.ResponseError(c, "更新用户状态失败")
@@ -129,10 +131,10 @@ func (ctl *UserManageController) UpdateUserStatus(c *gin.Context) {
 	utils.ResponseOK(c, nil)
 }
 
-// AssignRole 分配角色
-// PUT /api/v1/admin/users/:id/role
-func (ctl *UserManageController) AssignRole(c *gin.Context) {
-	funcName := "controller.user_manage_controller.AssignRole"
+// SetRoles 批量设置用户角色
+// PUT /api/v1/admin/users/:id/roles
+func (ctl *UserManageController) SetRoles(c *gin.Context) {
+	funcName := "controller.user_manage_controller.SetRoles"
 	ctx := c.Request.Context()
 
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -141,32 +143,61 @@ func (ctl *UserManageController) AssignRole(c *gin.Context) {
 		return
 	}
 
-	var req dto.AssignRoleRequest
+	var req dto.SetRolesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logs.Warn(ctx, funcName, "参数校验失败", zap.Error(err))
 		utils.ResponseBadRequest(c, "参数错误: "+err.Error())
 		return
 	}
 
-	logs.Info(ctx, funcName, "分配角色",
-		zap.Int64("user_id", userID),
-		zap.String("role_code", req.RoleCode),
+	adminUserID, ok := middleware.GetCurrentUserID(c)
+	if !ok {
+		utils.ResponseUnauthorized(c, "无法获取当前用户信息")
+		return
+	}
+
+	logs.Info(ctx, funcName, "设置用户角色",
+		zap.Int64("target_user_id", userID),
+		zap.Strings("role_codes", req.RoleCodes),
+		zap.Int64("admin_user_id", adminUserID),
 	)
 
-	if err := ctl.userManageService.AssignUserRole(ctx, userID, req.RoleCode); err != nil {
+	if err := ctl.userManageService.SetUserRoles(ctx, userID, req.RoleCodes, adminUserID); err != nil {
 		switch err {
 		case service.ErrUserNotFound:
 			utils.ResponseNotFound(c, "用户不存在")
 		case service.ErrInvalidRole:
-			utils.ResponseBadRequest(c, "无效的角色代码")
+			utils.ResponseBadRequest(c, "包含无效的角色代码")
+		case service.ErrInsufficientPermission:
+			utils.ResponseForbidden(c, "权限不足，无法操作更高等级的用户")
+		case service.ErrCannotAssignHigherRole:
+			utils.ResponseForbidden(c, "不能分配高于自身等级的角色")
 		default:
-			logs.Error(ctx, funcName, "分配角色失败", zap.Error(err))
-			utils.ResponseError(c, "分配角色失败")
+			logs.Error(ctx, funcName, "设置用户角色失败", zap.Error(err))
+			utils.ResponseError(c, "设置用户角色失败")
 		}
 		return
 	}
 
 	utils.ResponseOK(c, nil)
+}
+
+// GetAllRoles 获取所有角色列表
+// GET /api/v1/admin/roles
+func (ctl *UserManageController) GetAllRoles(c *gin.Context) {
+	funcName := "controller.user_manage_controller.GetAllRoles"
+	ctx := c.Request.Context()
+
+	logs.Info(ctx, funcName, "获取所有角色列表")
+
+	roles, err := ctl.userManageService.GetAllRoles(ctx)
+	if err != nil {
+		logs.Error(ctx, funcName, "获取角色列表失败", zap.Error(err))
+		utils.ResponseError(c, "获取角色列表失败")
+		return
+	}
+
+	utils.ResponseOK(c, roles)
 }
 
 // CreateUser 管理员手动创建用户
@@ -182,19 +213,31 @@ func (ctl *UserManageController) CreateUser(c *gin.Context) {
 		return
 	}
 
+	adminUserID, ok := middleware.GetCurrentUserID(c)
+	if !ok {
+		utils.ResponseUnauthorized(c, "无法获取当前用户信息")
+		return
+	}
+
 	logs.Info(ctx, funcName, "管理员创建用户",
 		zap.String("username", req.Username),
 		zap.String("email", logs.MaskEmail(req.Email)),
+		zap.Int64("admin_user_id", adminUserID),
 	)
 
-	userInfo, err := ctl.userManageService.CreateUser(ctx, &req)
+	userInfo, err := ctl.userManageService.CreateUser(ctx, &req, adminUserID)
 	if err != nil {
-		if err == service.ErrUserExists {
+		switch err {
+		case service.ErrUserExists:
 			utils.ResponseBadRequest(c, "用户名或邮箱已被注册")
-			return
+		case service.ErrInvalidRole:
+			utils.ResponseBadRequest(c, "无效的角色代码")
+		case service.ErrCannotAssignHigherRole:
+			utils.ResponseForbidden(c, "不能分配高于自身等级的角色")
+		default:
+			logs.Error(ctx, funcName, "创建用户失败", zap.Error(err))
+			utils.ResponseError(c, "创建用户失败")
 		}
-		logs.Error(ctx, funcName, "创建用户失败", zap.Error(err))
-		utils.ResponseError(c, "创建用户失败")
 		return
 	}
 

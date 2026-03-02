@@ -8,6 +8,7 @@ type Role struct {
 	ID          int       `json:"id" gorm:"primaryKey;autoIncrement"`                          // 角色唯一标识，自增主键
 	Code        string    `json:"code" gorm:"uniqueIndex;size:50;not null"`                    // 角色代码，全局唯一，如 user/admin/super_admin（对应 constants.RoleCode*）
 	Name        string    `json:"name" gorm:"size:50;not null"`                                // 角色中文显示名称，如「普通用户」「管理员」
+	Level       int       `json:"level" gorm:"not null;default:100"`                           // 角色等级，值越小权限越高：1=超管, 10=管理员, 100=普通用户
 	Description string    `json:"description" gorm:"size:200;default:''"`                      // 角色描述说明，用于后台管理界面展示
 	CreatedAt   time.Time `json:"created_at" gorm:"not null;autoCreateTime;type:timestamp(0)"` // 创建时间，由 GORM 自动填充，精确到秒
 }

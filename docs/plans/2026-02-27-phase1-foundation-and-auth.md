@@ -3,6 +3,7 @@
 > **状态：✅ Phase 1 全部完成**（2026-03-02）
 > 11 个 Task 全部通过端到端验证和代码审查。
 > 分支：`feature/phase1-foundation-and-auth`
+> **补充：角色等级体系与权限管控已实施**（2026-03-02）— `auth_roles.level` 字段 + 层级权限 + 多选角色分配
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
