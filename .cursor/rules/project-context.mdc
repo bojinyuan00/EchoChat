@@ -44,12 +44,17 @@ EchoChat 是一个实时音视频通讯平台，包含三个子项目：
 
 > 详细规范见 `docs/conventions/frontend-backend-integration.md`
 
-1. **错误提示统一**：前端所有 HTTP 错误提示必须优先使用后端 `data.message`，禁止硬编码覆盖后端信息。Fallback 文案仅在后端无响应体时使用
-2. **HTTP 状态码语义**：后端必须返回正确的 HTTP 状态码（200/400/401/403/404/500），前端按状态码分类处理
-3. **安全防护**：后端登录接口对"用户不存在"与"密码错误"统一返回 401 + "账号或密码错误"，禁止通过不同错误码泄露用户是否存在
-4. **401 场景区分**：前端拦截器区分「登录/注册请求的 401」（仅提示错误）和「已认证请求的 401」（清 Token + 跳转登录页）
-5. **响应格式一致**：后端所有响应必须使用 `utils.Response*` 系列函数，保证统一的 `{ code, message, data, trace_id, time }` 结构
-6. **业务错误映射**：后端 Controller 的 `handleError` 函数必须覆盖所有已知业务错误，不能忽略 error（`_`）
+1. **前后台路由严格分离（最高优先级）**：
+   - 前台用户端 API：`/api/v1/auth/*`、`/api/v1/im/*`、`/api/v1/meeting/*` 等
+   - 后台管理端 API：`/api/v1/admin/auth/*`、`/api/v1/admin/users/*` 等
+   - **禁止任何混用**：admin 前端不得调用 `/api/v1/auth/*`，frontend 不得调用 `/api/v1/admin/*`
+   - 新增功能时必须先确认归属哪端，使用对应的路由前缀
+2. **Token Redis 存储隔离**：按 `clientType` 隔离：`echo:auth:token:{frontend|admin}:{user_id}`，JWT Claims 包含 `client_type` 字段
+3. **错误提示统一**：前端所有 HTTP 错误提示必须优先使用后端 `data.message`，禁止硬编码覆盖后端信息
+4. **安全防护**：后端登录接口对"用户不存在"与"密码错误"统一返回 401 + "账号或密码错误"
+5. **401 场景区分**：前端拦截器区分「登录请求的 401」（仅提示错误）和「已认证请求的 401」（清 Token + 跳转登录页）
+6. **响应格式一致**：后端所有响应必须使用 `utils.Response*` 系列函数
+7. **业务错误映射**：后端 Controller 的 `handleError` 函数必须覆盖所有已知业务错误，不能忽略 error（`_`）
 
 ## 设计系统
 
