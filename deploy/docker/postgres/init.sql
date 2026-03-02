@@ -80,12 +80,12 @@ COMMENT ON COLUMN auth_user_roles.role_id    IS '关联的角色 ID';
 COMMENT ON COLUMN auth_user_roles.created_at IS '角色分配时间';
 
 -- ============================================================
--- 插入默认超级管理员
--- 密码: admin123456 (bcrypt hash)
+-- 插入默认超级管理员（系统预置唯一账号）
+-- 用户名: super_admin  密码: admin123456 (bcrypt hash)
 -- 实际部署时应更换密码
 -- ============================================================
 INSERT INTO auth_users (username, email, password_hash, nickname, status)
-VALUES ('admin', 'admin@echochat.com', '$2a$10$Osjn5JVXuEHhtPwBW5Lyo.4gnyYtpFAZYrmbf5fzvN.M5DqcSggb2', '超级管理员', 1);
+VALUES ('super_admin', 'super_admin@echochat.com', '$2a$10$Osjn5JVXuEHhtPwBW5Lyo.4gnyYtpFAZYrmbf5fzvN.M5DqcSggb2', '超级管理员', 1);
 
 INSERT INTO auth_user_roles (user_id, role_id)
 VALUES (1, (SELECT id FROM auth_roles WHERE code = 'super_admin'));

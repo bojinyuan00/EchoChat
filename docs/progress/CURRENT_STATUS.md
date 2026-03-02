@@ -142,7 +142,7 @@ cd frontend && npm run dev:h5
 | `testuser` | `test123456` | user | 前台登录测试 |
 | `testuser3` | `test123456` | user | 前台登录测试 |
 | `created_by_admin` | `pass123456` | user | 管理端创建的用户 |
-| `admin` | （种子账号，无密码） | super_admin | 数据库初始化预置 |
+| `super_admin` | `admin123456` | super_admin | **系统预置唯一超管账号** |
 
 > 也可以通过注册接口或管理端"创建用户"功能创建新的测试账号。
 
