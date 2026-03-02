@@ -12,9 +12,9 @@
 | GET | /api/v1/admin/users | admin | 获取用户列表 |
 | GET | /api/v1/admin/users/:id | admin | 获取用户详情 |
 | PUT | /api/v1/admin/users/:id/status | admin | 更新用户状态 |
-| PUT | /api/v1/admin/users/:id/role | super_admin | 分配用户角色 |
+| PUT | /api/v1/admin/users/:id/role | admin / super_admin | 分配用户角色 |
 | POST | /api/v1/admin/users | admin | 管理员创建用户 |
-| GET | /api/v1/admin/users/:id/meetings | admin | 获取用户会议记录 |
+| GET | /api/v1/admin/users/:id/meetings | admin | 获取用户会议记录（Phase 3 实现） |
 
 ---
 
@@ -108,7 +108,20 @@
 |------|------|------|------|
 | status | int | 是 | 目标状态：1=正常（启用），2=禁用 |
 
-**说明：** 禁用用户后，该用户的所有活跃 Token 将被清除，正在进行的 WebSocket 连接将被断开。
+**说明：**
+- 禁用用户后，该用户的所有活跃 Token 将被清除
+- 不能禁用自己的账号（返回 400）
+- 禁用后用户尝试登录将返回 403
+
+**成功响应：**
+```json
+{
+    "code": 0,
+    "message": "success",
+    "trace_id": "...",
+    "time": "2026-03-02 11:12:44"
+}
+```
 
 ---
 
@@ -141,6 +154,29 @@
 | password | string | 是 | 初始密码，6-50 字符 |
 | nickname | string | 否 | 昵称（默认使用用户名） |
 | role_code | string | 否 | 指定角色，默认为 user |
+
+**成功响应：**
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": {
+        "id": 6,
+        "username": "created_by_admin",
+        "email": "admin_created@example.com",
+        "nickname": "管理员创建",
+        "avatar": "",
+        "gender": 0,
+        "status": 1,
+        "status_text": "正常",
+        "roles": ["user"],
+        "created_at": "2026-03-02 11:12:33",
+        "updated_at": "2026-03-02 11:12:33"
+    },
+    "trace_id": "...",
+    "time": "2026-03-02 11:12:33"
+}
+```
 
 ---
 

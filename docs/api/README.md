@@ -10,28 +10,28 @@
 
 ### 前台用户端 (`frontend/`)
 
-| 文档 | 模块 | 说明 |
-|------|------|------|
-| [frontend/auth.md](frontend/auth.md) | 用户认证 | 注册、登录、Token 刷新、个人信息管理 |
-| [frontend/contact.md](frontend/contact.md) | 联系人 | 好友申请/管理、好友分组 |
-| [frontend/im.md](frontend/im.md) | 即时通讯 | 会话列表、消息历史、群聊创建与管理 |
-| [frontend/meeting.md](frontend/meeting.md) | 会议 | 即时会议、预约会议、加入/离开、会议列表 |
-| [frontend/notify.md](frontend/notify.md) | 通知 | 通知列表、标记已读 |
+| 文档 | 模块 | 状态 | 说明 |
+|------|------|------|------|
+| [frontend/auth.md](frontend/auth.md) | 用户认证 | ✅ Phase 1 | 注册、登录、Token 刷新、个人信息管理 |
+| [frontend/contact.md](frontend/contact.md) | 联系人 | 📋 Phase 2 | 好友申请/管理、好友分组 |
+| [frontend/im.md](frontend/im.md) | 即时通讯 | 📋 Phase 2 | 会话列表、消息历史、群聊创建与管理 |
+| [frontend/meeting.md](frontend/meeting.md) | 会议 | 📋 Phase 3 | 即时会议、预约会议、加入/离开、会议列表 |
+| [frontend/notify.md](frontend/notify.md) | 通知 | 📋 Phase 2 | 通知列表、标记已读 |
 
 ### 后台管理端 (`admin/`)
 
-| 文档 | 模块 | 说明 |
-|------|------|------|
-| [admin/auth.md](admin/auth.md) | 管理员认证 | 管理员登录（验证 admin 角色） |
-| [admin/user.md](admin/user.md) | 用户管理 | 用户列表/详情、状态管理、角色分配、创建用户 |
-| [admin/meeting.md](admin/meeting.md) | 会议管理 | 会议列表/详情、强制结束、会议统计 |
-| [admin/system.md](admin/system.md) | 系统管理 | 仪表盘数据、操作日志、系统配置 |
+| 文档 | 模块 | 状态 | 说明 |
+|------|------|------|------|
+| [admin/auth.md](admin/auth.md) | 管理员认证 | ✅ Phase 1 | 管理员登录（验证 admin 角色） |
+| [admin/user.md](admin/user.md) | 用户管理 | ✅ Phase 1 | 用户列表/详情、状态管理、角色分配、创建用户 |
+| [admin/meeting.md](admin/meeting.md) | 会议管理 | 📋 Phase 3 | 会议列表/详情、强制结束、会议统计 |
+| [admin/system.md](admin/system.md) | 系统管理 | 📋 待定 | 仪表盘数据、操作日志、系统配置 |
 
 ### 跨端通用
 
-| 文档 | 说明 |
-|------|------|
-| [websocket.md](websocket.md) | WebSocket 实时事件协议（IM 消息、会议信令、在线状态） |
+| 文档 | 状态 | 说明 |
+|------|------|------|
+| [websocket.md](websocket.md) | 📋 Phase 2 | WebSocket 实时事件协议（IM 消息、会议信令、在线状态） |
 
 ---
 
