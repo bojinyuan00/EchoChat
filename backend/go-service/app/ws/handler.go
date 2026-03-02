@@ -3,6 +3,7 @@
 package ws
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/echochat/backend/config"
@@ -24,17 +25,19 @@ var upgrader = websocket.Upgrader{
 
 // Handler WebSocket 连接处理器
 type Handler struct {
-	hub    *ws.Hub
-	pubsub *ws.PubSub
-	jwtCfg *config.JWTConfig
+	hub           *ws.Hub
+	pubsub        *ws.PubSub
+	jwtCfg        *config.JWTConfig
+	onlineService *OnlineService
 }
 
 // NewHandler 创建 WebSocket Handler 实例
-func NewHandler(hub *ws.Hub, pubsub *ws.PubSub, jwtCfg *config.JWTConfig) *Handler {
+func NewHandler(hub *ws.Hub, pubsub *ws.PubSub, jwtCfg *config.JWTConfig, onlineService *OnlineService) *Handler {
 	return &Handler{
-		hub:    hub,
-		pubsub: pubsub,
-		jwtCfg: jwtCfg,
+		hub:           hub,
+		pubsub:        pubsub,
+		jwtCfg:        jwtCfg,
+		onlineService: onlineService,
 	}
 }
 
@@ -64,35 +67,48 @@ func (h *Handler) Upgrade(c *gin.Context) {
 	}
 
 	client := ws.NewClient(h.hub, conn, claims.UserID)
+	client.SetOnDisconnect(func(userID int64) {
+		h.pubsub.Unsubscribe(userID)
+		h.onlineService.UserOffline(context.Background(), userID)
+	})
 	h.hub.Register(client)
 	h.pubsub.Subscribe(claims.UserID)
+	h.onlineService.UserOnline(c.Request.Context(), claims.UserID, c.ClientIP())
 
 	logs.Info(nil, funcName, "WebSocket 连接建立",
 		zap.Int64("user_id", claims.UserID),
 		zap.String("ip", c.ClientIP()))
 
 	go client.WritePump()
-	go client.ReadPump(h.onMessage)
+	go client.ReadPump(h.createReadHandler(claims.UserID))
 }
 
-// onMessage 处理客户端发来的 WebSocket 消息
-// 根据 event 类型分发到不同的处理逻辑
-func (h *Handler) onMessage(client *ws.Client, msg *ws.Message) {
-	funcName := "ws.handler.onMessage"
-	logs.Debug(nil, funcName, "收到 WebSocket 消息",
-		zap.Int64("user_id", client.UserID),
-		zap.String("event", msg.Event),
-		zap.Int64("seq", msg.Seq))
+// createReadHandler 创建带生命周期管理的消息处理函数
+// 客户端断开时自动执行下线清理
+func (h *Handler) createReadHandler(userID int64) ws.MessageHandler {
+	return func(client *ws.Client, msg *ws.Message) {
+		funcName := "ws.handler.onMessage"
+		logs.Debug(nil, funcName, "收到 WebSocket 消息",
+			zap.Int64("user_id", client.UserID),
+			zap.String("event", msg.Event),
+			zap.Int64("seq", msg.Seq))
 
-	// Phase 2a 阶段暂无需要客户端主动发送的事件
-	// Phase 2b 将在此处添加 im.message.send 等事件路由
-	resp := ws.NewResponse(msg.Event, msg.Seq, 0, "ok", nil)
-	data, err := ws.MarshalResponse(resp)
-	if err != nil {
-		logs.Error(nil, funcName, "序列化响应失败", zap.Error(err))
-		return
+		switch msg.Event {
+		case "heartbeat":
+			h.onlineService.HeartbeatRenew(context.Background(), userID)
+			resp := ws.NewResponse(msg.Event, msg.Seq, 0, "pong", nil)
+			data, _ := ws.MarshalResponse(resp)
+			client.Send(data)
+		default:
+			resp := ws.NewResponse(msg.Event, msg.Seq, 0, "ok", nil)
+			data, err := ws.MarshalResponse(resp)
+			if err != nil {
+				logs.Error(nil, funcName, "序列化响应失败", zap.Error(err))
+				return
+			}
+			client.Send(data)
+		}
 	}
-	client.Send(data)
 }
 
 // GetHub 返回 Hub 实例（供在线状态等模块访问）

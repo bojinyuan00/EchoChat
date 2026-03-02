@@ -28,6 +28,7 @@ type App struct {
 	WSHandler             *wsApp.Handler                              // WebSocket 连接处理器
 	Hub                   *ws.Hub                                     // WebSocket Hub 连接管理
 	PubSub                *ws.PubSub                                  // Redis Pub/Sub 消息路由
+	OnlineService         *wsApp.OnlineService                        // 在线状态管理服务
 	ContactController     *contactController.ContactController        // 联系人控制器
 }
 
@@ -43,6 +44,7 @@ func NewApp(
 	wsHandler *wsApp.Handler,
 	hub *ws.Hub,
 	pubsub *ws.PubSub,
+	onlineService *wsApp.OnlineService,
 	contactCtrl *contactController.ContactController,
 ) *App {
 	return &App{
@@ -56,6 +58,7 @@ func NewApp(
 		WSHandler:             wsHandler,
 		Hub:                   hub,
 		PubSub:                pubsub,
+		OnlineService:         onlineService,
 		ContactController:     contactCtrl,
 	}
 }

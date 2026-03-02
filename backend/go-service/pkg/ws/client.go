@@ -17,13 +17,17 @@ const (
 	sendBufSize    = 256                 // 发送缓冲区大小
 )
 
+// DisconnectHandler 断线回调函数类型
+type DisconnectHandler func(userID int64)
+
 // Client 封装单个 WebSocket 客户端连接
 // 每个连接持有两个 goroutine：readPump（读取客户端消息）和 writePump（写入消息到客户端）
 type Client struct {
-	hub    *Hub
-	conn   *websocket.Conn
-	send   chan []byte // 待发送消息缓冲队列
-	UserID int64       // 关联的用户 ID
+	hub          *Hub
+	conn         *websocket.Conn
+	send         chan []byte       // 待发送消息缓冲队列
+	UserID       int64             // 关联的用户 ID
+	onDisconnect DisconnectHandler // 断线回调（清理在线状态等）
 }
 
 // NewClient 创建客户端实例
@@ -36,6 +40,11 @@ func NewClient(hub *Hub, conn *websocket.Conn, userID int64) *Client {
 	}
 }
 
+// SetOnDisconnect 设置断线回调
+func (c *Client) SetOnDisconnect(handler DisconnectHandler) {
+	c.onDisconnect = handler
+}
+
 // MessageHandler 消息处理回调函数类型
 type MessageHandler func(client *Client, msg *Message)
 
@@ -45,6 +54,9 @@ func (c *Client) ReadPump(onMessage MessageHandler) {
 	defer func() {
 		c.hub.Unregister(c)
 		c.conn.Close()
+		if c.onDisconnect != nil {
+			c.onDisconnect(c.UserID)
+		}
 	}()
 
 	c.conn.SetReadLimit(maxMessageSize)
