@@ -85,7 +85,7 @@ COMMENT ON COLUMN auth_user_roles.created_at IS '角色分配时间';
 -- 实际部署时应更换密码
 -- ============================================================
 INSERT INTO auth_users (username, email, password_hash, nickname, status)
-VALUES ('admin', 'admin@echochat.com', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '超级管理员', 1);
+VALUES ('admin', 'admin@echochat.com', '$2a$10$Osjn5JVXuEHhtPwBW5Lyo.4gnyYtpFAZYrmbf5fzvN.M5DqcSggb2', '超级管理员', 1);
 
 INSERT INTO auth_user_roles (user_id, role_id)
 VALUES (1, (SELECT id FROM auth_roles WHERE code = 'super_admin'));
