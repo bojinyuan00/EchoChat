@@ -28,7 +28,38 @@
 		{
 			"path": "pages/contact/index",
 			"style": {
-				"navigationBarTitleText": "联系人"
+				"navigationBarTitleText": "联系人",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/contact/request",
+			"style": {
+				"navigationBarTitleText": "好友申请"
+			}
+		},
+		{
+			"path": "pages/contact/detail",
+			"style": {
+				"navigationBarTitleText": "好友详情"
+			}
+		},
+		{
+			"path": "pages/contact/search",
+			"style": {
+				"navigationBarTitleText": "搜索好友"
+			}
+		},
+		{
+			"path": "pages/contact/groups",
+			"style": {
+				"navigationBarTitleText": "好友分组"
+			}
+		},
+		{
+			"path": "pages/contact/blacklist",
+			"style": {
+				"navigationBarTitleText": "黑名单"
 			}
 		},
 		{

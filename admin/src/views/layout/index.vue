@@ -39,6 +39,19 @@
           </template>
           <el-menu-item index="/user/list">用户列表</el-menu-item>
         </el-sub-menu>
+
+        <el-sub-menu index="contact-manage">
+          <template #title>
+            <el-icon><Connection /></el-icon>
+            <span>联系人管理</span>
+          </template>
+          <el-menu-item index="/contact/list">好友关系</el-menu-item>
+        </el-sub-menu>
+
+        <el-menu-item index="/monitor/online">
+          <el-icon><Monitor /></el-icon>
+          <template #title>在线监控</template>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 

@@ -44,6 +44,18 @@ const routes = [
         name: 'UserDetail',
         component: () => import('@/views/user/detail.vue'),
         meta: { title: '用户详情' }
+      },
+      {
+        path: 'monitor/online',
+        name: 'OnlineMonitor',
+        component: () => import('@/views/monitor/online.vue'),
+        meta: { title: '在线监控' }
+      },
+      {
+        path: 'contact/list',
+        name: 'ContactManage',
+        component: () => import('@/views/contact/list.vue'),
+        meta: { title: '好友管理' }
       }
     ]
   }
