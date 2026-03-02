@@ -114,7 +114,47 @@ EchoChat/
 
 ---
 
-## 五、已知问题与注意事项
+## 五、开发测试指南
+
+### 启动命令（开发模式）
+
+前提：postgres 和 redis 已通过 Docker Compose 运行。
+
+```bash
+# 启动 Go 后端（http://localhost:8085）
+cd backend/go-service && go run cmd/server/main.go
+
+# 启动管理端（http://localhost:3100）
+cd admin && npm run dev
+
+# 启动前台 H5（http://localhost:5173+）
+cd frontend && npm run dev:h5
+```
+
+如需全容器启动（包括 Go 服务）：`cd deploy && docker compose -f docker-compose.dev.yml up -d`
+
+### 测试账号
+
+| 账号 | 密码 | 角色 | 用途 |
+|------|------|------|------|
+| `admin_test` | `admin123456` | user + admin | **管理端登录推荐** |
+| `testuser1` | `test123456` | user + admin | 前台登录测试 |
+| `testuser` | `test123456` | user | 前台登录测试 |
+| `testuser3` | `test123456` | user | 前台登录测试 |
+| `created_by_admin` | `pass123456` | user | 管理端创建的用户 |
+| `admin` | （种子账号，无密码） | super_admin | 数据库初始化预置 |
+
+> 也可以通过注册接口或管理端"创建用户"功能创建新的测试账号。
+
+### 可测试功能
+
+- **管理端**：登录 → 仪表盘 → 用户列表 → 搜索/筛选 → 用户详情 → 禁用/启用 → 分配角色 → 创建用户
+- **前台 H5**：注册 → 登录 → 个人中心 → 修改资料 → 退出登录
+- **API**：`GET http://localhost:8085/health`（健康检查）
+
+---
+
+## 六、已知问题与注意事项
 
 1. ~~前端工具模块使用了 CommonJS，已修复为 ESM~~（已解决）
 2. uni-app 的 `tabBar.custom: true` 配合自定义 TabBar 组件使用
