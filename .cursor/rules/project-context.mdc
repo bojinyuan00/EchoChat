@@ -15,15 +15,18 @@ alwaysApply: true
 ## 当前进度
 
 - **Phase 1（基础设施与用户认证）**：✅ 全部完成（11 个 Task）
-- **Phase 2（即时通讯）**：待制定实施计划
-- 分支：`feature/phase1-foundation-and-auth`（待合并到 main）
+- **Phase 2a（WebSocket 实时通讯与联系人管理）**：✅ 全部完成（13 个 Task）
+- **Phase 2b（即时通讯消息系统）**：待制定实施计划
+- 分支：`feature/phase2a-websocket-contacts`
 
 ## 项目概述
 
 EchoChat 是一个实时音视频通讯平台，包含三个子项目：
-- `backend/go-service/` — Go 后端（Gin + GORM + Wire + Redis）
+- `backend/go-service/` — Go 后端（Gin + GORM + Wire + Redis + gorilla/websocket）
 - `frontend/` — 前台用户端（uni-app + Vue 3.4 + Pinia 2.x）
 - `admin/` — 后台管理端（Vue 3.5+ + Element Plus + Pinia 3.x）
+
+已实现模块：auth（认证）、contact（联系人）、ws（WebSocket）、admin（管理端）
 
 ## 核心开发规则
 
@@ -36,10 +39,42 @@ EchoChat 是一个实时音视频通讯平台，包含三个子项目：
 7. **JWT 策略**：有状态 JWT，Token 存 Redis（按 clientType 隔离：`echo:auth:token:{frontend|admin}:{user_id}`），前后台互不影响
 8. **角色等级体系**：`auth_roles.level` 字段（值越小权限越高：1=超管, 10=管理员, 100=普通用户），所有管理操作强制执行层级权限校验
 9. **代码注释**：所有公开函数、组件、Store 必须有详细注释
-9. **文档同步**：代码变更后必须同步更新 docs/ 下相关文档
-10. **验证方式**：使用 Playwright MCP 进行页面自动化验证
-11. **代码审查**：每个 Task 完成后，使用 `code-reviewer` 子代理进行结构化审查，确保代码质量和计划一致性
-12. **完成验证**：使用 `verification-before-completion` 技能，在声称完成前运行验证命令并确认输出
+10. **文档自动同步（强制）**：每个 Task 或功能开发完成后，必须自动执行文档同步，详见下方「文档自动同步规则」
+11. **验证方式**：使用 Playwright MCP 进行页面自动化验证
+12. **代码审查**：每个 Task 完成后，使用 `code-reviewer` 子代理进行结构化审查，确保代码质量和计划一致性
+13. **完成验证**：使用 `verification-before-completion` 技能，在声称完成前运行验证命令并确认输出
+
+## 文档自动同步规则（强制执行）
+
+**触发时机**：每个 Task 或功能模块开发完成后，代码提交前，必须自动检查并更新以下文档，无需用户提醒。
+
+### 必须检查的文档清单
+
+| 文档 | 路径 | 更新条件 |
+|------|------|---------|
+| 项目进度 | `docs/progress/CURRENT_STATUS.md` | 每个 Task 完成后更新 Task 状态表、新增功能描述 |
+| 架构设计 | `docs/architecture/system-architecture.md` | 新增模块、路由、中间件、数据流变化时更新 |
+| 当前阶段设计文档 | `docs/plans/20xx-xx-xx-phaseXx-design.md` | 设计变更、状态变更时更新 |
+| 总体系统设计 | `docs/plans/2026-02-27-echochat-system-design.md` | API 列表、页面结构、数据库表、分期规划变更时更新 |
+| API 文档导航 | `docs/api/README.md` | 新增 API 文档文件时更新导航表和目录结构 |
+| 模块 API 文档 | `docs/api/{frontend,admin}/*.md` | 新增/修改 API 接口时更新对应模块文档 |
+| 开发规范 | `docs/conventions/frontend-backend-integration.md` | 新增通用规范（错误处理、协议、联动模式）时更新 |
+| 项目规则 | `.cursor/rules/project-context.mdc` | 进度变更、新规则、新模块时更新 |
+
+### 文档质量要求
+
+1. **单文件 ≤ 500 行**：超过时拆分为独立文件，在导航中添加链接
+2. **状态标记实时**：Task 完成后立即将状态标记从 🔜/📋 改为 ✅
+3. **结构一致**：新增内容遵循现有文档的格式和层级结构
+4. **交叉引用**：相关文档之间保持引用链接一致（如设计文档引用 API 文档路径）
+5. **日期更新**：文档头部的「最后更新」日期保持最新
+
+### 每阶段（Phase）结束时的额外检查
+
+- 当前阶段设计文档状态标记为「✅ 已完成」
+- 总体设计文档的开发分期部分更新完成标记
+- project-context.mdc 的当前进度更新
+- CURRENT_STATUS.md 的下一阶段规划更新
 
 ## 前后端联动规范（必须遵守）
 

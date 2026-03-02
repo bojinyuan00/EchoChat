@@ -2,7 +2,7 @@
 
 > **适用范围**：EchoChat 项目全端（Go 后端 + admin 管理端 + frontend 用户端）
 > **创建日期**：2026-03-02
-> **最后更新**：2026-03-02（新增前后台 Token 隔离规范）
+> **最后更新**：2026-03-02（Phase 2a：新增 WebSocket 事件联动规范 + 联系人模块错误处理）
 
 ---
 
@@ -312,3 +312,40 @@ JWT Token 的 Claims 中包含 `client_type` 字段，用于：
 - [ ] 权限不足时返回 403（`ErrInsufficientPermission`）
 - [ ] 前端通过比较 `adminMaxLevel` 和 `targetMaxLevel` 控制 UI 可见性
 - [ ] 角色分配使用全量覆盖模式（`SetUserRoles`），非追加模式
+
+---
+
+## 8. WebSocket 事件联动规范
+
+### 8.1 适用范围
+
+仅前台用户端（frontend）使用 WebSocket 实时通讯，管理端（admin）使用 REST 轮询。
+
+### 8.2 连接管理
+
+- WebSocket 地址：`ws(s)://host/ws?token=xxx`
+- 认证方式：URL Query 参数传递 JWT Token（前台 frontend Token）
+- 心跳间隔：30 秒 ping/pong
+- 断线重连：指数退避（1s → 2s → 4s → 8s → 30s max）
+
+### 8.3 事件命名规范
+
+格式：`{模块}.{对象}.{动作}`
+
+| 事件 | 方向 | 说明 |
+|------|------|------|
+| `heartbeat` | 双向 | 心跳保活 |
+| `notify.friend.request` | 服务端 → 客户端 | 收到好友申请 |
+| `contact.request.accepted` | 服务端 → 客户端 | 好友申请被接受 |
+| `user.status.online` | 服务端 → 客户端 | 好友上线 |
+| `user.status.offline` | 服务端 → 客户端 | 好友下线 |
+
+### 8.4 前端事件处理原则
+
+1. **WebSocket Store 统一管理**：连接状态、事件监听、消息发送由 `store/websocket.js` 管理
+2. **业务 Store 订阅事件**：各模块 Store（如 `contact.js`）通过 WebSocket Store 注册事件回调
+3. **避免页面直接操作 WebSocket**：页面组件通过 Store 间接与 WebSocket 交互
+
+### 8.5 WebSocket 详细协议
+
+> 完整事件协议见 `docs/api/frontend/websocket.md`

@@ -674,15 +674,33 @@ GET    /api/v1/auth/profile
 PUT    /api/v1/auth/profile
 PUT    /api/v1/auth/password
 
-# 联系人模块
-GET    /api/v1/contacts
-POST   /api/v1/contacts/request
-POST   /api/v1/contacts/accept
-POST   /api/v1/contacts/reject
-DELETE /api/v1/contacts/:id
-PUT    /api/v1/contacts/:id/remark
-GET    /api/v1/contacts/groups
-POST   /api/v1/contacts/groups
+# 联系人模块（Phase 2a 已实现）
+GET    /api/v1/contacts                   好友列表（含在线状态）
+POST   /api/v1/contacts/request           发送好友申请
+POST   /api/v1/contacts/accept            接受申请
+POST   /api/v1/contacts/reject            拒绝申请
+DELETE /api/v1/contacts/:id               删除好友
+PUT    /api/v1/contacts/:id/remark        设置备注
+GET    /api/v1/contacts/requests          待处理申请列表
+
+# 好友分组
+GET    /api/v1/contacts/groups            分组列表
+POST   /api/v1/contacts/groups            创建分组
+PUT    /api/v1/contacts/groups/:id        修改分组
+DELETE /api/v1/contacts/groups/:id        删除分组
+PUT    /api/v1/contacts/:id/group         移动好友到分组
+
+# 黑名单
+POST   /api/v1/contacts/block             拉黑用户
+DELETE /api/v1/contacts/block/:user_id    取消拉黑
+GET    /api/v1/contacts/block             黑名单列表
+
+# 搜索与推荐
+GET    /api/v1/users/search               搜索用户
+GET    /api/v1/contacts/recommend         好友推荐
+
+# 在线状态
+GET    /api/v1/contacts/online            批量查询好友在线状态
 
 # 即时通讯模块
 GET    /api/v1/conversations
@@ -711,25 +729,33 @@ PUT    /api/v1/notifications/read-all
 ### 5.4 后台管理 RESTful API
 
 ```
-# 管理员认证
-POST   /api/v1/admin/auth/login
+# 管理员认证（Phase 1 已实现）
+POST   /api/v1/admin/auth/login           管理员登录
 
-# 用户管理
-GET    /api/v1/admin/users
-GET    /api/v1/admin/users/:id
-PUT    /api/v1/admin/users/:id/status
-PUT    /api/v1/admin/users/:id/roles
-POST   /api/v1/admin/users
-GET    /api/v1/admin/roles
-GET    /api/v1/admin/users/:id/meetings
+# 用户管理（Phase 1 已实现）
+GET    /api/v1/admin/users                用户列表（分页）
+GET    /api/v1/admin/users/:id            用户详情
+PUT    /api/v1/admin/users/:id/status     启用/禁用用户（受 level 层级约束）
+PUT    /api/v1/admin/users/:id/roles      分配角色（多选，受 level 约束）
+POST   /api/v1/admin/users               创建用户
+GET    /api/v1/admin/roles                角色列表（受 level 过滤，仅显示可管理角色）
+GET    /api/v1/admin/users/:id/meetings   用户的会议记录
 
-# 会议管理
+# 在线监控（Phase 2a 已实现）
+GET    /api/v1/admin/online/users         在线用户列表
+GET    /api/v1/admin/online/count         在线用户数
+
+# 好友关系管理（Phase 2a 已实现）
+GET    /api/v1/admin/contacts             所有好友关系（分页）
+DELETE /api/v1/admin/contacts/:id         管理员解除好友关系
+
+# 会议管理（后续阶段）
 GET    /api/v1/admin/meetings
 GET    /api/v1/admin/meetings/:id
 PUT    /api/v1/admin/meetings/:id/close
 GET    /api/v1/admin/meetings/stats
 
-# 系统管理
+# 系统管理（后续阶段）
 GET    /api/v1/admin/dashboard
 GET    /api/v1/admin/logs
 GET    /api/v1/admin/system/config
@@ -789,10 +815,12 @@ pages/
 │   ├── conversation.vue         # 聊天对话页
 │   └── group-create.vue         # 创建群聊
 ├── contact/
-│   ├── index.vue                # 联系人列表
-│   ├── add-friend.vue           # 添加好友
-│   ├── friend-requests.vue      # 好友申请列表
-│   └── detail.vue               # 好友资料页
+│   ├── index.vue                # 联系人列表（含搜索/在线状态）     ✅ Phase 2a
+│   ├── search.vue               # 搜索添加好友 + 好友推荐          ✅ Phase 2a
+│   ├── request.vue              # 好友申请列表（接受/拒绝）         ✅ Phase 2a
+│   ├── detail.vue               # 好友详情（备注/分组/拉黑/删除）   ✅ Phase 2a
+│   ├── groups.vue               # 好友分组管理（CRUD）             ✅ Phase 2a
+│   └── blacklist.vue            # 黑名单管理                       ✅ Phase 2a
 ├── meeting/
 │   ├── index.vue                # 会议首页（即将开始 + 进行中 + 快速入口）
 │   ├── create.vue               # 创建即时会议
@@ -815,25 +843,27 @@ TabBar 导航（底部4标签）：消息 | 联系人 | 会议 | 我的
 
 ```
 views/
-├── login.vue                     # 管理员登录
-├── dashboard/index.vue           # 数据看板
+├── login.vue                     # 管理员登录                    ✅ Phase 1
+├── dashboard/index.vue           # 数据看板                      📋 后续
 ├── user/
-│   ├── list.vue                  # 用户列表
-│   └── detail.vue                # 用户详情（含会议记录Tab）
+│   ├── list.vue                  # 用户列表                      ✅ Phase 1
+│   └── detail.vue                # 用户详情（含会议记录Tab）       📋 后续
+├── monitor/
+│   └── online.vue                # 在线用户监控                   ✅ Phase 2a
+├── contact/
+│   └── list.vue                  # 好友关系管理                   ✅ Phase 2a
 ├── meeting/
-│   ├── list.vue                  # 会议列表
-│   ├── detail.vue                # 会议详情
-│   └── monitor.vue               # 实时监控
+│   ├── list.vue                  # 会议列表                      📋 后续
+│   ├── detail.vue                # 会议详情                      📋 后续
+│   └── monitor.vue               # 实时监控                      📋 后续
 ├── permission/
-│   ├── role.vue                  # 角色管理
-│   └── assign.vue                # 权限分配
+│   ├── role.vue                  # 角色管理                      📋 后续
+│   └── assign.vue                # 权限分配                      📋 后续
 ├── system/
-│   ├── config.vue                # 系统配置
-│   └── logs.vue                  # 操作日志
+│   ├── config.vue                # 系统配置                      📋 后续
+│   └── logs.vue                  # 操作日志                      📋 后续
 └── layout/
-    ├── index.vue                 # 布局框架
-    ├── sidebar.vue               # 侧边栏
-    └── header.vue                # 顶部栏
+    ├── index.vue                 # 布局框架（含侧边栏导航）       ✅ Phase 1
 ```
 
 ---
@@ -893,9 +923,24 @@ services:
 ## 八、开发分期规划
 
 ### 第一期（MVP）
+
+#### Phase 1：基础设施与用户认证 ✅ 已完成
 - 用户注册/登录（邮箱+密码、用户名+密码）
+- 有状态 JWT Token 管理（Redis 存储 + client_type 隔离）
+- RBAC 角色权限（level 等级体系）
+- 后台管理端基础框架 + 用户管理
+- Docker Compose 开发环境
+
+#### Phase 2a：WebSocket 实时通讯与联系人管理 ✅ 已完成
+- WebSocket 长连接（心跳、断线重连、Redis Pub/Sub 消息总线）
+- 联系人完整功能（好友申请/接受/拒绝/删除/分组/黑名单/搜索/推荐）
+- 在线状态管理（混合推拉方案）
+- 管理端扩展（在线监控 + 好友关系管理）
+
+#### Phase 2b：即时通讯消息系统 🔜 待开发
 - 即时聊天（单聊 + 群聊，文字/图片/文件）
-- 联系人/好友管理
+
+#### Phase 2c：会议与通知 📋 待规划
 - 多人音视频会议（即时会议 + 预约会议）
 - 消息通知系统
 

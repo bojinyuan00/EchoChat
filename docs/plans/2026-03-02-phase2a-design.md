@@ -1,6 +1,6 @@
 # Phase 2a 设计文档：WebSocket 实时通讯与联系人管理
 
-> **状态：** 设计确认，开发中
+> **状态：** ✅ 已完成（全部 13 个 Task）
 > **分支：** `feature/phase2a-websocket-contacts`
 > **实施计划：** `docs/plans/2026-03-02-phase2a-implementation.md`（独立文件）
 > **前置依赖：** Phase 1 全部完成（用户认证 + 管理端用户管理）

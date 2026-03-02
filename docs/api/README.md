@@ -13,10 +13,11 @@
 | 文档 | 模块 | 状态 | 说明 |
 |------|------|------|------|
 | [frontend/auth.md](frontend/auth.md) | 用户认证 | ✅ Phase 1 | 注册、登录、Token 刷新、个人信息管理 |
-| [frontend/contact.md](frontend/contact.md) | 联系人 | 📋 Phase 2 | 好友申请/管理、好友分组 |
-| [frontend/im.md](frontend/im.md) | 即时通讯 | 📋 Phase 2 | 会话列表、消息历史、群聊创建与管理 |
-| [frontend/meeting.md](frontend/meeting.md) | 会议 | 📋 Phase 3 | 即时会议、预约会议、加入/离开、会议列表 |
-| [frontend/notify.md](frontend/notify.md) | 通知 | 📋 Phase 2 | 通知列表、标记已读 |
+| [frontend/contact.md](frontend/contact.md) | 联系人 | ✅ Phase 2a | 17 个 API：好友申请/管理、好友分组、黑名单、搜索/推荐、在线状态 |
+| [frontend/websocket.md](frontend/websocket.md) | WebSocket | ✅ Phase 2a | 前端 WebSocket 连接管理、事件协议、心跳、重连 |
+| [frontend/im.md](frontend/im.md) | 即时通讯 | 📋 Phase 2b | 会话列表、消息历史、群聊创建与管理 |
+| [frontend/meeting.md](frontend/meeting.md) | 会议 | 📋 后续 | 即时会议、预约会议、加入/离开、会议列表 |
+| [frontend/notify.md](frontend/notify.md) | 通知 | 📋 后续 | 通知列表、标记已读 |
 
 ### 后台管理端 (`admin/`)
 
@@ -24,14 +25,16 @@
 |------|------|------|------|
 | [admin/auth.md](admin/auth.md) | 管理员认证 | ✅ Phase 1 | 管理员登录（验证 admin 角色） |
 | [admin/user.md](admin/user.md) | 用户管理 | ✅ Phase 1 | 用户列表/详情、状态管理、角色分配、创建用户 |
-| [admin/meeting.md](admin/meeting.md) | 会议管理 | 📋 Phase 3 | 会议列表/详情、强制结束、会议统计 |
+| [admin/online.md](admin/online.md) | 在线监控 | ✅ Phase 2a | 在线用户列表、在线用户计数 |
+| [admin/contact.md](admin/contact.md) | 好友关系管理 | ✅ Phase 2a | 好友关系列表（分页）、管理员解除好友关系 |
+| [admin/meeting.md](admin/meeting.md) | 会议管理 | 📋 后续 | 会议列表/详情、强制结束、会议统计 |
 | [admin/system.md](admin/system.md) | 系统管理 | 📋 待定 | 仪表盘数据、操作日志、系统配置 |
 
 ### 跨端通用
 
 | 文档 | 状态 | 说明 |
 |------|------|------|
-| [websocket.md](websocket.md) | 📋 Phase 2 | WebSocket 实时事件协议（IM 消息、会议信令、在线状态） |
+| [websocket.md](websocket.md) | ✅ Phase 2a | WebSocket 实时事件协议（联系人通知、在线状态、心跳） |
 
 ---
 
@@ -114,6 +117,17 @@ yyyy-MM-dd HH:mm:ss
 | 2003 | 账号或密码错误 | 登录失败 |
 | 2004 | 账号已被禁用 | 用户状态为禁用 |
 
+#### 联系人模块错误码（2100-2199）
+
+| 错误码 | 含义 | 说明 |
+|--------|------|------|
+| 2101 | 不能添加自己 | 好友申请目标为自身 |
+| 2102 | 已是好友关系 | 重复发送好友申请 |
+| 2103 | 已被对方拉黑 | 被拉黑后无法发送申请 |
+| 2104 | 申请不存在 | 待处理申请记录不存在或已处理 |
+| 2105 | 好友关系不存在 | 尝试操作不存在的好友关系 |
+| 2106 | 分组不存在 | 好友分组 ID 无效 |
+
 #### IM 模块错误码（3000-3099）
 
 | 错误码 | 含义 | 说明 |
@@ -177,15 +191,18 @@ yyyy-MM-dd HH:mm:ss
 docs/api/
 ├── README.md              # 通用规范（本文件）
 ├── frontend/              # 前台用户端 API
-│   ├── auth.md            # 用户认证
-│   ├── contact.md         # 联系人管理
-│   ├── im.md              # 即时通讯
-│   ├── meeting.md         # 会议
-│   └── notify.md          # 通知
+│   ├── auth.md            # 用户认证                    ✅ Phase 1
+│   ├── contact.md         # 联系人管理（17 个 API）      ✅ Phase 2a
+│   ├── websocket.md       # WebSocket 事件协议          ✅ Phase 2a
+│   ├── im.md              # 即时通讯                    📋 Phase 2b
+│   ├── meeting.md         # 会议                        📋 后续
+│   └── notify.md          # 通知                        📋 后续
 ├── admin/                 # 后台管理端 API
-│   ├── auth.md            # 管理员认证
-│   ├── user.md            # 用户管理
-│   ├── meeting.md         # 会议管理
-│   └── system.md          # 系统管理
-└── websocket.md           # WebSocket 事件协议
+│   ├── auth.md            # 管理员认证                   ✅ Phase 1
+│   ├── user.md            # 用户管理                     ✅ Phase 1
+│   ├── online.md          # 在线监控                     ✅ Phase 2a
+│   ├── contact.md         # 好友关系管理                  ✅ Phase 2a
+│   ├── meeting.md         # 会议管理                     📋 后续
+│   └── system.md          # 系统管理                     📋 待定
+└── websocket.md           # WebSocket 全量事件协议       ✅ Phase 2a
 ```
