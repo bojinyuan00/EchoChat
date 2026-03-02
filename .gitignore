@@ -30,6 +30,7 @@ node_modules/
 dist/
 .nuxt/
 .output/
+.vite/
 
 # --- 环境配置 ---
 .env
