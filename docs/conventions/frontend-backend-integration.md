@@ -2,7 +2,7 @@
 
 > **适用范围**：EchoChat 项目全端（Go 后端 + admin 管理端 + frontend 用户端）
 > **创建日期**：2026-03-02
-> **最后更新**：2026-03-02
+> **最后更新**：2026-03-02（新增前后台 Token 隔离规范）
 
 ---
 
@@ -202,3 +202,66 @@ if err != nil {
 | 用户不存在 | 404 | 用户不存在 | 显示 message |
 | 服务器内部错误 | 500 | 获取用户列表失败 | 显示 message |
 | 网络异常 | - | （无响应体） | 显示前端 fallback 文案 |
+
+---
+
+## 六、前后台 Token 隔离规范
+
+### 6.1 核心原则
+
+前台用户端（frontend）和后台管理端（admin）的 Token **必须在 Redis 中完全隔离**，同一用户可以同时在两端保持登录状态，互不影响。
+
+### 6.2 Redis Key 格式
+
+```
+echo:auth:token:{client_type}:{user_id}     → Access Token
+echo:auth:refresh:{client_type}:{user_id}    → Refresh Token
+```
+
+| client_type | 说明 | 示例 Key |
+|------------|------|----------|
+| `frontend` | 前台用户端 | `echo:auth:token:frontend:1` |
+| `admin` | 后台管理端 | `echo:auth:token:admin:1` |
+
+### 6.3 JWT Claims 中的 client_type
+
+JWT Token 的 Claims 中包含 `client_type` 字段，用于：
+- 中间件校验时定位正确的 Redis key
+- 登出时只删除当前端的 Token
+- Refresh Token 刷新时保持 client_type 不变
+
+```json
+{
+  "user_id": 1,
+  "username": "admin_test",
+  "roles": ["user", "admin"],
+  "client_type": "admin",
+  "sub": "access",
+  "exp": 1709400000,
+  "iss": "echochat"
+}
+```
+
+### 6.4 API 路由区分
+
+| 端 | 登录 API | 说明 |
+|----|---------|------|
+| 前台 | `POST /api/v1/auth/login` | clientType=frontend |
+| 管理端 | `POST /api/v1/admin/auth/login` | clientType=admin，额外检查管理员角色 |
+
+### 6.5 登出行为
+
+- 前台登出：只删除 `echo:auth:token:frontend:{user_id}`，不影响管理端
+- 管理端登出：只删除 `echo:auth:token:admin:{user_id}`，不影响前台
+- 管理端禁用用户：应删除该用户两端的所有 Token（由管理模块负责）
+
+### 6.6 检查清单
+
+新增认证相关功能时，必须确认：
+
+- [ ] Login 方法传递了正确的 clientType
+- [ ] 前端调用了正确的登录 API 端点
+- [ ] Redis key 包含 clientType 前缀
+- [ ] JWT Claims 中包含 client_type 字段
+- [ ] 登出时只删除对应 clientType 的 Token
+- [ ] Token 刷新时保持原 clientType 不变

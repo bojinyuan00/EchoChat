@@ -507,11 +507,11 @@ type UserInfo struct {
 **Step 4: 创建 Token Redis 存储管理**
 
 创建 `app/auth/service/token_store.go`：
-- 遵循设计方案中的 Redis Key 规范：`echo:auth:token:{user_id}` / `echo:auth:refresh:{user_id}`
-- `SaveTokens(ctx, userID, accessToken, refreshToken)` — 存入 Redis（覆盖旧 Token，实现单设备登录）
-- `ValidateAccessToken(ctx, userID, token)` — 校验 Access Token 与 Redis 一致
-- `ValidateRefreshToken(ctx, userID, token)` — 校验 Refresh Token 与 Redis 一致
-- `RemoveTokens(ctx, userID)` — 登出时删除 Redis 中的 Token
+- Redis Key 按 clientType 隔离：`echo:auth:token:{client_type}:{user_id}` / `echo:auth:refresh:{client_type}:{user_id}`
+- `SaveTokens(ctx, userID, clientType, accessToken, refreshToken)` — 存入 Redis（按 clientType 隔离）
+- `ValidateAccessToken(ctx, userID, clientType, token)` — 校验 Access Token 与 Redis 一致
+- `ValidateRefreshToken(ctx, userID, clientType, token)` — 校验 Refresh Token 与 Redis 一致
+- `RemoveTokens(ctx, userID, clientType)` — 登出时删除指定 clientType 的 Token
 
 **Step 5: 创建认证服务**
 

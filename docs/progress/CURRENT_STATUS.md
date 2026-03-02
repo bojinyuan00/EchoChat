@@ -29,7 +29,7 @@
 
 ### 后端（Go）
 1. **框架组合**：Gin + GORM + Wire + Zap + Viper
-2. **JWT 策略**：有状态 JWT，Token 存储在 Redis（`echo:auth:token:{user_id}`）
+2. **JWT 策略**：有状态 JWT，Token 按 clientType 隔离存储在 Redis（`echo:auth:token:{frontend|admin}:{user_id}`）
 3. **密码加密**：bcrypt
 4. **数据库时间精度**：`TIMESTAMP(0)` 精确到秒
 5. **API 响应格式**：统一 `{ "code": 0, "message": "success", "data": ... }`

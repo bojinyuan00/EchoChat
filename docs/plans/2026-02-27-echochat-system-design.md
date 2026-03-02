@@ -573,9 +573,10 @@ COMMENT ON COLUMN admin_operation_logs.created_at  IS '操作时间';
 ### 4.2 Redis 数据结构
 
 ```
-# 用户认证
-echo:auth:token:{user_id}           → JWT Token (STRING, TTL 7天)
-echo:auth:refresh:{user_id}         → Refresh Token (STRING, TTL 30天)
+# 用户认证（按 client_type 隔离前台和管理端）
+echo:auth:token:{client_type}:{user_id}     → JWT Access Token (STRING, TTL 由配置决定)
+echo:auth:refresh:{client_type}:{user_id}   → Refresh Token (STRING, TTL 由配置决定)
+# client_type: frontend（前台用户端）/ admin（后台管理端）
 
 # 用户在线状态
 echo:user:online                    → 在线用户集合 (SET)

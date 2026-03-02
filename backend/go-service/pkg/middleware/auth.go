@@ -12,15 +12,16 @@ import (
 )
 
 const (
-	ContextKeyUserID   = "user_id"   // Context 中存储当前用户 ID 的 Key
-	ContextKeyUsername = "username"   // Context 中存储当前用户名的 Key
-	ContextKeyRoles    = "roles"     // Context 中存储当前用户角色列表的 Key
+	ContextKeyUserID     = "user_id"     // Context 中存储当前用户 ID 的 Key
+	ContextKeyUsername   = "username"    // Context 中存储当前用户名的 Key
+	ContextKeyRoles      = "roles"      // Context 中存储当前用户角色列表的 Key
+	ContextKeyClientType = "client_type" // Context 中存储客户端类型的 Key（frontend / admin）
 )
 
 // TokenValidator Token 有效性校验接口
 // 由 AuthService 实现，中间件通过此接口检查 Token 是否在 Redis 中有效
 type TokenValidator interface {
-	ValidateAccessToken(ctx context.Context, userID int64, token string) bool
+	ValidateAccessToken(ctx context.Context, userID int64, clientType, token string) bool
 }
 
 // JWTAuth JWT 认证中间件（有状态 JWT）
@@ -62,10 +63,17 @@ func JWTAuth(jwtCfg *config.JWTConfig, validator TokenValidator) gin.HandlerFunc
 			return
 		}
 
-		// 校验 Token 是否在 Redis 中有效（有状态 JWT 核心逻辑）
-		if !validator.ValidateAccessToken(ctx, claims.UserID, tokenStr) {
+		// 从 Claims 获取 clientType（兼容旧 Token 无该字段的情况）
+		clientType := claims.ClientType
+		if clientType == "" {
+			clientType = "frontend"
+		}
+
+		// 校验 Token 是否在 Redis 中有效（有状态 JWT 核心逻辑，按 clientType 隔离）
+		if !validator.ValidateAccessToken(ctx, claims.UserID, clientType, tokenStr) {
 			logs.Warn(ctx, funcName, "Token 已失效（已登出或被覆盖）",
 				zap.Int64("user_id", claims.UserID),
+				zap.String("client_type", clientType),
 				zap.String("ip", c.ClientIP()),
 			)
 			utils.ResponseUnauthorized(c, "认证已失效，请重新登录")
@@ -76,6 +84,7 @@ func JWTAuth(jwtCfg *config.JWTConfig, validator TokenValidator) gin.HandlerFunc
 		c.Set(ContextKeyUserID, claims.UserID)
 		c.Set(ContextKeyUsername, claims.Username)
 		c.Set(ContextKeyRoles, claims.Roles)
+		c.Set(ContextKeyClientType, clientType)
 
 		c.Next()
 	}
@@ -140,4 +149,17 @@ func GetCurrentUsername(c *gin.Context) (string, bool) {
 	}
 	username, ok := val.(string)
 	return username, ok
+}
+
+// GetCurrentClientType 从 Gin Context 获取当前客户端类型（frontend / admin）
+func GetCurrentClientType(c *gin.Context) string {
+	val, exists := c.Get(ContextKeyClientType)
+	if !exists {
+		return "frontend"
+	}
+	clientType, ok := val.(string)
+	if !ok {
+		return "frontend"
+	}
+	return clientType
 }

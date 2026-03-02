@@ -139,7 +139,7 @@
 
 **权限：** 需认证
 
-**说明：** 采用有状态 JWT 方案，Token 存储在 Redis 中（`echo:auth:token:{user_id}` 和 `echo:auth:refresh:{user_id}`）。登出时服务端会从 Redis 中删除该用户的 Access Token 和 Refresh Token，使其立即失效。客户端也应同步清除本地存储的 Token。
+**说明：** 采用有状态 JWT 方案，Token 按 clientType 隔离存储在 Redis 中（`echo:auth:token:frontend:{user_id}` 和 `echo:auth:refresh:frontend:{user_id}`）。登出时服务端只删除前台端的 Token，不影响管理端。客户端也应同步清除本地存储的 Token。
 
 **成功响应：**
 ```json

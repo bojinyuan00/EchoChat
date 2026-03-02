@@ -3,6 +3,7 @@ package controller
 
 import (
 	"github.com/echochat/backend/app/auth/service"
+	"github.com/echochat/backend/app/constants"
 	"github.com/echochat/backend/app/dto"
 	"github.com/echochat/backend/pkg/logs"
 	"github.com/echochat/backend/pkg/middleware"
@@ -67,7 +68,7 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 		zap.String("ip", c.ClientIP()),
 	)
 
-	resp, err := ctrl.authService.Login(ctx, &req, c.ClientIP())
+	resp, err := ctrl.authService.Login(ctx, &req, c.ClientIP(), constants.ClientTypeFrontend)
 	if err != nil {
 		handleAuthError(c, err)
 		return
@@ -88,9 +89,13 @@ func (ctrl *AuthController) Logout(c *gin.Context) {
 		return
 	}
 
-	logs.Info(ctx, funcName, "用户登出", zap.Int64("user_id", userID))
+	clientType := middleware.GetCurrentClientType(c)
+	logs.Info(ctx, funcName, "用户登出",
+		zap.Int64("user_id", userID),
+		zap.String("client_type", clientType),
+	)
 
-	if err := ctrl.authService.Logout(ctx, userID); err != nil {
+	if err := ctrl.authService.Logout(ctx, userID, clientType); err != nil {
 		utils.ResponseError(c, "登出失败")
 		return
 	}

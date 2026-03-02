@@ -33,7 +33,7 @@ EchoChat 是一个实时音视频通讯平台，包含三个子项目：
 4. **模块系统**：前端统一使用 ESM（`export`/`import`），禁止 CommonJS
 5. **Go 常量命名**：camelCase（`UserStatusActive`），非大写下划线
 6. **API 响应**：统一 `{ "code": 0, "message": "success", "data": ... }`
-7. **JWT 策略**：有状态 JWT，Token 存 Redis，登出时从 Redis 删除
+7. **JWT 策略**：有状态 JWT，Token 存 Redis（按 clientType 隔离：`echo:auth:token:{frontend|admin}:{user_id}`），前后台互不影响
 8. **代码注释**：所有公开函数、组件、Store 必须有详细注释
 9. **文档同步**：代码变更后必须同步更新 docs/ 下相关文档
 10. **验证方式**：使用 Playwright MCP 进行页面自动化验证

@@ -44,7 +44,7 @@ func NewAuthService(userDAO *dao.UserDAO, roleDAO *dao.RoleDAO, jwtCfg *config.J
 	}
 }
 
-// Register 用户注册
+// Register 用户注册（前台用户端专用，clientType 固定为 frontend）
 // 流程：检查用户名/邮箱是否重复 → 加密密码 → 创建用户 → 分配默认角色 → 生成 Token
 func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*dto.LoginResponse, error) {
 	funcName := "service.auth_service.Register"
@@ -110,9 +110,9 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 		}
 	}
 
-	// 获取角色列表并生成 Token
+	// 获取角色列表并生成 Token（注册只有前台，clientType 为 frontend）
 	roles, _ := s.roleDAO.GetUserRoleCodes(ctx, user.ID)
-	resp, err := s.buildLoginResponse(ctx, user, roles)
+	resp, err := s.buildLoginResponse(ctx, user, roles, constants.ClientTypeFrontend)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,8 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 
 // Login 用户登录
 // 流程：查找用户 → 校验密码 → 检查账号状态 → 更新登录信息 → 生成 Token
-func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest, clientIP string) (*dto.LoginResponse, error) {
+// clientType 区分前台（frontend）和管理端（admin），Token 在 Redis 中隔离存储
+func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest, clientIP, clientType string) (*dto.LoginResponse, error) {
 	funcName := "service.auth_service.Login"
 	logs.Info(ctx, funcName, "开始处理登录",
 		zap.String("account", req.Account),
@@ -164,9 +165,9 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest, clientIP
 	// 更新最后登录信息
 	_ = s.userDAO.UpdateLastLogin(ctx, user.ID, clientIP)
 
-	// 获取角色列表并生成 Token（同时存入 Redis）
+	// 获取角色列表并生成 Token（同时存入 Redis，按 clientType 隔离）
 	roles, _ := s.roleDAO.GetUserRoleCodes(ctx, user.ID)
-	resp, err := s.buildLoginResponse(ctx, user, roles)
+	resp, err := s.buildLoginResponse(ctx, user, roles, clientType)
 	if err != nil {
 		return nil, err
 	}
@@ -174,19 +175,21 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest, clientIP
 	logs.Info(ctx, funcName, "登录成功",
 		zap.Int64("user_id", user.ID),
 		zap.String("username", user.Username),
+		zap.String("client_type", clientType),
 	)
 	return resp, nil
 }
 
 // AdminLogin 管理后台登录
 // 与普通登录相同，但额外检查用户是否拥有 admin 或 super_admin 角色
+// clientType 固定为 constants.ClientTypeAdmin
 func (s *AuthService) AdminLogin(ctx context.Context, req *dto.LoginRequest, clientIP string) (*dto.LoginResponse, error) {
 	funcName := "service.auth_service.AdminLogin"
 	logs.Info(ctx, funcName, "开始处理管理员登录",
 		zap.String("account", req.Account),
 	)
 
-	resp, err := s.Login(ctx, req, clientIP)
+	resp, err := s.Login(ctx, req, clientIP, constants.ClientTypeAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -229,10 +232,17 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 		return nil, ErrRefreshTokenType
 	}
 
+	// 从 claims 中获取 clientType（前台 / 管理端）
+	clientType := claims.ClientType
+	if clientType == "" {
+		clientType = constants.ClientTypeFrontend
+	}
+
 	// 验证 Refresh Token 是否与 Redis 中存储的一致
-	if !s.tokenStore.ValidateRefreshToken(ctx, claims.UserID, refreshToken) {
+	if !s.tokenStore.ValidateRefreshToken(ctx, claims.UserID, clientType, refreshToken) {
 		logs.Warn(ctx, funcName, "Refresh Token 已失效（不在 Redis 中）",
 			zap.Int64("user_id", claims.UserID),
+			zap.String("client_type", clientType),
 		)
 		return nil, ErrRefreshTokenType
 	}
@@ -250,29 +260,35 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 		return nil, err
 	}
 
-	// 获取角色并生成新 Token（同时存入 Redis 覆盖旧 Token）
+	// 获取角色并生成新 Token（同时存入 Redis 覆盖旧 Token，保持 clientType 不变）
 	roles, _ := s.roleDAO.GetUserRoleCodes(ctx, user.ID)
-	resp, err := s.buildLoginResponse(ctx, user, roles)
+	resp, err := s.buildLoginResponse(ctx, user, roles, clientType)
 	if err != nil {
 		return nil, err
 	}
 
-	logs.Info(ctx, funcName, "Token 刷新成功", zap.Int64("user_id", user.ID))
+	logs.Info(ctx, funcName, "Token 刷新成功",
+		zap.Int64("user_id", user.ID),
+		zap.String("client_type", clientType),
+	)
 	return resp, nil
 }
 
 // Logout 用户登出
-// 从 Redis 中删除该用户的 Access Token 和 Refresh Token
-func (s *AuthService) Logout(ctx context.Context, userID int64) error {
+// 从 Redis 中删除指定 clientType 下该用户的 Token（前台登出不影响管理端）
+func (s *AuthService) Logout(ctx context.Context, userID int64, clientType string) error {
 	funcName := "service.auth_service.Logout"
-	logs.Info(ctx, funcName, "用户登出", zap.Int64("user_id", userID))
-	return s.tokenStore.RemoveTokens(ctx, userID)
+	logs.Info(ctx, funcName, "用户登出",
+		zap.Int64("user_id", userID),
+		zap.String("client_type", clientType),
+	)
+	return s.tokenStore.RemoveTokens(ctx, userID, clientType)
 }
 
 // ValidateAccessToken 校验 Access Token 是否在 Redis 中有效
-// 供 JWT 中间件调用，实现有状态 JWT 验证
-func (s *AuthService) ValidateAccessToken(ctx context.Context, userID int64, token string) bool {
-	return s.tokenStore.ValidateAccessToken(ctx, userID, token)
+// 供 JWT 中间件调用，实现有状态 JWT 验证，按 clientType 隔离校验
+func (s *AuthService) ValidateAccessToken(ctx context.Context, userID int64, clientType, token string) bool {
+	return s.tokenStore.ValidateAccessToken(ctx, userID, clientType, token)
 }
 
 // GetProfile 获取用户个人信息
@@ -374,23 +390,24 @@ func (s *AuthService) checkUserStatus(status int) error {
 }
 
 // buildLoginResponse 构建登录响应（生成 Token + 存入 Redis + 用户信息）
-func (s *AuthService) buildLoginResponse(ctx context.Context, user *model.User, roles []string) (*dto.LoginResponse, error) {
+// clientType 决定 Token 存入 Redis 的 key 前缀和 JWT Claims 中的 client_type 字段
+func (s *AuthService) buildLoginResponse(ctx context.Context, user *model.User, roles []string, clientType string) (*dto.LoginResponse, error) {
 	if roles == nil {
 		roles = []string{}
 	}
 
-	token, err := utils.GenerateToken(s.jwtCfg, user.ID, user.Username, roles)
+	token, err := utils.GenerateToken(s.jwtCfg, user.ID, user.Username, roles, clientType)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := utils.GenerateRefreshToken(s.jwtCfg, user.ID)
+	refreshToken, err := utils.GenerateRefreshToken(s.jwtCfg, user.ID, clientType)
 	if err != nil {
 		return nil, err
 	}
 
-	// 将 Token 存入 Redis（有状态 JWT，支持主动失效和单设备登录）
-	if err = s.tokenStore.SaveTokens(ctx, user.ID, token, refreshToken); err != nil {
+	// 将 Token 存入 Redis（按 clientType 隔离，前台和管理端互不影响）
+	if err = s.tokenStore.SaveTokens(ctx, user.ID, clientType, token, refreshToken); err != nil {
 		return nil, err
 	}
 
