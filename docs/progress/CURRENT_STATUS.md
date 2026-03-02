@@ -1,6 +1,6 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-03-02（Phase 1 全部完成 — Task 11 完成后更新）
+> **最后更新**：2026-03-02（前后端错误处理规范统一 + 安全加固）
 > **当前阶段**：Phase 1 - 基础设施与用户认证
 > **当前分支**：`feature/phase1-foundation-and-auth`
 > **实施计划**：`docs/plans/2026-02-27-phase1-foundation-and-auth.md`
@@ -95,6 +95,8 @@ EchoChat/
 └── docs/
     ├── api/                     # API 接口文档
     ├── architecture/            # 系统架构文档
+    ├── conventions/             # 开发规范文档
+    │   └── frontend-backend-integration.md  # 前后端集成规范
     ├── plans/                   # 实施计划文档
     └── progress/                # 进度文档（本文件）
 ```
@@ -111,6 +113,7 @@ EchoChat/
 6. **验证方式**：Playwright MCP 进行页面自动化验证
 7. **代码审查**：每个 Task 完成后，使用 `code-reviewer` 子代理进行结构化代码审查，对照实施计划和编码标准检查
 8. **完成验证**：使用 `verification-before-completion` 技能，在声称完成前必须运行验证命令并确认输出结果
+9. **前后端联动规范**：详见 `docs/conventions/frontend-backend-integration.md`，核心要求：前端错误提示必须优先使用后端 message，禁止硬编码覆盖；后端错误处理禁止忽略 error；登录安全统一返回 401
 
 ---
 
@@ -157,10 +160,12 @@ cd frontend && npm run dev:h5
 ## 六、已知问题与注意事项
 
 1. ~~前端工具模块使用了 CommonJS，已修复为 ESM~~（已解决）
-2. uni-app 的 `tabBar.custom: true` 配合自定义 TabBar 组件使用
-3. 管理端和前台的 localStorage key 通过前缀隔离（`admin_` vs `echo_`）
-4. Go 依赖版本需匹配 Go 1.23.12，不要随意升级 Go 工具链
-5. `.gitignore` 已配置忽略：`.cursor/`、`.vite/`、`node_modules/`、`dist/`、`*.png`（根目录截图）、`logs/` 等
+2. ~~前端登录失败时错误提示不正确（硬编码"登录已过期"覆盖后端消息）~~（已修复，详见 `docs/conventions/frontend-backend-integration.md`）
+3. ~~后端登录时用户不存在返回 404 暴露用户是否注册~~（已修复为统一返回 401）
+4. uni-app 的 `tabBar.custom: true` 配合自定义 TabBar 组件使用
+5. 管理端和前台的 localStorage key 通过前缀隔离（`admin_` vs `echo_`）
+6. Go 依赖版本需匹配 Go 1.23.12，不要随意升级 Go 工具链
+7. `.gitignore` 已配置忽略：`.cursor/`、`.vite/`、`node_modules/`、`dist/`、`*.png`（根目录截图）、`logs/` 等
 
 ---
 

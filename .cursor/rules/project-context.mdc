@@ -1,0 +1,59 @@
+---
+description: EchoChat 项目上下文与开发记忆 - 每次新对话自动加载
+alwaysApply: true
+---
+
+# EchoChat 项目上下文
+
+## 快速恢复上下文
+
+**新对话开始时，必须先读取以下文件恢复项目记忆：**
+
+1. `docs/progress/CURRENT_STATUS.md` — 项目开发进度、已完成 Task、关键技术决策、下一步工作
+2. 当前阶段的实施计划文档（位于 `docs/plans/` 目录下）
+
+## 当前进度
+
+- **Phase 1（基础设施与用户认证）**：✅ 全部完成（11 个 Task）
+- **Phase 2（即时通讯）**：待制定实施计划
+- 分支：`feature/phase1-foundation-and-auth`（待合并到 main）
+
+## 项目概述
+
+EchoChat 是一个实时音视频通讯平台，包含三个子项目：
+- `backend/go-service/` — Go 后端（Gin + GORM + Wire + Redis）
+- `frontend/` — 前台用户端（uni-app + Vue 3.4 + Pinia 2.x）
+- `admin/` — 后台管理端（Vue 3.5+ + Element Plus + Pinia 3.x）
+
+## 核心开发规则
+
+1. **前端设计**：必须使用 `ui-ux-pro-max` 技能包（`~/.agent/skills/ui-ux-pro-max/scripts/search.py`），禁止手动设计
+2. **工作流**：使用 superpowers 流程控制开发节奏
+3. **两端差异**：`frontend/` 和 `admin/` 是完全独立的项目，技术栈不需要统一
+4. **模块系统**：前端统一使用 ESM（`export`/`import`），禁止 CommonJS
+5. **Go 常量命名**：camelCase（`UserStatusActive`），非大写下划线
+6. **API 响应**：统一 `{ "code": 0, "message": "success", "data": ... }`
+7. **JWT 策略**：有状态 JWT，Token 存 Redis，登出时从 Redis 删除
+8. **代码注释**：所有公开函数、组件、Store 必须有详细注释
+9. **文档同步**：代码变更后必须同步更新 docs/ 下相关文档
+10. **验证方式**：使用 Playwright MCP 进行页面自动化验证
+11. **代码审查**：每个 Task 完成后，使用 `code-reviewer` 子代理进行结构化审查，确保代码质量和计划一致性
+12. **完成验证**：使用 `verification-before-completion` 技能，在声称完成前运行验证命令并确认输出
+
+## 前后端联动规范（必须遵守）
+
+> 详细规范见 `docs/conventions/frontend-backend-integration.md`
+
+1. **错误提示统一**：前端所有 HTTP 错误提示必须优先使用后端 `data.message`，禁止硬编码覆盖后端信息。Fallback 文案仅在后端无响应体时使用
+2. **HTTP 状态码语义**：后端必须返回正确的 HTTP 状态码（200/400/401/403/404/500），前端按状态码分类处理
+3. **安全防护**：后端登录接口对"用户不存在"与"密码错误"统一返回 401 + "账号或密码错误"，禁止通过不同错误码泄露用户是否存在
+4. **401 场景区分**：前端拦截器区分「登录/注册请求的 401」（仅提示错误）和「已认证请求的 401」（清 Token + 跳转登录页）
+5. **响应格式一致**：后端所有响应必须使用 `utils.Response*` 系列函数，保证统一的 `{ code, message, data, trace_id, time }` 结构
+6. **业务错误映射**：后端 Controller 的 `handleError` 函数必须覆盖所有已知业务错误，不能忽略 error（`_`）
+
+## 设计系统
+
+持久化在 `design-system/echochat/` 目录：
+- `MASTER.md` — 全局设计规范
+- `pages/*.md` — 页面级覆盖规则
+- 色板：Primary `#2563EB` / BG `#F8FAFC` / Text `#1E293B`
