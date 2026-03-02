@@ -8,6 +8,7 @@ import (
 
 	"github.com/echochat/backend/app/admin"
 	"github.com/echochat/backend/app/auth"
+	"github.com/echochat/backend/app/contact"
 	"github.com/echochat/backend/app/provider"
 	wsApp "github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/pkg/middleware"
@@ -34,6 +35,7 @@ func Setup(engine *gin.Engine, app *provider.App) {
 	auth.RegisterRoutes(engine, app.AuthController, app.AdminAuthController, jwtAuth)
 	admin.RegisterRoutes(engine, app.UserManageController, jwtAuth)
 	wsApp.RegisterRoutes(engine, app.WSHandler)
+	contact.RegisterRoutes(engine, app.ContactController, jwtAuth)
 
 	// [未来] im.RegisterRoutes(engine, app.ImController, jwtAuth)
 	// [未来] meeting.RegisterRoutes(engine, app.MeetingController, jwtAuth)

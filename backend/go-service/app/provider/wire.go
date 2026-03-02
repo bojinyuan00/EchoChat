@@ -6,6 +6,7 @@ package provider
 import (
 	"github.com/echochat/backend/app/admin"
 	"github.com/echochat/backend/app/auth"
+	"github.com/echochat/backend/app/contact"
 	wsApp "github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
 	"github.com/google/wire"
@@ -18,6 +19,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		auth.AuthSet,
 		admin.AdminSet,
 		wsApp.WSSet,
+		contact.ContactSet,
 	)
 	return nil, nil
 }

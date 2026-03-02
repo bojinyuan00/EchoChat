@@ -13,6 +13,9 @@ import (
 	"github.com/echochat/backend/app/auth/controller"
 	"github.com/echochat/backend/app/auth/dao"
 	"github.com/echochat/backend/app/auth/service"
+	controller3 "github.com/echochat/backend/app/contact/controller"
+	dao3 "github.com/echochat/backend/app/contact/dao"
+	service3 "github.com/echochat/backend/app/contact/service"
 	"github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/db"
@@ -45,6 +48,10 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	hub := ws.ProvideHub()
 	pubSub := ws.ProvidePubSub(client, hub)
 	handler := ws.ProvideWSHandler(hub, pubSub, jwtConfig)
-	app := NewApp(cfg, gormDB, client, authService, authController, adminAuthController, userManageController, handler, hub, pubSub)
+	friendshipDAO := dao3.NewFriendshipDAO(gormDB)
+	friendGroupDAO := dao3.NewFriendGroupDAO(gormDB)
+	contactService := service3.NewContactService(friendshipDAO, friendGroupDAO, pubSub)
+	contactController := controller3.NewContactController(contactService)
+	app := NewApp(cfg, gormDB, client, authService, authController, adminAuthController, userManageController, handler, hub, pubSub, contactController)
 	return app, nil
 }

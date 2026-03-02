@@ -6,6 +6,7 @@ import (
 	adminController "github.com/echochat/backend/app/admin/controller"
 	authController "github.com/echochat/backend/app/auth/controller"
 	"github.com/echochat/backend/app/auth/service"
+	contactController "github.com/echochat/backend/app/contact/controller"
 	wsApp "github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/db"
@@ -27,6 +28,7 @@ type App struct {
 	WSHandler             *wsApp.Handler                              // WebSocket 连接处理器
 	Hub                   *ws.Hub                                     // WebSocket Hub 连接管理
 	PubSub                *ws.PubSub                                  // Redis Pub/Sub 消息路由
+	ContactController     *contactController.ContactController        // 联系人控制器
 }
 
 // NewApp 创建应用实例
@@ -41,6 +43,7 @@ func NewApp(
 	wsHandler *wsApp.Handler,
 	hub *ws.Hub,
 	pubsub *ws.PubSub,
+	contactCtrl *contactController.ContactController,
 ) *App {
 	return &App{
 		Config:                cfg,
@@ -53,6 +56,7 @@ func NewApp(
 		WSHandler:             wsHandler,
 		Hub:                   hub,
 		PubSub:                pubsub,
+		ContactController:     contactCtrl,
 	}
 }
 
