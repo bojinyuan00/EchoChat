@@ -52,10 +52,8 @@ service.interceptors.response.use(
       const { status, data } = error.response
       if (status === 401) {
         const isOnLoginPage = router.currentRoute.value.path === '/login'
-        if (isOnLoginPage) {
-          ElMessage.error(data?.message || '账号或密码错误')
-        } else {
-          ElMessage.error('登录已过期，请重新登录')
+        ElMessage.error(data?.message || '登录已过期，请重新登录')
+        if (!isOnLoginPage) {
           localStorage.removeItem('admin_token')
           localStorage.removeItem('admin_user')
           router.push('/login')

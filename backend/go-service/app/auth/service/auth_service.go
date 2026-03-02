@@ -139,11 +139,11 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest, clientIP
 		}
 	}()
 
-	// 按用户名或邮箱查找用户
+	// 按用户名或邮箱查找用户（用户不存在时统一返回密码错误，防止枚举攻击）
 	user, findErr := s.userDAO.FindByAccount(ctx, req.Account)
 	if findErr != nil {
 		if errors.Is(findErr, gorm.ErrRecordNotFound) {
-			err = ErrUserNotFound
+			err = ErrPasswordWrong
 		} else {
 			err = findErr
 		}

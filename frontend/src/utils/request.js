@@ -73,18 +73,16 @@ const request = (options) => {
             reject(data)
           }
         } else if (statusCode === 401) {
-          // Token 过期或无效，清除本地 Token 并跳转登录页
-          removeToken()
-          uni.showToast({
-            title: '登录已过期，请重新登录',
-            icon: 'none',
-            duration: 2000
-          })
-          // 延迟跳转，让 Toast 有时间显示
-          setTimeout(() => {
-            uni.reLaunch({ url: '/pages/auth/login' })
-          }, 1500)
-          reject({ code: 401, message: '认证已失效' })
+          const isAuthEndpoint = /\/auth\/(login|register)$/.test(options.url)
+          const message = data?.message || '登录已过期，请重新登录'
+          uni.showToast({ title: message, icon: 'none', duration: 2000 })
+          if (!isAuthEndpoint) {
+            removeToken()
+            setTimeout(() => {
+              uni.reLaunch({ url: '/pages/auth/login' })
+            }, 1500)
+          }
+          reject({ code: 401, message })
         } else if (statusCode === 403) {
           uni.showToast({
             title: data.message || '没有访问权限',
