@@ -120,6 +120,7 @@ EchoChat/
 2. uni-app 的 `tabBar.custom: true` 配合自定义 TabBar 组件使用
 3. 管理端和前台的 localStorage key 通过前缀隔离（`admin_` vs `echo_`）
 4. Go 依赖版本需匹配 Go 1.23.12，不要随意升级 Go 工具链
+5. `.gitignore` 已配置忽略：`.cursor/`、`.vite/`、`node_modules/`、`dist/`、`*.png`（根目录截图）、`logs/` 等
 
 ---
 
