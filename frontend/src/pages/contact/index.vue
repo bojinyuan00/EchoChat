@@ -116,6 +116,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useContactStore } from '@/store/contact'
 import { useWebSocketStore } from '@/store/websocket'
 import { useUserStore } from '@/store/user'
+import { getAvatarColor, getInitial } from '@/utils/avatar'
 import CustomTabBar from '@/components/CustomTabBar.vue'
 
 const contactStore = useContactStore()
@@ -124,19 +125,6 @@ const userStore = useUserStore()
 
 const searchKeyword = ref('')
 const loading = ref(true)
-
-const AVATAR_COLORS = ['#7C3AED', '#2563EB', '#0891B2', '#059669', '#D97706', '#DC2626', '#7C3AED', '#4F46E5']
-
-const getAvatarColor = (name) => {
-  if (!name) return AVATAR_COLORS[0]
-  const code = name.charCodeAt(0)
-  return AVATAR_COLORS[code % AVATAR_COLORS.length]
-}
-
-const getInitial = (name) => {
-  if (!name) return '?'
-  return name.charAt(0).toUpperCase()
-}
 
 const filteredFriends = computed(() => {
   if (!searchKeyword.value) return contactStore.friendList

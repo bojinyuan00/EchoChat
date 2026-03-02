@@ -33,7 +33,10 @@ func (s *ContactManageService) GetAllFriendships(ctx context.Context, page, page
 	logs.Debug(ctx, funcName, "管理端查询好友关系")
 
 	var total int64
-	s.db.WithContext(ctx).Model(&model.Friendship{}).Count(&total)
+	if err := s.db.WithContext(ctx).Model(&model.Friendship{}).Count(&total).Error; err != nil {
+		logs.Error(ctx, funcName, "统计好友关系总数失败", zap.Error(err))
+		return nil, 0, err
+	}
 
 	var results []AdminFriendship
 	offset := (page - 1) * pageSize
@@ -60,8 +63,11 @@ func (s *ContactManageService) DeleteFriendship(ctx context.Context, friendshipI
 	}
 
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		tx.Where("user_id = ? AND friend_id = ?", f.UserID, f.FriendID).Delete(&model.Friendship{})
-		tx.Where("user_id = ? AND friend_id = ?", f.FriendID, f.UserID).Delete(&model.Friendship{})
-		return nil
+		if err := tx.Where("user_id = ? AND friend_id = ?", f.UserID, f.FriendID).
+			Delete(&model.Friendship{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("user_id = ? AND friend_id = ?", f.FriendID, f.UserID).
+			Delete(&model.Friendship{}).Error
 	})
 }

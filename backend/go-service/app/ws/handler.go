@@ -15,29 +15,37 @@ import (
 	"go.uber.org/zap"
 )
 
+// TokenValidator 有状态 JWT 验证接口（检查 Token 是否在 Redis 中有效）
+// 由 auth.AuthService 实现，用于防止已登出用户建立 WebSocket 连接
+type TokenValidator interface {
+	ValidateAccessToken(ctx context.Context, userID int64, clientType, token string) bool
+}
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // 开发阶段允许所有来源，生产环境需限制
+		return true // TODO: 生产环境通过配置限制 allowed origins
 	},
 }
 
 // Handler WebSocket 连接处理器
 type Handler struct {
-	hub           *ws.Hub
-	pubsub        *ws.PubSub
-	jwtCfg        *config.JWTConfig
-	onlineService *OnlineService
+	hub            *ws.Hub
+	pubsub         *ws.PubSub
+	jwtCfg         *config.JWTConfig
+	onlineService  *OnlineService
+	tokenValidator TokenValidator
 }
 
 // NewHandler 创建 WebSocket Handler 实例
-func NewHandler(hub *ws.Hub, pubsub *ws.PubSub, jwtCfg *config.JWTConfig, onlineService *OnlineService) *Handler {
+func NewHandler(hub *ws.Hub, pubsub *ws.PubSub, jwtCfg *config.JWTConfig, onlineService *OnlineService, tokenValidator TokenValidator) *Handler {
 	return &Handler{
-		hub:           hub,
-		pubsub:        pubsub,
-		jwtCfg:        jwtCfg,
-		onlineService: onlineService,
+		hub:            hub,
+		pubsub:         pubsub,
+		jwtCfg:         jwtCfg,
+		onlineService:  onlineService,
+		tokenValidator: tokenValidator,
 	}
 }
 
@@ -59,6 +67,17 @@ func (h *Handler) Upgrade(c *gin.Context) {
 		return
 	}
 
+	clientType := claims.ClientType
+	if clientType == "" {
+		clientType = "frontend"
+	}
+	if h.tokenValidator != nil && !h.tokenValidator.ValidateAccessToken(c.Request.Context(), claims.UserID, clientType, token) {
+		logs.Warn(nil, funcName, "WebSocket Token 已失效（Redis 校验）",
+			zap.Int64("user_id", claims.UserID))
+		utils.ResponseUnauthorized(c, "认证已失效，请重新登录")
+		return
+	}
+
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		logs.Error(nil, funcName, "WebSocket 升级失败",
@@ -68,6 +87,11 @@ func (h *Handler) Upgrade(c *gin.Context) {
 
 	client := ws.NewClient(h.hub, conn, claims.UserID)
 	client.SetOnDisconnect(func(userID int64) {
+		if client.IsClosedByHub() {
+			logs.Info(nil, "ws.handler.onDisconnect", "连接被 Hub 踢出（重复连接），跳过下线清理",
+				zap.Int64("user_id", userID))
+			return
+		}
 		h.pubsub.Unsubscribe(userID)
 		h.onlineService.UserOffline(context.Background(), userID)
 	})
@@ -97,7 +121,11 @@ func (h *Handler) createReadHandler(userID int64) ws.MessageHandler {
 		case "heartbeat":
 			h.onlineService.HeartbeatRenew(context.Background(), userID)
 			resp := ws.NewResponse(msg.Event, msg.Seq, 0, "pong", nil)
-			data, _ := ws.MarshalResponse(resp)
+			data, err := ws.MarshalResponse(resp)
+			if err != nil {
+				logs.Error(nil, funcName, "序列化心跳响应失败", zap.Error(err))
+				return
+			}
 			client.Send(data)
 		default:
 			resp := ws.NewResponse(msg.Event, msg.Seq, 0, "ok", nil)

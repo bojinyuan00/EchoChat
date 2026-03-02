@@ -196,9 +196,11 @@ func (d *FriendshipDAO) BlockUser(ctx context.Context, userID, targetID int64) e
 		zap.Int64("user_id", userID), zap.Int64("target_id", targetID))
 
 	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		tx.Where("(user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)",
+		if err := tx.Where("(user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)",
 			userID, targetID, targetID, userID).
-			Delete(&model.Friendship{})
+			Delete(&model.Friendship{}).Error; err != nil {
+			return err
+		}
 
 		block := &model.Friendship{
 			UserID:   userID,
@@ -322,6 +324,23 @@ func (d *FriendshipDAO) GetFriendIDs(ctx context.Context, userID int64) ([]int64
 		Where("user_id = ? AND status = ?", userID, constants.FriendshipStatusAccepted).
 		Pluck("friend_id", &ids).Error
 	return ids, err
+}
+
+// GetUsersByIDs 批量查询用户信息（仅返回 id/username/nickname/avatar）
+func (d *FriendshipDAO) GetUsersByIDs(ctx context.Context, userIDs []int64) ([]authModel.User, error) {
+	funcName := "dao.friendship_dao.GetUsersByIDs"
+	logs.Debug(ctx, funcName, "批量查询用户信息", zap.Int("count", len(userIDs)))
+
+	var users []authModel.User
+	err := d.db.WithContext(ctx).
+		Model(&authModel.User{}).
+		Select("id, username, nickname, avatar").
+		Where("id IN ?", userIDs).
+		Find(&users).Error
+	if err != nil {
+		logs.Error(ctx, funcName, "批量查询用户信息失败", zap.Error(err))
+	}
+	return users, err
 }
 
 // CountFriendsByGroup 统计每个分组的好友数

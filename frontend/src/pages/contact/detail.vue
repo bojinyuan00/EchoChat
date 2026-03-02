@@ -66,24 +66,13 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useContactStore } from '@/store/contact'
+import { getAvatarColor, getInitial } from '@/utils/avatar'
 
 const contactStore = useContactStore()
 const loading = ref(true)
 const friend = ref(null)
 const userId = ref(0)
 const processing = ref(false)
-
-const AVATAR_COLORS = ['#7C3AED', '#2563EB', '#0891B2', '#059669', '#D97706', '#DC2626', '#4F46E5']
-
-const getAvatarColor = (name) => {
-  if (!name) return AVATAR_COLORS[0]
-  return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length]
-}
-
-const getInitial = (name) => {
-  if (!name) return '?'
-  return name.charAt(0).toUpperCase()
-}
 
 const currentGroupName = computed(() => {
   if (!friend.value || !friend.value.group_id) return '默认分组'
@@ -128,7 +117,7 @@ const editRemark = () => {
 }
 
 const selectGroup = () => {
-  const groups = [{ id: 0, name: '默认分组' }, ...contactStore.groups]
+  const groups = [{ id: null, name: '默认分组' }, ...contactStore.groups]
   const names = groups.map(g => g.name)
 
   uni.showActionSheet({

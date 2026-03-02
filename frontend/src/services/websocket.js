@@ -89,10 +89,18 @@ class WebSocketService {
    * @returns {number} 消息序号
    */
   send(event, data = {}) {
+    // #ifdef H5
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.warn('[WS] 连接未就绪，无法发送')
       return -1
     }
+    // #endif
+    // #ifndef H5
+    if (!this.ws) {
+      console.warn('[WS] 连接未就绪，无法发送')
+      return -1
+    }
+    // #endif
 
     this.seq++
     const msg = JSON.stringify({

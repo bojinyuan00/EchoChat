@@ -68,22 +68,11 @@
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
 import { useContactStore } from '@/store/contact'
+import { getAvatarColor, getInitial } from '@/utils/avatar'
 
 const contactStore = useContactStore()
 const loading = ref(true)
 const processingMap = reactive({})
-
-const AVATAR_COLORS = ['#7C3AED', '#2563EB', '#0891B2', '#059669', '#D97706', '#DC2626', '#4F46E5']
-
-const getAvatarColor = (name) => {
-  if (!name) return AVATAR_COLORS[0]
-  return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length]
-}
-
-const getInitial = (name) => {
-  if (!name) return '?'
-  return name.charAt(0).toUpperCase()
-}
 
 const formatTime = (dateStr) => {
   if (!dateStr) return ''

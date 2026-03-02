@@ -2,6 +2,7 @@ package ws
 
 import (
 	"encoding/json"
+	"sync/atomic"
 	"time"
 
 	"github.com/echochat/backend/pkg/logs"
@@ -28,6 +29,7 @@ type Client struct {
 	send         chan []byte       // 待发送消息缓冲队列
 	UserID       int64             // 关联的用户 ID
 	onDisconnect DisconnectHandler // 断线回调（清理在线状态等）
+	closedByHub  int32             // 原子标记：是否被 Hub 主动踢出（用于避免重复连接时的竞态清理）
 }
 
 // NewClient 创建客户端实例
@@ -43,6 +45,18 @@ func NewClient(hub *Hub, conn *websocket.Conn, userID int64) *Client {
 // SetOnDisconnect 设置断线回调
 func (c *Client) SetOnDisconnect(handler DisconnectHandler) {
 	c.onDisconnect = handler
+}
+
+// SetClosedByHub 标记此连接被 Hub 主动关闭（重复连接踢出场景）
+// 线程安全，使用 atomic 操作
+func (c *Client) SetClosedByHub() {
+	atomic.StoreInt32(&c.closedByHub, 1)
+}
+
+// IsClosedByHub 检查此连接是否被 Hub 主动关闭
+// 断线回调中使用此方法判断是否需要执行下线清理
+func (c *Client) IsClosedByHub() bool {
+	return atomic.LoadInt32(&c.closedByHub) == 1
 }
 
 // MessageHandler 消息处理回调函数类型

@@ -81,9 +81,11 @@ func (d *FriendGroupDAO) DeleteGroup(ctx context.Context, groupID int64, userID 
 		zap.Int64("group_id", groupID), zap.Int64("user_id", userID))
 
 	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		tx.Model(&model.Friendship{}).
+		if err := tx.Model(&model.Friendship{}).
 			Where("user_id = ? AND group_id = ?", userID, groupID).
-			Update("group_id", nil)
+			Update("group_id", nil).Error; err != nil {
+			return err
+		}
 
 		result := tx.Where("id = ? AND user_id = ?", groupID, userID).
 			Delete(&model.FriendGroup{})

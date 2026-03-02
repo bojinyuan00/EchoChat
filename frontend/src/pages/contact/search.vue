@@ -110,6 +110,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import contactApi from '@/api/contact'
 import { useContactStore } from '@/store/contact'
+import { getAvatarColor, getInitial } from '@/utils/avatar'
 
 const contactStore = useContactStore()
 
@@ -121,18 +122,6 @@ const recommendLoading = ref(true)
 const recommendations = ref([])
 const addingMap = reactive({})
 
-const AVATAR_COLORS = ['#7C3AED', '#2563EB', '#0891B2', '#059669', '#D97706', '#DC2626', '#4F46E5']
-
-const getAvatarColor = (name) => {
-  if (!name) return AVATAR_COLORS[0]
-  return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length]
-}
-
-const getInitial = (name) => {
-  if (!name) return '?'
-  return name.charAt(0).toUpperCase()
-}
-
 const doSearch = async () => {
   const kw = keyword.value.trim()
   if (!kw) {
@@ -143,7 +132,7 @@ const doSearch = async () => {
   searchLoading.value = true
   try {
     const res = await contactApi.searchUsers(kw)
-    searchResults.value = res.data || []
+    searchResults.value = res.data?.list || []
   } catch (e) {
     console.error('搜索用户失败', e)
     searchResults.value = []

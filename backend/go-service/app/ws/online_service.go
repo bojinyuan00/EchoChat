@@ -25,19 +25,26 @@ type UserStatus struct {
 	IP        string `json:"ip"`         // 连接 IP
 }
 
+// FriendIDsGetter 获取好友 ID 列表的接口（避免直接依赖 contact 模块）
+type FriendIDsGetter interface {
+	GetFriendIDs(ctx context.Context, userID int64) ([]int64, error)
+}
+
 // OnlineService 在线状态管理服务
 type OnlineService struct {
-	rdb    *redis.Client
-	hub    *ws.Hub
-	pubsub *ws.PubSub
+	rdb           *redis.Client
+	hub           *ws.Hub
+	pubsub        *ws.PubSub
+	friendGetter  FriendIDsGetter
 }
 
 // NewOnlineService 创建 OnlineService 实例
-func NewOnlineService(rdb *redis.Client, hub *ws.Hub, pubsub *ws.PubSub) *OnlineService {
+func NewOnlineService(rdb *redis.Client, hub *ws.Hub, pubsub *ws.PubSub, friendGetter FriendIDsGetter) *OnlineService {
 	return &OnlineService{
-		rdb:    rdb,
-		hub:    hub,
-		pubsub: pubsub,
+		rdb:          rdb,
+		hub:          hub,
+		pubsub:       pubsub,
+		friendGetter: friendGetter,
 	}
 }
 
@@ -53,7 +60,11 @@ func (s *OnlineService) UserOnline(ctx context.Context, userID int64, ip string)
 		ConnectAt: time.Now().Format("2006-01-02 15:04:05"),
 		IP:        ip,
 	}
-	statusJSON, _ := json.Marshal(status)
+	statusJSON, err := json.Marshal(status)
+	if err != nil {
+		logs.Error(ctx, funcName, "序列化用户状态失败", zap.Int64("user_id", userID), zap.Error(err))
+		return
+	}
 	pipe.Set(ctx, statusKey(userID), statusJSON, statusTTL)
 
 	if _, err := pipe.Exec(ctx); err != nil {
@@ -63,6 +74,15 @@ func (s *OnlineService) UserOnline(ctx context.Context, userID int64, ip string)
 	}
 
 	logs.Info(ctx, funcName, "用户上线", zap.Int64("user_id", userID))
+
+	if s.friendGetter != nil {
+		friendIDs, err := s.friendGetter.GetFriendIDs(ctx, userID)
+		if err != nil {
+			logs.Warn(ctx, funcName, "获取好友列表失败，跳过上线通知", zap.Error(err))
+		} else if len(friendIDs) > 0 {
+			s.NotifyFriendsStatusChange(ctx, userID, true, friendIDs)
+		}
+	}
 }
 
 // UserOffline 用户下线：清除 Redis + 通知在线好友
@@ -79,11 +99,23 @@ func (s *OnlineService) UserOffline(ctx context.Context, userID int64) {
 	}
 
 	logs.Info(ctx, funcName, "用户下线", zap.Int64("user_id", userID))
+
+	if s.friendGetter != nil {
+		friendIDs, err := s.friendGetter.GetFriendIDs(ctx, userID)
+		if err != nil {
+			logs.Warn(ctx, funcName, "获取好友列表失败，跳过下线通知", zap.Error(err))
+		} else if len(friendIDs) > 0 {
+			s.NotifyFriendsStatusChange(ctx, userID, false, friendIDs)
+		}
+	}
 }
 
 // HeartbeatRenew 心跳续期：延长状态 TTL
 func (s *OnlineService) HeartbeatRenew(ctx context.Context, userID int64) {
-	s.rdb.Expire(ctx, statusKey(userID), statusTTL)
+	if err := s.rdb.Expire(ctx, statusKey(userID), statusTTL).Err(); err != nil {
+		logs.Warn(ctx, "ws.online_service.HeartbeatRenew", "心跳续期失败",
+			zap.Int64("user_id", userID), zap.Error(err))
+	}
 }
 
 // IsOnline 检查用户是否在线（Redis 查询）

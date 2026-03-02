@@ -20,17 +20,23 @@ export const useWebSocketStore = defineStore('websocket', () => {
   /** 是否已连接 */
   const isConnected = computed(() => connected.value)
 
+  /** 防止 _connected/_disconnected 监听器重复注册 */
+  let _initialized = false
+
   /**
    * 初始化 WebSocket 连接
    * @param {string} [token] - JWT Token
    */
   const connect = (token) => {
-    wsService.on('_connected', () => {
-      connected.value = true
-    })
-    wsService.on('_disconnected', () => {
-      connected.value = false
-    })
+    if (!_initialized) {
+      wsService.on('_connected', () => {
+        connected.value = true
+      })
+      wsService.on('_disconnected', () => {
+        connected.value = false
+      })
+      _initialized = true
+    }
     wsService.connect(token)
   }
 

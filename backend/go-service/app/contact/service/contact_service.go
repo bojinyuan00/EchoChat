@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 
 	"github.com/echochat/backend/app/contact/dao"
 	"github.com/echochat/backend/app/dto"
@@ -287,7 +288,7 @@ func (s *ContactService) SearchUsers(ctx context.Context, userID int64, keyword 
 	return result, total, nil
 }
 
-// GetRecommendFriends 好友推荐（基于共同好友）
+// GetRecommendFriends 好友推荐（基于共同好友数量排序）
 func (s *ContactService) GetRecommendFriends(ctx context.Context, userID int64) ([]dto.SearchUserInfo, error) {
 	funcName := "service.contact_service.GetRecommendFriends"
 	logs.Debug(ctx, funcName, "好友推荐", zap.Int64("user_id", userID))
@@ -322,31 +323,47 @@ func (s *ContactService) GetRecommendFriends(ctx context.Context, userID int64) 
 		id    int64
 		count int
 	}
-	var candidates []candidate
+	candidates := make([]candidate, 0, len(candidateCount))
 	for id, count := range candidateCount {
 		candidates = append(candidates, candidate{id: id, count: count})
 	}
 
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].count > candidates[j].count
+	})
+
 	limit := 10
 	if len(candidates) > limit {
-		for i := 0; i < limit; i++ {
-			for j := i + 1; j < len(candidates); j++ {
-				if candidates[j].count > candidates[i].count {
-					candidates[i], candidates[j] = candidates[j], candidates[i]
-				}
-			}
-		}
 		candidates = candidates[:limit]
+	}
+
+	candidateIDs := make([]int64, len(candidates))
+	for i, c := range candidates {
+		candidateIDs[i] = c.id
+	}
+
+	users, err := s.friendshipDAO.GetUsersByIDs(ctx, candidateIDs)
+	if err != nil {
+		logs.Error(ctx, funcName, "批量查询推荐用户信息失败", zap.Error(err))
+		return nil, err
+	}
+
+	userMap := make(map[int64]dto.SearchUserInfo, len(users))
+	for _, u := range users {
+		userMap[u.ID] = dto.SearchUserInfo{
+			ID:       u.ID,
+			Username: u.Username,
+			Nickname: u.Nickname,
+			Avatar:   u.Avatar,
+			IsFriend: false,
+		}
 	}
 
 	result := make([]dto.SearchUserInfo, 0, len(candidates))
 	for _, c := range candidates {
-		users, _, err := s.friendshipDAO.SearchUsers(ctx, "", 0, 1, 1)
-		_ = users
-		_ = err
-		result = append(result, dto.SearchUserInfo{
-			ID: c.id,
-		})
+		if info, ok := userMap[c.id]; ok {
+			result = append(result, info)
+		}
 	}
 
 	return result, nil

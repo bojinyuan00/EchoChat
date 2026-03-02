@@ -1,10 +1,11 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-03-02（Phase 2a 完成 - WebSocket 实时通讯与联系人管理）
-> **当前阶段**：Phase 2a - WebSocket 实时通讯与联系人管理
+> **最后更新**：2026-03-02（Phase 2a 代码审查全面修复 + Phase 2b 架构建议）
+> **当前阶段**：Phase 2a 已完成，Phase 2b 待设计
 > **当前分支**：`feature/phase2a-websocket-contacts`
 > **实施计划**：`phase_2a_实施计划_221003ce.plan.md`
 > **设计文档**：`docs/plans/2026-03-02-phase2a-design.md`
+> **Phase 2b 架构备忘**：`docs/plans/2026-03-02-phase2b-architecture-notes.md`
 
 ---
 
@@ -200,7 +201,46 @@ cd frontend && npm run dev:h5
 
 ---
 
-## 八、下一阶段规划
+## 八、Phase 2a 后期 Bug 修复记录（2026-03-02）
+
+### 修复 1: GetRecommendFriends 返回空数据
+- **问题**：对每个候选人调用 `SearchUsers` 并忽略结果，返回的 DTO 只有 ID 字段
+- **修复**：FriendshipDAO 新增 `GetUsersByIDs` 批量查询方法，Service 层收集所有候选人 ID 后一次查询，正确填充 Username/Nickname/Avatar
+- **改进**：排序算法从手动冒泡改为 `sort.Slice`
+
+### 修复 2: 上下线好友通知未实现
+- **问题**：`UserOnline`/`UserOffline` 没有调用已有的 `NotifyFriendsStatusChange` 方法
+- **修复**：OnlineService 新增 `FriendIDsGetter` 接口依赖（由 FriendshipDAO 隐式实现），在上线/下线时获取好友列表并推送状态变更通知
+- **架构**：使用接口注入避免 ws 包直接依赖 contact 包
+
+### 修复 3: 管理端在线用户 API 缺少用户名
+- **问题**：`GetOnlineUsers` 只返回 `[]int64`，管理端无法展示用户名
+- **修复**：OnlineManageService 注入 `*gorm.DB`，返回 `[]OnlineUserInfo`（含 user_id + username），查询 auth_users 表补充信息
+
+### 修复 4: WebSocket Token 未校验 Redis 状态（I2）
+- **问题**：`ws.handler.Upgrade` 只校验 JWT 签名和过期时间，未检查 Token 是否仍在 Redis 中有效（已登出用户仍可建立 WS 连接）
+- **修复**：新增 `TokenValidator` 接口，由 `AuthService` 实现；`Upgrade` 流程增加 Redis Token 校验步骤
+- **架构**：使用接口注入避免 ws 包直接依赖 auth 包
+
+### 修复 5: HeartbeatRenew Redis 错误未检查（M6）
+- **问题**：`HeartbeatRenew` 中 `rdb.Expire` 调用结果被忽略
+- **修复**：增加错误检查与日志记录
+
+### 修复 6: json.Marshal 错误未处理（M2）
+- **问题**：`handler.go` 心跳/默认响应的 `MarshalResponse` 和 `online_service.go` 中 `json.Marshal` 错误被忽略
+- **修复**：所有 Marshal 调用增加错误检查，失败时记录日志并提前返回
+
+### 修复 7: Controller 统一错误处理（I8）
+- **问题**：`contact_controller.go` 中多数 endpoint 使用硬编码的 `utils.ResponseError`，未经过 `handleError` 业务错误映射
+- **修复**：所有 13 个 endpoint 统一走 `handleError`，确保已知业务错误（404/400/403）被正确返回
+
+### 修复 8: 管理端 Controller 注释与日志规范化（M1）
+- **问题**：`online_controller.go` 和 `contact_manage_controller.go` 缺少包注释、函数注释和 `funcName` 日志模式
+- **修复**：补全所有注释，增加 `funcName` + `logs.Error/Info` 结构化日志
+
+---
+
+## 九、下一阶段规划
 
 ### Phase 2b - 即时通讯消息系统
 - 会话管理（单聊/群聊）

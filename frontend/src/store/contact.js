@@ -144,8 +144,14 @@ export const useContactStore = defineStore('contact', () => {
     if (friend) friend.is_online = online
   }
 
-  /** 初始化 WebSocket 事件监听 */
+  /** 防止 WebSocket 事件监听重复注册 */
+  let _wsInitialized = false
+
+  /** 初始化 WebSocket 事件监听（幂等，多次调用只注册一次） */
   const initWsListeners = () => {
+    if (_wsInitialized) return
+    _wsInitialized = true
+
     wsService.on('notify.friend.request', () => {
       fetchPendingRequests()
     })
