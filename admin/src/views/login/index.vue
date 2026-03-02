@@ -10,7 +10,7 @@
   - Loading 状态防重复提交
   - 登录成功跳转仪表盘
   
-  对应 API：POST /api/v1/auth/login
+  对应 API：POST /api/v1/admin/auth/login
 -->
 <template>
   <div class="login-page">

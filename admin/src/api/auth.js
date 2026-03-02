@@ -1,8 +1,8 @@
 /**
  * 管理后台认证 API
  *
- * 登录接口：/api/v1/admin/auth/login（管理端专用，后端检查管理员角色）
- * 其他接口：/api/v1/auth/*（与前台共用，通过 JWT 中的 client_type 区分）
+ * 所有接口均使用管理端专属路由：/api/v1/admin/auth/*
+ * 后端对管理端路由做 JWT + admin 角色双重检查
  *
  * Token 在 Redis 中按 client_type 隔离存储：
  * - 管理端：echo:auth:token:admin:{user_id}
@@ -23,16 +23,16 @@ export const login = (data) => {
 
 /**
  * 管理员登出
- * POST /api/v1/auth/logout
+ * POST /api/v1/admin/auth/logout
  */
 export const logout = () => {
-  return request.post('/api/v1/auth/logout')
+  return request.post('/api/v1/admin/auth/logout')
 }
 
 /**
  * 获取管理员个人信息
- * GET /api/v1/auth/profile
+ * GET /api/v1/admin/auth/profile
  */
 export const getProfile = () => {
-  return request.get('/api/v1/auth/profile')
+  return request.get('/api/v1/admin/auth/profile')
 }
