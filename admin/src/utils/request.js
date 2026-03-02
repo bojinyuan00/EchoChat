@@ -51,10 +51,15 @@ service.interceptors.response.use(
     if (error.response) {
       const { status, data } = error.response
       if (status === 401) {
-        ElMessage.error('登录已过期，请重新登录')
-        localStorage.removeItem('admin_token')
-        localStorage.removeItem('admin_user')
-        router.push('/login')
+        const isOnLoginPage = router.currentRoute.value.path === '/login'
+        if (isOnLoginPage) {
+          ElMessage.error(data?.message || '账号或密码错误')
+        } else {
+          ElMessage.error('登录已过期，请重新登录')
+          localStorage.removeItem('admin_token')
+          localStorage.removeItem('admin_user')
+          router.push('/login')
+        }
       } else if (status === 403) {
         ElMessage.error(data?.message || '没有访问权限')
       } else {
