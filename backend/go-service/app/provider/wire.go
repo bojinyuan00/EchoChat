@@ -4,6 +4,7 @@
 package provider
 
 import (
+	"github.com/echochat/backend/app/admin"
 	"github.com/echochat/backend/app/auth"
 	"github.com/echochat/backend/config"
 	"github.com/google/wire"
@@ -14,6 +15,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	wire.Build(
 		InfraSet,
 		auth.AuthSet,
+		admin.AdminSet,
 	)
 	return nil, nil
 }

@@ -7,6 +7,9 @@
 package provider
 
 import (
+	adminController "github.com/echochat/backend/app/admin/controller"
+	adminDAO "github.com/echochat/backend/app/admin/dao"
+	adminService "github.com/echochat/backend/app/admin/service"
 	"github.com/echochat/backend/app/auth/controller"
 	"github.com/echochat/backend/app/auth/dao"
 	"github.com/echochat/backend/app/auth/service"
@@ -35,6 +38,9 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	authService := service.NewAuthService(userDAO, roleDAO, jwtConfig, tokenStore)
 	authController := controller.NewAuthController(authService)
 	adminAuthController := controller.NewAdminAuthController(authService)
-	app := NewApp(cfg, gormDB, client, authService, authController, adminAuthController)
+	userManageDAO := adminDAO.NewUserManageDAO(gormDB)
+	userManageService := adminService.NewUserManageService(userManageDAO, userDAO, roleDAO)
+	userManageController := adminController.NewUserManageController(userManageService)
+	app := NewApp(cfg, gormDB, client, authService, authController, adminAuthController, userManageController)
 	return app, nil
 }

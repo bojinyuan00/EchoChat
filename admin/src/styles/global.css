@@ -1,0 +1,43 @@
+/**
+ * 管理后台全局样式
+ *
+ * 设计系统来源：design-system/echochat/MASTER.md（管理端适配）
+ * 色板：Primary #2563EB / Background #F8FAFC / Text #1E293B
+ * 
+ * 注意：管理端使用 Element Plus 组件库，
+ * 通过 CSS 变量覆盖 Element Plus 默认主题色以匹配设计系统
+ */
+
+:root {
+  /* 与前台统一品牌色，管理端基于 Element Plus 主题 */
+  --el-color-primary: #2563EB;
+  --el-color-primary-light-3: #60A5FA;
+  --el-color-primary-light-5: #93C5FD;
+  --el-color-primary-light-7: #BFDBFE;
+  --el-color-primary-light-8: #DBEAFE;
+  --el-color-primary-light-9: #EFF6FF;
+  --el-color-primary-dark-2: #1D4ED8;
+  --el-color-danger: #EF4444;
+  --el-color-success: #22C55E;
+  --el-color-warning: #F59E0B;
+  --el-color-info: #64748B;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  color: #1E293B;
+  background-color: #F0F2F5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}

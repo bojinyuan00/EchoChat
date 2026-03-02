@@ -1,48 +1,52 @@
+<!--
+  启动页 / 路由分发页
+  
+  功能：
+  - 判断用户登录状态（检查本地 Token）
+  - 已登录 → 跳转消息列表页（TabBar 首页）
+  - 未登录 → 跳转登录页
+  
+  此页面不展示 UI，仅作为路由分发入口
+-->
 <template>
-  <view class="content">
-    <image class="logo" src="/static/logo.png"></image>
-    <view class="text-area">
-      <text class="title">{{ title }}</text>
-    </view>
+  <view class="launch-page">
+    <text class="loading-text">加载中…</text>
   </view>
 </template>
 
 <script>
+/**
+ * 启动页逻辑
+ *
+ * 在 onLoad 生命周期中检查登录状态并重定向
+ * 使用 reLaunch 确保清除导航栈
+ */
+import { useUserStore } from '@/store/user'
+
 export default {
-  data() {
-    return {
-      title: 'Hello',
+  name: 'LaunchPage',
+  onLoad() {
+    const store = useUserStore()
+    if (store.isLoggedIn) {
+      uni.switchTab({ url: '/pages/chat/index' })
+    } else {
+      uni.reLaunch({ url: '/pages/auth/login' })
     }
-  },
-  onLoad() {},
-  methods: {},
+  }
 }
 </script>
 
-<style>
-.content {
+<style scoped>
+.launch-page {
+  min-height: 100vh;
+  background-color: #F8FAFC;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
 }
 
-.logo {
-  height: 200rpx;
-  width: 200rpx;
-  margin-top: 200rpx;
-  margin-left: auto;
-  margin-right: auto;
-  margin-bottom: 50rpx;
-}
-
-.text-area {
-  display: flex;
-  justify-content: center;
-}
-
-.title {
-  font-size: 36rpx;
-  color: #8f8f94;
+.loading-text {
+  font-size: 28rpx;
+  color: #94A3B8;
 }
 </style>

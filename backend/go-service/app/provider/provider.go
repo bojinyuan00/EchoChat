@@ -3,7 +3,8 @@
 package provider
 
 import (
-	"github.com/echochat/backend/app/auth/controller"
+	adminController "github.com/echochat/backend/app/admin/controller"
+	authController "github.com/echochat/backend/app/auth/controller"
 	"github.com/echochat/backend/app/auth/service"
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/db"
@@ -14,12 +15,13 @@ import (
 
 // App 应用根容器，持有基础设施组件和各模块的 Controller/Service
 type App struct {
-	Config             *config.Config
-	DB                 *gorm.DB
-	Redis              *redis.Client
-	AuthService        *service.AuthService              // Auth 认证服务
-	AuthController     *controller.AuthController        // 前台认证控制器
-	AdminAuthController *controller.AdminAuthController  // 后台认证控制器
+	Config                *config.Config
+	DB                    *gorm.DB
+	Redis                 *redis.Client
+	AuthService           *service.AuthService                        // Auth 认证服务
+	AuthController        *authController.AuthController              // 前台认证控制器
+	AdminAuthController   *authController.AdminAuthController         // 后台认证控制器
+	UserManageController  *adminController.UserManageController       // 管理端用户管理控制器
 }
 
 // NewApp 创建应用实例
@@ -28,16 +30,18 @@ func NewApp(
 	gormDB *gorm.DB,
 	redisClient *redis.Client,
 	authService *service.AuthService,
-	authCtrl *controller.AuthController,
-	adminAuthCtrl *controller.AdminAuthController,
+	authCtrl *authController.AuthController,
+	adminAuthCtrl *authController.AdminAuthController,
+	userManageCtrl *adminController.UserManageController,
 ) *App {
 	return &App{
-		Config:             cfg,
-		DB:                 gormDB,
-		Redis:              redisClient,
-		AuthService:        authService,
-		AuthController:     authCtrl,
-		AdminAuthController: adminAuthCtrl,
+		Config:                cfg,
+		DB:                    gormDB,
+		Redis:                 redisClient,
+		AuthService:           authService,
+		AuthController:        authCtrl,
+		AdminAuthController:   adminAuthCtrl,
+		UserManageController:  userManageCtrl,
 	}
 }
 

@@ -6,6 +6,7 @@ package router
 import (
 	"time"
 
+	"github.com/echochat/backend/app/admin"
 	"github.com/echochat/backend/app/auth"
 	"github.com/echochat/backend/app/provider"
 	"github.com/echochat/backend/pkg/middleware"
@@ -30,10 +31,10 @@ func Setup(engine *gin.Engine, app *provider.App) {
 
 	// --- 各模块路由注册 ---
 	auth.RegisterRoutes(engine, app.AuthController, app.AdminAuthController, jwtAuth)
+	admin.RegisterRoutes(engine, app.UserManageController, jwtAuth)
 
 	// [未来] im.RegisterRoutes(engine, app.ImController, jwtAuth)
 	// [未来] meeting.RegisterRoutes(engine, app.MeetingController, jwtAuth)
 	// [未来] contact.RegisterRoutes(engine, app.ContactController, jwtAuth)
 	// [未来] notify.RegisterRoutes(engine, app.NotifyController, jwtAuth)
-	// [未来] admin.RegisterRoutes(engine, app.AdminController, jwtAuth)
 }

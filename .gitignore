@@ -9,6 +9,7 @@ Thumbs.db
 # --- IDE ---
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 *~
@@ -53,3 +54,7 @@ build/
 # --- 测试覆盖率 ---
 coverage/
 *.coverprofile
+
+# --- Playwright 截图 ---
+*.png
+!design-system/**/*.png

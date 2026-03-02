@@ -32,6 +32,22 @@ services:
       timeout: 5s
       retries: 5
 
+  go-service:
+    build:
+      context: ../backend/go-service
+      dockerfile: Dockerfile
+    container_name: echochat-go-service
+    environment:
+      CONFIG_NAME: config.docker
+    ports:
+      - "8085:8085"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   pgdata:
   redisdata:

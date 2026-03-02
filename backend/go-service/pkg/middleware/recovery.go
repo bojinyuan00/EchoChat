@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"runtime/debug"
+	"time"
 
 	"github.com/echochat/backend/pkg/logs"
 	"github.com/echochat/backend/pkg/utils"
@@ -28,6 +29,7 @@ func Recovery() gin.HandlerFunc {
 					Code:    500,
 					Message: "服务内部错误",
 					TraceID: logs.GetTraceID(ctx),
+					Time:    time.Now().Format("2006-01-02 15:04:05"),
 				})
 			}
 		}()

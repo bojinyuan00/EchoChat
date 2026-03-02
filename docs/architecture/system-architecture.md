@@ -283,9 +283,38 @@ services:
 | **mediasoup** | 最高性能的开源 SFU，C++ 实现 |
 | **PostgreSQL 17** | 强一致性、JSONB 支持、性能优异 |
 | **Redis 7** | 实时状态存储、发布订阅、高速缓存 |
-| **uniapp (Vue 3)** | 一套代码多端运行（H5/App/小程序） |
-| **Element Plus** | Vue 3 生态最成熟的 PC 端组件库 |
+| **uniapp (Vue 3.4)** | 一套代码多端运行（H5/App/小程序），Vue 版本由 uni-app 框架锁定 |
+| **Element Plus** | Vue 3 生态最成熟的 PC 端组件库，管理端使用 |
 | **Docker Compose** | 轻量级容器编排，适合初期和开发环境 |
+
+### 7.1 前端技术栈版本策略
+
+系统包含两个独立前端项目，因框架约束，版本策略有所区别：
+
+| 前端项目 | 目录 | 框架 | Vue 版本 | 状态管理 | 原因 |
+|----------|------|------|---------|---------|------|
+| 前台用户端 | `frontend/` | uni-app 3.0 | 3.4.21（框架锁定） | Pinia 2.x | uni-app 尚未适配 Vue 3.5，Pinia 3.x 需要 Vue >= 3.5.11 |
+| 后台管理端 | `admin/` | Vue 3 + Element Plus | 3.5+（不受限） | Pinia 3.x | 独立 Vue 3 项目，可使用最新版本 |
+
+**npm 兼容性说明：** uni-app 的 peer dependency 链与 npm 7+ 的严格依赖解析存在冲突，`frontend/` 项目需在 `.npmrc` 中设置 `legacy-peer-deps=true`，这是 uni-app 社区的标准做法。
+
+**版本升级策略：** 当 uni-app 正式适配 Vue 3.5+ 后，可统一将前台的 Pinia 升级至 3.x，API 层面几乎无需改动（Pinia 2.x 与 3.x 的 `defineStore` API 完全兼容）。
+
+### 7.2 两端开发规范差异
+
+前台用户端和后台管理端是**完全独立**的前端项目，开发规范、依赖版本、构建方式不需要强制统一：
+
+| 维度 | 前台用户端 (`frontend/`) | 后台管理端 (`admin/`) |
+|------|------------------------|---------------------|
+| 框架 | uni-app 3.0（Vue 3.4.21） | Vue 3.5+ + Vite |
+| 状态管理 | Pinia 2.x（`pinia-plugin-persistedstate@3`） | Pinia 3.x（最新版） |
+| HTTP 客户端 | `uni.request` 封装 | Axios |
+| 路由 | `pages.json` + `uni.navigateTo/switchTab` | Vue Router 4 |
+| UI 组件 | 原生 uni-app 组件（`<view>`/`<text>`/`<input>`） | Element Plus |
+| 模块系统 | ES Module（Vite 要求） | ES Module（Vite 标准） |
+| npm 配置 | 需要 `.npmrc` 设置 `legacy-peer-deps=true` | 标准 npm 配置 |
+| 适配能力 | H5 / 小程序 / App / 桌面端 | 仅 PC 浏览器 |
+| 设计系统 | ui-ux-pro-max 生成的设计系统 | ui-ux-pro-max + Element Plus 主题 |
 
 ---
 

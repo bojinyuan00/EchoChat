@@ -1,0 +1,42 @@
+# ============================================================
+# EchoChat Docker 容器内配置
+# 与 config.dev.yaml 的区别：数据库和 Redis 地址使用 Docker 服务名
+# ============================================================
+
+server:
+  port: 8085
+  mode: debug
+
+database:
+  host: postgres
+  port: 5432
+  user: echochat
+  password: echochat_dev_2026
+  dbname: echochat
+  sslmode: disable
+  max_idle_conns: 10
+  max_open_conns: 100
+
+redis:
+  host: redis
+  port: 6379
+  password: ""
+  db: 0
+
+jwt:
+  secret: echochat-dev-jwt-secret-2026-please-change-in-production
+  access_expire_min: 120
+  refresh_expire_day: 7
+  issuer: echochat
+
+log:
+  level: debug
+  format: text
+  output_path: stdout
+  file:
+    enable: true
+    dir: logs
+    max_size: 50
+    max_backups: 10
+    max_age: 30
+    compress: false

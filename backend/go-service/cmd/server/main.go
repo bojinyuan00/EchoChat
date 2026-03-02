@@ -20,8 +20,12 @@ import (
 )
 
 func main() {
-	// 1. 加载配置
-	cfg, err := config.Load("config", "config.dev")
+	// 1. 加载配置（通过 CONFIG_NAME 环境变量指定配置文件名，默认 config.dev）
+	configName := os.Getenv("CONFIG_NAME")
+	if configName == "" {
+		configName = "config.dev"
+	}
+	cfg, err := config.Load("config", configName)
 	if err != nil {
 		fmt.Printf("加载配置失败: %v\n", err)
 		os.Exit(1)
