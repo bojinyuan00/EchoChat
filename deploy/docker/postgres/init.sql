@@ -1,6 +1,6 @@
 -- ============================================================
 -- EchoChat 数据库初始化脚本
--- 第一阶段：auth 模块表结构
+-- 包含模块：auth（用户认证）、contact（联系人）
 -- ============================================================
 
 -- ============================================================
@@ -91,3 +91,55 @@ VALUES ('super_admin', 'super_admin@echochat.com', '$2a$10$Osjn5JVXuEHhtPwBW5Lyo
 
 INSERT INTO auth_user_roles (user_id, role_id)
 VALUES (1, (SELECT id FROM auth_roles WHERE code = 'super_admin'));
+
+-- ============================================================
+-- contact_friendships: 好友关系表
+-- 双向存储：A→B 和 B→A 各一条记录，便于查询"我的好友列表"
+-- ============================================================
+CREATE TABLE contact_friendships (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     BIGINT   NOT NULL REFERENCES auth_users(id),
+    friend_id   BIGINT   NOT NULL REFERENCES auth_users(id),
+    remark      VARCHAR(50) DEFAULT '',
+    group_id    BIGINT   DEFAULT NULL,
+    status      SMALLINT NOT NULL DEFAULT 0,
+    message     VARCHAR(200) DEFAULT '',
+    created_at  TIMESTAMP(0) NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMP(0) NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, friend_id)
+);
+
+COMMENT ON TABLE  contact_friendships            IS '好友关系表，双向存储（A→B和B→A各一条记录）';
+COMMENT ON COLUMN contact_friendships.id         IS '记录唯一标识';
+COMMENT ON COLUMN contact_friendships.user_id    IS '发起方用户 ID';
+COMMENT ON COLUMN contact_friendships.friend_id  IS '好友用户 ID';
+COMMENT ON COLUMN contact_friendships.remark     IS '好友备注名，仅对当前用户可见';
+COMMENT ON COLUMN contact_friendships.group_id   IS '所属好友分组 ID，关联 contact_groups 表';
+COMMENT ON COLUMN contact_friendships.status     IS '好友关系状态：0=待确认（已发送申请），1=已接受（互为好友），2=已拒绝，3=已拉黑';
+COMMENT ON COLUMN contact_friendships.message    IS '好友申请附言';
+COMMENT ON COLUMN contact_friendships.created_at IS '记录创建时间（申请发送时间）';
+COMMENT ON COLUMN contact_friendships.updated_at IS '最后更新时间（状态变更时间）';
+
+CREATE INDEX idx_friendships_user_status ON contact_friendships (user_id, status);
+CREATE INDEX idx_friendships_friend_status ON contact_friendships (friend_id, status);
+
+-- ============================================================
+-- contact_groups: 好友分组表
+-- 每个用户可自定义好友分组
+-- ============================================================
+CREATE TABLE contact_groups (
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    BIGINT      NOT NULL REFERENCES auth_users(id),
+    name       VARCHAR(50) NOT NULL,
+    sort_order INT         NOT NULL DEFAULT 0,
+    created_at TIMESTAMP(0) NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE  contact_groups            IS '好友分组表，用户可自定义分组管理好友';
+COMMENT ON COLUMN contact_groups.id         IS '分组唯一标识';
+COMMENT ON COLUMN contact_groups.user_id    IS '所属用户 ID';
+COMMENT ON COLUMN contact_groups.name       IS '分组名称，如"同事""家人""朋友"等';
+COMMENT ON COLUMN contact_groups.sort_order IS '排序权重，数值越小越靠前';
+COMMENT ON COLUMN contact_groups.created_at IS '创建时间';
+
+CREATE INDEX idx_contact_groups_user ON contact_groups (user_id);
