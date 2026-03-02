@@ -24,7 +24,9 @@ type App struct {
 	AuthService           *service.AuthService                        // Auth 认证服务
 	AuthController        *authController.AuthController              // 前台认证控制器
 	AdminAuthController   *authController.AdminAuthController         // 后台认证控制器
-	UserManageController  *adminController.UserManageController       // 管理端用户管理控制器
+	UserManageController    *adminController.UserManageController       // 管理端用户管理控制器
+	OnlineController        *adminController.OnlineController           // 管理端在线监控控制器
+	ContactManageController *adminController.ContactManageController    // 管理端好友关系管理控制器
 	WSHandler             *wsApp.Handler                              // WebSocket 连接处理器
 	Hub                   *ws.Hub                                     // WebSocket Hub 连接管理
 	PubSub                *ws.PubSub                                  // Redis Pub/Sub 消息路由
@@ -41,6 +43,8 @@ func NewApp(
 	authCtrl *authController.AuthController,
 	adminAuthCtrl *authController.AdminAuthController,
 	userManageCtrl *adminController.UserManageController,
+	onlineCtrl *adminController.OnlineController,
+	contactManageCtrl *adminController.ContactManageController,
 	wsHandler *wsApp.Handler,
 	hub *ws.Hub,
 	pubsub *ws.PubSub,
@@ -54,7 +58,9 @@ func NewApp(
 		AuthService:           authService,
 		AuthController:        authCtrl,
 		AdminAuthController:   adminAuthCtrl,
-		UserManageController:  userManageCtrl,
+		UserManageController:    userManageCtrl,
+		OnlineController:        onlineCtrl,
+		ContactManageController: contactManageCtrl,
 		WSHandler:             wsHandler,
 		Hub:                   hub,
 		PubSub:                pubsub,

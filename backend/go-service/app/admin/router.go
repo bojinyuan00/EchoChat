@@ -12,7 +12,9 @@ import (
 // 所有管理端 API 需要 JWT + admin 角色双重中间件
 func RegisterRoutes(
 	r *gin.Engine,
-	ctrl *controller.UserManageController,
+	userCtrl *controller.UserManageController,
+	onlineCtrl *controller.OnlineController,
+	contactManageCtrl *controller.ContactManageController,
 	jwtAuth gin.HandlerFunc,
 ) {
 	// 管理端路由组：JWT 认证 + admin/super_admin 角色检查
@@ -20,13 +22,21 @@ func RegisterRoutes(
 	adminGroup.Use(jwtAuth, middleware.RequireRole(constants.RoleAdmin, constants.RoleSuperAdmin))
 	{
 		// 用户管理
-		adminGroup.GET("/users", ctrl.GetUserList)
-		adminGroup.GET("/users/:id", ctrl.GetUserDetail)
-		adminGroup.PUT("/users/:id/status", ctrl.UpdateUserStatus)
-		adminGroup.PUT("/users/:id/roles", ctrl.SetRoles)
-		adminGroup.POST("/users", ctrl.CreateUser)
+		adminGroup.GET("/users", userCtrl.GetUserList)
+		adminGroup.GET("/users/:id", userCtrl.GetUserDetail)
+		adminGroup.PUT("/users/:id/status", userCtrl.UpdateUserStatus)
+		adminGroup.PUT("/users/:id/roles", userCtrl.SetRoles)
+		adminGroup.POST("/users", userCtrl.CreateUser)
 
 		// 角色管理
-		adminGroup.GET("/roles", ctrl.GetAllRoles)
+		adminGroup.GET("/roles", userCtrl.GetAllRoles)
+
+		// 在线监控
+		adminGroup.GET("/online/users", onlineCtrl.GetOnlineUsers)
+		adminGroup.GET("/online/count", onlineCtrl.GetOnlineCount)
+
+		// 好友关系管理
+		adminGroup.GET("/contacts", contactManageCtrl.GetAllContacts)
+		adminGroup.DELETE("/contacts/:id", contactManageCtrl.DeleteContact)
 	}
 }

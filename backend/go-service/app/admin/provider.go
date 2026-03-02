@@ -14,4 +14,8 @@ var AdminSet = wire.NewSet(
 	dao.NewUserManageDAO,
 	service.NewUserManageService,
 	controller.NewUserManageController,
+	service.NewOnlineManageService,
+	controller.NewOnlineController,
+	service.NewContactManageService,
+	controller.NewContactManageController,
 )

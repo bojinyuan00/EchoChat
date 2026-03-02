@@ -48,11 +48,15 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	hub := ws.ProvideHub()
 	pubSub := ws.ProvidePubSub(client, hub)
 	onlineService := ws.ProvideOnlineService(client, hub, pubSub)
+	onlineManageService := service2.NewOnlineManageService(onlineService)
+	onlineController := controller2.NewOnlineController(onlineManageService)
+	contactManageService := service2.NewContactManageService(gormDB)
+	contactManageController := controller2.NewContactManageController(contactManageService)
 	handler := ws.ProvideWSHandler(hub, pubSub, jwtConfig, onlineService)
 	friendshipDAO := dao3.NewFriendshipDAO(gormDB)
 	friendGroupDAO := dao3.NewFriendGroupDAO(gormDB)
 	contactService := service3.NewContactService(friendshipDAO, friendGroupDAO, pubSub)
 	contactController := controller3.NewContactController(contactService)
-	app := NewApp(cfg, gormDB, client, authService, authController, adminAuthController, userManageController, handler, hub, pubSub, onlineService, contactController)
+	app := NewApp(cfg, gormDB, client, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, handler, hub, pubSub, onlineService, contactController)
 	return app, nil
 }
