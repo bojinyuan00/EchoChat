@@ -7,12 +7,13 @@
 package provider
 
 import (
-	adminController "github.com/echochat/backend/app/admin/controller"
-	adminDAO "github.com/echochat/backend/app/admin/dao"
-	adminService "github.com/echochat/backend/app/admin/service"
+	controller2 "github.com/echochat/backend/app/admin/controller"
+	dao2 "github.com/echochat/backend/app/admin/dao"
+	service2 "github.com/echochat/backend/app/admin/service"
 	"github.com/echochat/backend/app/auth/controller"
 	"github.com/echochat/backend/app/auth/dao"
 	"github.com/echochat/backend/app/auth/service"
+	"github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/db"
 )
@@ -38,9 +39,12 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	authService := service.NewAuthService(userDAO, roleDAO, jwtConfig, tokenStore)
 	authController := controller.NewAuthController(authService)
 	adminAuthController := controller.NewAdminAuthController(authService)
-	userManageDAO := adminDAO.NewUserManageDAO(gormDB)
-	userManageService := adminService.NewUserManageService(userManageDAO, userDAO, roleDAO)
-	userManageController := adminController.NewUserManageController(userManageService)
-	app := NewApp(cfg, gormDB, client, authService, authController, adminAuthController, userManageController)
+	userManageDAO := dao2.NewUserManageDAO(gormDB)
+	userManageService := service2.NewUserManageService(userManageDAO, userDAO, roleDAO)
+	userManageController := controller2.NewUserManageController(userManageService)
+	hub := ws.ProvideHub()
+	pubSub := ws.ProvidePubSub(client, hub)
+	handler := ws.ProvideWSHandler(hub, pubSub, jwtConfig)
+	app := NewApp(cfg, gormDB, client, authService, authController, adminAuthController, userManageController, handler, hub, pubSub)
 	return app, nil
 }

@@ -6,8 +6,10 @@ import (
 	adminController "github.com/echochat/backend/app/admin/controller"
 	authController "github.com/echochat/backend/app/auth/controller"
 	"github.com/echochat/backend/app/auth/service"
+	wsApp "github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/db"
+	"github.com/echochat/backend/pkg/ws"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -22,6 +24,9 @@ type App struct {
 	AuthController        *authController.AuthController              // 前台认证控制器
 	AdminAuthController   *authController.AdminAuthController         // 后台认证控制器
 	UserManageController  *adminController.UserManageController       // 管理端用户管理控制器
+	WSHandler             *wsApp.Handler                              // WebSocket 连接处理器
+	Hub                   *ws.Hub                                     // WebSocket Hub 连接管理
+	PubSub                *ws.PubSub                                  // Redis Pub/Sub 消息路由
 }
 
 // NewApp 创建应用实例
@@ -33,6 +38,9 @@ func NewApp(
 	authCtrl *authController.AuthController,
 	adminAuthCtrl *authController.AdminAuthController,
 	userManageCtrl *adminController.UserManageController,
+	wsHandler *wsApp.Handler,
+	hub *ws.Hub,
+	pubsub *ws.PubSub,
 ) *App {
 	return &App{
 		Config:                cfg,
@@ -42,6 +50,9 @@ func NewApp(
 		AuthController:        authCtrl,
 		AdminAuthController:   adminAuthCtrl,
 		UserManageController:  userManageCtrl,
+		WSHandler:             wsHandler,
+		Hub:                   hub,
+		PubSub:                pubsub,
 	}
 }
 
