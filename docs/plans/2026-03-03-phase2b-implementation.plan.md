@@ -302,13 +302,18 @@ type FriendChecker interface {
 type UserInfoGetter interface {
     GetUsersByIDs(ctx context.Context, userIDs []int64) ([]authModel.User, error)
 }
+
+// Redis Key 前缀（未读数 HASH）
+const unreadKeyPrefix = "echo:im:unread:"
 ```
 
 **Step 2: 创建 IMService**
 
 Create: `backend/go-service/app/im/service/im_service.go`
 
-IMService 注入：`ConversationDAO`、`MessageDAO`、`*ws.PubSub`、`FriendChecker`、`UserInfoGetter`
+IMService 注入：`ConversationDAO`、`MessageDAO`、`*ws.PubSub`、`*redis.Client`、`FriendChecker`、`UserInfoGetter`
+
+注意：`*redis.Client` 用于操作未读数 Redis HASH（`echo:im:unread:{user_id}`）
 
 核心方法（参考设计文档第七节）：
 - `SendMessage(ctx, senderID, targetUserID, content, msgType, clientMsgID)` — 核心链路：校验好友 → 查找/创建会话 → 写消息 → 更新 last_message → 增加未读 → 推送

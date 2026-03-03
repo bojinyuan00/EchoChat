@@ -127,7 +127,33 @@ IM Service.RecallMessage()
     └── PubSub.PublishToUser(receiverID, im.message.recalled)
 ```
 
-### 3.5 跨模块依赖（接口注入模式）
+### 3.5 消息收发时序图
+
+```mermaid
+sequenceDiagram
+    participant Sender as 发送方Client
+    participant WS as WebSocketHandler
+    participant IM as IMService
+    participant DB as PostgreSQL
+    participant Redis as Redis
+    participant PubSub as PubSub
+    participant Receiver as 接收方Client
+
+    Sender->>WS: im.message.send {target_user_id, content, client_msg_id}
+    WS->>IM: SendMessage(senderID, targetUserID, content)
+    IM->>IM: FriendChecker.IsFriend()
+    IM->>IM: FindOrCreateConversation()
+    IM->>DB: INSERT im_messages
+    IM->>DB: UPDATE im_conversations
+    IM->>DB: UPDATE im_conversation_members (unread+1)
+    IM->>Redis: HINCRBY echo:im:unread:{receiverID} convID 1
+    IM-->>WS: messageID + conversationID
+    WS-->>Sender: im.message.send.ack {message_id, conversation_id}
+    IM->>PubSub: PublishToUser(receiverID, im.message.new)
+    PubSub-->>Receiver: im.message.new {消息详情}
+```
+
+### 3.6 跨模块依赖（接口注入模式）
 
 沿用 Phase 2a 的接口注入标准，避免 `im` 包直接 import `contact` 包：
 
@@ -317,12 +343,15 @@ type IMService struct {
     conversationDAO *dao.ConversationDAO
     messageDAO      *dao.MessageDAO
     pubsub          *ws.PubSub          // 复用 Phase 2a
+    rdb             *redis.Client       // Redis 操作（未读数 HASH）
     friendChecker   FriendChecker       // 接口注入 → FriendshipDAO.IsFriend
     userInfoGetter  UserInfoGetter      // 接口注入 → FriendshipDAO.GetUsersByIDs
 }
 ```
 
-Wire 注入链：`contact.FriendshipDAO` → 隐式实现 `FriendChecker` + `UserInfoGetter`。
+Wire 注入链：
+- `contact.FriendshipDAO` → 隐式实现 `FriendChecker` + `UserInfoGetter`
+- `*redis.Client` → 直接注入（已在 InfraSet 中提供）
 
 ### 7.3 IMService 核心方法
 
