@@ -1,88 +1,118 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-03-02（Phase 2a 代码审查全面修复 + Phase 2b 架构建议）
-> **当前阶段**：Phase 2a 已完成，Phase 2b 待设计
-> **当前分支**：`feature/phase2a-websocket-contacts`
-> **实施计划**：`phase_2a_实施计划_221003ce.plan.md`
-> **设计文档**：`docs/plans/2026-03-02-phase2a-design.md`
-> **Phase 2b 架构备忘**：`docs/plans/2026-03-02-phase2b-architecture-notes.md`
+> **最后更新**：2026-03-03（Phase 2b 即时通讯核心开发完成）
+> **当前阶段**：Phase 2b 开发中
+> **当前分支**：`feature/phase2b-instant-messaging`
+> **实施计划**：`docs/plans/2026-03-03-phase2b-implementation.plan.md`
+> **设计文档**：`docs/plans/2026-03-03-phase2b-design.md`
 
 ---
 
-## 一、Phase 2a Task 完成状态
+## 一、Phase 2b Task 完成状态
 
 | Task | 描述 | 状态 | 备注 |
 |------|------|------|------|
-| Task 0 | 设计文档 + 新分支 | ✅ 完成 | 架构设计、Redis Pub/Sub、文档策略 |
-| Task 1 | 数据库表结构 | ✅ 完成 | contact_friendships + contact_groups |
-| Task 2 | WebSocket 核心模块 | ✅ 完成 | Hub + Client + PubSub + Handler |
-| Task 3 | Contact 模型与 DAO | ✅ 完成 | friendship + friend_group DAO |
-| Task 4 | Contact Service | ✅ 完成 | 好友申请/分组/黑名单/搜索/推荐 |
-| Task 5 | Contact Controller & Router | ✅ 完成 | 17 个 REST API + Wire 集成 |
-| Task 6 | 在线状态管理 | ✅ 完成 | Redis SET + TTL 心跳续期 |
-| Task 7 | 管理端后端 | ✅ 完成 | 在线监控 + 好友关系管理 API |
-| Task 8 | 前台 WS 客户端 + Store + API | ✅ 完成 | websocket.js + contact.js Store/API |
-| Task 9 | 前台联系人页面 | ✅ 完成 | 6 个页面（ui-ux-pro-max 规范） |
-| Task 10 | 管理端前端 | ✅ 完成 | 在线监控 + 好友管理页面 |
-| Task 11 | API 文档编写 | ✅ 完成 | 4 份独立文档 |
-| Task 12 | 集成测试 + 文档更新 + 代码审查 | ✅ 完成 | 三端编译通过 |
+| Task 0 | IM Model + 数据库迁移 + 常量 | ✅ 完成 | 3 张表 + init.sql + AutoMigrate |
+| Task 1 | WS 事件路由表机制 | ✅ 完成 | Hub.RegisterEvent/DispatchEvent |
+| Task 2 | IM DAO 层 | ✅ 完成 | ConversationDAO + MessageDAO |
+| Task 3 | IM Service 核心业务 + DTO | ✅ 完成 | 9 个业务方法 + 接口注入 |
+| Task 4 | WS 事件处理器 + 离线推送 | ✅ 完成 | 4 个事件 + OfflinePusher |
+| Task 5 | REST Controller + Router + Wire | ✅ 完成 | 7 个 REST API + 完整 Wire 集成 |
+| Task 6 | 前台 Store + API + WS 事件 | ✅ 完成 | chat.js Store + API + TabBar badge |
+| Task 7 | 会话列表页 + 聊天对话页 | ✅ 完成 | 2 个核心页面 |
+| Task 8 | 设置页 + 搜索页 + 联系人改造 | ✅ 完成 | 2 个辅助页面 + 发消息跳转 |
+| Task 9 | 文档更新 + 代码审查 | ✅ 完成 | 进度/架构文档同步 |
 
 ---
 
-## 二、Phase 2a 新增功能
+## 二、Phase 2b 新增功能
 
-### WebSocket 实时通讯
-- **连接管理**：`gorilla/websocket` + JWT 认证 + 心跳（30s）
-- **消息架构**：Redis Pub/Sub 跨实例消息路由
-- **Hub**：本地连接管理（注册/注销/按用户发送）
-- **Client**：读写泵 + 断线回调 + 缓冲通道
+### 即时通讯（IM）
+- **消息收发**：WebSocket 全双工通讯，im.message.send → ACK + 推送
+- **三态确认**：sending → sent/ACK → failed
+- **消息撤回**：2 分钟内可撤回，推送 im.message.recalled
+- **正在输入**：im.typing 事件，3 秒超时自动清除
+- **离线消息**：WebSocket 重连后服务端主动推送未读会话摘要
 
-### 联系人管理（17 个 API）
-- 好友申请（发送/接受/拒绝）
-- 好友列表（按分组筛选 + 在线状态）
-- 好友详情（备注/分组移动）
-- 好友删除 + 拉黑/取消拉黑
-- 好友分组（CRUD + 排序）
-- 用户搜索 + 好友推荐（共同好友算法）
+### 会话管理
+- **自动创建**：首次发消息时自动创建单聊会话
+- **会话列表**：置顶优先 → 最后消息时间降序，冗余 last_msg_* 避免 JOIN
+- **会话操作**：置顶/取消、软删除（不影响对方）、清空聊天记录
+- **未读管理**：DB unread_count + Redis 全局未读数，TabBar badge 显示
 
-### 在线状态管理
-- Redis SET `echo:user:online` 存储在线用户集合
-- Redis STRING `echo:user:status:{user_id}` + TTL 心跳续期
-- Pub/Sub 推送好友上下线通知
+### WebSocket 事件路由表
+- **Hub.RegisterEvent**：业务模块注册事件处理器
+- **Hub.DispatchEvent**：消息分发到匹配的处理器
+- **事件清单**：im.message.send / im.message.recall / im.conversation.read / im.typing
 
-### 管理端扩展
-- 在线监控页面（自动 30s 刷新 + 统计卡片）
-- 好友关系管理（分页列表 + 强制删除）
+### REST API（7 个）
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | /api/v1/im/conversations | 会话列表 |
+| GET | /api/v1/im/messages | 历史消息（游标分页） |
+| PUT | /api/v1/im/conversations/:id/pin | 置顶/取消 |
+| DELETE | /api/v1/im/conversations/:id | 删除会话 |
+| DELETE | /api/v1/im/conversations/:id/messages | 清空记录 |
+| GET | /api/v1/im/messages/search | 全局搜索 |
+| GET | /api/v1/im/unread | 全局未读数 |
+
+### 前端页面（4 个）
+- `pages/chat/index.vue` — 会话列表（TabBar 页面）
+- `pages/chat/conversation.vue` — 聊天对话页
+- `pages/chat/settings.vue` — 聊天设置页
+- `pages/chat/search.vue` — 消息搜索页
+
+### 数据库表（3 张）
+- `im_conversations` — 会话表（含冗余 last_msg_* 字段）
+- `im_conversation_members` — 会话成员表（个人视图：置顶/未读/软删除）
+- `im_messages` — 消息表（游标分页索引 + GIN 全文搜索索引）
 
 ---
 
-## 三、Phase 1 完成总结
+## 三、Phase 2a 完成总结
+
+| Task | 描述 | 状态 | 备注 |
+|------|------|------|------|
+| Task 0-12 | WebSocket + 联系人 + 管理端 | ✅ 全部完成 | 13 个 Task + 8 项 Bug 修复 |
+
+- WebSocket 实时通讯（Hub + Client + PubSub）
+- 联系人管理 17 个 API
+- 在线状态管理（Redis SET + TTL）
+- 管理端扩展（在线监控 + 好友管理）
+
+---
+
+## 四、Phase 1 完成总结
 
 | Task | 描述 | 状态 |
 |------|------|------|
 | Task 1-11 | 基础设施 + 认证 + 用户管理 | ✅ 全部完成 |
 
-- Go 后端 15+ API、JWT 有状态认证、RBAC 角色权限（level 等级体系）
+- Go 后端 15+ API、JWT 有状态认证、RBAC 角色权限
 - 前台 uni-app 登录/注册/TabBar/个人中心
 - 管理端 Vue 3 登录/仪表盘/用户列表/详情
 - Docker Compose 一键启动
 
 ---
 
-## 四、关键技术决策记录
+## 五、关键技术决策记录
 
 ### 后端（Go）
 1. **框架组合**：Gin + GORM + Wire + Zap + Viper
 2. **JWT 策略**：有状态 JWT，Token 按 clientType 隔离存储在 Redis
 3. **WebSocket**：`gorilla/websocket` + Redis Pub/Sub 跨实例路由
-4. **在线状态**：混合方案（Redis SET + STRING TTL + Pub/Sub 推送）
-5. **角色等级**：`auth_roles.level`（1=超管, 10=管理员, 100=普通用户）
+4. **WS 事件路由**：Hub.eventHandlers map[string]EventHandler + RegisterEvent/DispatchEvent
+5. **IM 跨模块**：FriendChecker + UserInfoGetter 接口注入（contact → im）
+6. **IM 推送**：OfflineMessagePusher 接口注入（im → ws）
+7. **在线状态**：混合方案（Redis SET + STRING TTL + Pub/Sub 推送）
+8. **角色等级**：`auth_roles.level`（1=超管, 10=管理员, 100=普通用户）
 
 ### 前台用户端（frontend/）
 1. **框架**：uni-app 3.0（Vue 3.4.21）
 2. **状态管理**：Pinia 2.1.7 + pinia-plugin-persistedstate@3
 3. **WebSocket**：`uni.connectSocket`（小程序）/ `WebSocket`（H5）
-4. **设计系统**：ui-ux-pro-max 规范
+4. **IM Store**：chat.js（会话列表 + 消息缓存 + 三态确认 + 全局未读）
+5. **设计系统**：ui-ux-pro-max 规范
 
 ### 后台管理端（admin/）
 1. **框架**：Vue 3.5+ + Vite 7.x + Element Plus
@@ -91,65 +121,48 @@
 
 ---
 
-## 五、目录结构概览
+## 六、目录结构概览
 
 ```
 EchoChat/
 ├── backend/go-service/
 │   ├── app/
-│   │   ├── admin/               # 管理端（controller/service/provider）
+│   │   ├── admin/               # 管理端
 │   │   ├── auth/                # 认证模块
 │   │   ├── contact/             # [Phase 2a] 联系人模块
-│   │   │   ├── controller/
-│   │   │   ├── dao/
-│   │   │   ├── model/
-│   │   │   ├── service/
+│   │   ├── im/                  # [Phase 2b] 即时通讯模块
+│   │   │   ├── controller/      # REST API 控制器
+│   │   │   ├── dao/             # 数据访问（ConversationDAO + MessageDAO）
+│   │   │   ├── handler/         # WS 事件处理器 + 离线推送
+│   │   │   ├── model/           # 数据库模型
+│   │   │   ├── service/         # 核心业务 + 接口定义
 │   │   │   ├── router.go
 │   │   │   └── provider.go
 │   │   ├── ws/                  # [Phase 2a] WebSocket 模块
-│   │   │   ├── handler.go
-│   │   │   ├── online_service.go
-│   │   │   ├── provider.go
-│   │   │   └── router.go
-│   │   ├── constants/
-│   │   ├── dto/
+│   │   ├── constants/           # 含 im.go 常量
+│   │   ├── dto/                 # 含 im_dto.go
 │   │   └── provider/
 │   ├── pkg/
-│   │   ├── ws/                  # [Phase 2a] WebSocket 核心
-│   │   │   ├── hub.go
-│   │   │   ├── client.go
-│   │   │   ├── pubsub.go
-│   │   │   └── message.go
+│   │   ├── ws/                  # WS 核心（Hub 含事件路由表）
 │   │   ├── db/ logs/ middleware/ utils/
 │   └── router/router.go
 ├── frontend/                    # 前台（uni-app）
 │   └── src/
-│       ├── api/{auth,contact,user}.js
-│       ├── services/websocket.js     # [Phase 2a]
-│       ├── store/{user,websocket,contact}.js
-│       ├── pages/contact/            # [Phase 2a] 6 个页面
-│       │   ├── index.vue
-│       │   ├── request.vue
-│       │   ├── detail.vue
-│       │   ├── search.vue
-│       │   ├── groups.vue
-│       │   └── blacklist.vue
-│       └── components/CustomTabBar.vue
+│       ├── api/{auth,contact,user,im}.js
+│       ├── services/websocket.js
+│       ├── store/{user,websocket,contact,chat}.js
+│       ├── pages/chat/          # [Phase 2b] 4 个页面
+│       │   ├── index.vue        # 会话列表
+│       │   ├── conversation.vue # 聊天对话
+│       │   ├── settings.vue     # 聊天设置
+│       │   └── search.vue       # 消息搜索
+│       ├── pages/contact/       # [Phase 2a] 6 个页面
+│       └── components/CustomTabBar.vue（含 badge）
 ├── admin/                       # 管理端（Vue 3 + Element Plus）
-│   └── src/
-│       ├── api/{auth,user,monitor,contact}.js
-│       ├── views/
-│       │   ├── monitor/online.vue    # [Phase 2a]
-│       │   ├── contact/list.vue      # [Phase 2a]
-│       │   ├── layout/ login/ dashboard/ user/
-│       └── router/index.js
 ├── deploy/
 ├── design-system/
 └── docs/
     ├── api/
-    │   ├── frontend/{auth,contact,websocket}.md
-    │   ├── admin/{auth,user,online,contact}.md
-    │   └── websocket.md
     ├── plans/
     ├── progress/CURRENT_STATUS.md
     └── conventions/
@@ -157,7 +170,7 @@ EchoChat/
 
 ---
 
-## 六、开发测试指南
+## 七、开发测试指南
 
 ### 启动命令
 
@@ -184,66 +197,20 @@ cd frontend && npm run dev:h5
 | `testuser1` | `test123456` | user + admin | 前台登录测试 |
 | `testuser` | `test123456` | user | 前台登录测试 |
 
-### Phase 2a 可测试功能
+### Phase 2b 可测试功能
 
-- **前台联系人**：好友列表 → 搜索添加 → 好友申请 → 好友详情 → 备注/分组 → 拉黑/删除
-- **前台 WebSocket**：自动连接 → 心跳 → 在线状态实时更新 → 好友申请推送
-- **管理端在线监控**：在线用户数 → 在线用户列表 → 自动刷新
-- **管理端好友管理**：好友关系列表 → 强制删除关系
-
----
-
-## 七、已知问题
-
-1. uni-app 的 `tabBar.custom: true` 配合自定义 TabBar 组件使用
-2. Go 依赖版本需匹配 Go 1.23.12
-3. 管理端 Element Plus 全量导入导致打包体积较大（后续可改为按需导入）
+- **会话列表**：发消息自动创建会话 → 列表排序 → 置顶 → 长按删除
+- **聊天**：发送文本 → 三态确认 → 撤回（2分钟内）→ 正在输入提示
+- **离线消息**：断开重连 → 自动推送未读摘要 → TabBar badge 更新
+- **消息搜索**：全局关键词搜索 → 跳转到对应会话
+- **联系人入口**：好友详情页 → 发消息 → 跳转聊天页
 
 ---
 
-## 八、Phase 2a 后期 Bug 修复记录（2026-03-02）
+## 八、下一阶段规划
 
-### 修复 1: GetRecommendFriends 返回空数据
-- **问题**：对每个候选人调用 `SearchUsers` 并忽略结果，返回的 DTO 只有 ID 字段
-- **修复**：FriendshipDAO 新增 `GetUsersByIDs` 批量查询方法，Service 层收集所有候选人 ID 后一次查询，正确填充 Username/Nickname/Avatar
-- **改进**：排序算法从手动冒泡改为 `sort.Slice`
-
-### 修复 2: 上下线好友通知未实现
-- **问题**：`UserOnline`/`UserOffline` 没有调用已有的 `NotifyFriendsStatusChange` 方法
-- **修复**：OnlineService 新增 `FriendIDsGetter` 接口依赖（由 FriendshipDAO 隐式实现），在上线/下线时获取好友列表并推送状态变更通知
-- **架构**：使用接口注入避免 ws 包直接依赖 contact 包
-
-### 修复 3: 管理端在线用户 API 缺少用户名
-- **问题**：`GetOnlineUsers` 只返回 `[]int64`，管理端无法展示用户名
-- **修复**：OnlineManageService 注入 `*gorm.DB`，返回 `[]OnlineUserInfo`（含 user_id + username），查询 auth_users 表补充信息
-
-### 修复 4: WebSocket Token 未校验 Redis 状态（I2）
-- **问题**：`ws.handler.Upgrade` 只校验 JWT 签名和过期时间，未检查 Token 是否仍在 Redis 中有效（已登出用户仍可建立 WS 连接）
-- **修复**：新增 `TokenValidator` 接口，由 `AuthService` 实现；`Upgrade` 流程增加 Redis Token 校验步骤
-- **架构**：使用接口注入避免 ws 包直接依赖 auth 包
-
-### 修复 5: HeartbeatRenew Redis 错误未检查（M6）
-- **问题**：`HeartbeatRenew` 中 `rdb.Expire` 调用结果被忽略
-- **修复**：增加错误检查与日志记录
-
-### 修复 6: json.Marshal 错误未处理（M2）
-- **问题**：`handler.go` 心跳/默认响应的 `MarshalResponse` 和 `online_service.go` 中 `json.Marshal` 错误被忽略
-- **修复**：所有 Marshal 调用增加错误检查，失败时记录日志并提前返回
-
-### 修复 7: Controller 统一错误处理（I8）
-- **问题**：`contact_controller.go` 中多数 endpoint 使用硬编码的 `utils.ResponseError`，未经过 `handleError` 业务错误映射
-- **修复**：所有 13 个 endpoint 统一走 `handleError`，确保已知业务错误（404/400/403）被正确返回
-
-### 修复 8: 管理端 Controller 注释与日志规范化（M1）
-- **问题**：`online_controller.go` 和 `contact_manage_controller.go` 缺少包注释、函数注释和 `funcName` 日志模式
-- **修复**：补全所有注释，增加 `funcName` + `logs.Error/Info` 结构化日志
-
----
-
-## 九、下一阶段规划
-
-### Phase 2b - 即时通讯消息系统
-- 会话管理（单聊/群聊）
-- 消息收发 + 离线消息
-- 消息通知
+### Phase 2c - 群聊与增强
+- 群聊会话（建群/加入/退出）
+- 群消息收发
 - 已读回执
+- 消息类型扩展（图片/语音/文件）

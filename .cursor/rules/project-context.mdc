@@ -16,9 +16,9 @@ alwaysApply: true
 
 - **Phase 1（基础设施与用户认证）**：✅ 全部完成（11 个 Task）
 - **Phase 2a（WebSocket 实时通讯与联系人管理）**：✅ 全部完成（13 个 Task + 后期 Bug 修复 3 项）
-- **Phase 2b（即时通讯消息系统）**：待制定实施计划，架构建议已记录于 `docs/plans/2026-03-02-phase2b-architecture-notes.md`
-- 分支：`feature/phase2a-websocket-contacts`
-- **跨模块通信模式**：已建立接口注入标准（ws.FriendIDsGetter → contact.FriendshipDAO），Phase 2b 沿用此模式
+- **Phase 2b（即时通讯消息系统）**：✅ 核心功能开发完成（10 个 Task），设计文档 `docs/plans/2026-03-03-phase2b-design.md`
+- 分支：`feature/phase2b-instant-messaging`
+- **跨模块通信模式**：已建立接口注入标准（ws.FriendIDsGetter / im.FriendChecker / im.UserInfoGetter → contact.FriendshipDAO，im.OfflineMessagePusher → ws.Handler）
 
 ## 项目概述
 
@@ -27,7 +27,7 @@ EchoChat 是一个实时音视频通讯平台，包含三个子项目：
 - `frontend/` — 前台用户端（uni-app + Vue 3.4 + Pinia 2.x）
 - `admin/` — 后台管理端（Vue 3.5+ + Element Plus + Pinia 3.x）
 
-已实现模块：auth（认证）、contact（联系人）、ws（WebSocket）、admin（管理端）
+已实现模块：auth（认证）、contact（联系人）、ws（WebSocket）、admin（管理端）、im（即时通讯）
 
 ## 核心开发规则
 
