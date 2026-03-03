@@ -43,7 +43,7 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 
 	resp, err := ctrl.authService.Register(ctx, &req)
 	if err != nil {
-		handleAuthError(c, err)
+		handleAuthError(c, err, "注册失败")
 		return
 	}
 
@@ -70,7 +70,7 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 
 	resp, err := ctrl.authService.Login(ctx, &req, c.ClientIP(), constants.ClientTypeFrontend)
 	if err != nil {
-		handleAuthError(c, err)
+		handleAuthError(c, err, "登录失败")
 		return
 	}
 
@@ -118,7 +118,7 @@ func (ctrl *AuthController) RefreshToken(c *gin.Context) {
 
 	resp, err := ctrl.authService.RefreshToken(ctx, req.RefreshToken)
 	if err != nil {
-		handleAuthError(c, err)
+		handleAuthError(c, err, "刷新 Token 失败")
 		return
 	}
 
@@ -141,7 +141,7 @@ func (ctrl *AuthController) GetProfile(c *gin.Context) {
 
 	userInfo, err := ctrl.authService.GetProfile(ctx, userID)
 	if err != nil {
-		handleAuthError(c, err)
+		handleAuthError(c, err, "获取个人信息失败")
 		return
 	}
 
@@ -171,7 +171,7 @@ func (ctrl *AuthController) UpdateProfile(c *gin.Context) {
 
 	userInfo, err := ctrl.authService.UpdateProfile(ctx, userID, &req)
 	if err != nil {
-		handleAuthError(c, err)
+		handleAuthError(c, err, "更新个人资料失败")
 		return
 	}
 
@@ -200,15 +200,17 @@ func (ctrl *AuthController) ChangePassword(c *gin.Context) {
 	logs.Info(ctx, funcName, "修改密码", zap.Int64("user_id", userID))
 
 	if err := ctrl.authService.ChangePassword(ctx, userID, &req); err != nil {
-		handleAuthError(c, err)
+		handleAuthError(c, err, "修改密码失败")
 		return
 	}
 
 	utils.ResponseOK(c, nil)
 }
 
-// handleAuthError 统一处理认证相关业务错误，映射到对应的 HTTP 状态码
-func handleAuthError(c *gin.Context, err error) {
+// handleAuthError 统一认证业务错误映射
+// 已知业务错误 → 返回 Service 层定义的具体提示（如"账号已被禁用"）
+// 未知错误 → 返回 fallbackMsg（未传则默认"服务器内部错误"）
+func handleAuthError(c *gin.Context, err error, fallbackMsg ...string) {
 	switch err {
 	case service.ErrUserAlreadyExists:
 		utils.ResponseBadRequest(c, err.Error())
@@ -225,6 +227,10 @@ func handleAuthError(c *gin.Context, err error) {
 	case service.ErrRefreshTokenType:
 		utils.ResponseBadRequest(c, err.Error())
 	default:
-		utils.ResponseError(c, "服务器内部错误")
+		msg := "服务器内部错误"
+		if len(fallbackMsg) > 0 && fallbackMsg[0] != "" {
+			msg = fallbackMsg[0]
+		}
+		utils.ResponseError(c, msg)
 	}
 }

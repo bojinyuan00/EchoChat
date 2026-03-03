@@ -41,7 +41,7 @@ func (ctl *ContactController) GetFriendList(c *gin.Context) {
 
 	friends, err := ctl.contactService.GetFriendList(ctx, userID, groupID)
 	if err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "获取好友列表失败")
 		return
 	}
 	utils.ResponseOK(c, friends)
@@ -65,7 +65,7 @@ func (ctl *ContactController) SendFriendRequest(c *gin.Context) {
 
 	err := ctl.contactService.SendFriendRequest(ctx, userID, req.TargetID, req.Message)
 	if err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "发送好友申请失败")
 		return
 	}
 	utils.ResponseOK(c, nil)
@@ -89,7 +89,7 @@ func (ctl *ContactController) AcceptFriendRequest(c *gin.Context) {
 
 	err := ctl.contactService.AcceptFriendRequest(ctx, req.RequestID, userID)
 	if err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "接受好友申请失败")
 		return
 	}
 	utils.ResponseOK(c, nil)
@@ -113,7 +113,7 @@ func (ctl *ContactController) RejectFriendRequest(c *gin.Context) {
 
 	err := ctl.contactService.RejectFriendRequest(ctx, req.RequestID, userID)
 	if err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "拒绝好友申请失败")
 		return
 	}
 	utils.ResponseOK(c, nil)
@@ -131,7 +131,7 @@ func (ctl *ContactController) GetPendingRequests(c *gin.Context) {
 
 	requests, err := ctl.contactService.GetPendingRequests(ctx, userID)
 	if err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "获取好友申请列表失败")
 		return
 	}
 	utils.ResponseOK(c, requests)
@@ -154,7 +154,7 @@ func (ctl *ContactController) DeleteFriend(c *gin.Context) {
 	}
 
 	if err := ctl.contactService.DeleteFriend(ctx, userID, friendID); err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "删除好友失败")
 		return
 	}
 	utils.ResponseOK(c, nil)
@@ -183,7 +183,7 @@ func (ctl *ContactController) UpdateRemark(c *gin.Context) {
 	}
 
 	if err := ctl.contactService.UpdateRemark(ctx, userID, friendID, req.Remark); err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "更新备注失败")
 		return
 	}
 	utils.ResponseOK(c, nil)
@@ -207,7 +207,7 @@ func (ctl *ContactController) BlockUser(c *gin.Context) {
 
 	err := ctl.contactService.BlockUser(ctx, userID, req.TargetID)
 	if err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "拉黑用户失败")
 		return
 	}
 	utils.ResponseOK(c, nil)
@@ -230,7 +230,7 @@ func (ctl *ContactController) UnblockUser(c *gin.Context) {
 	}
 
 	if err := ctl.contactService.UnblockUser(ctx, userID, targetID); err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "取消拉黑失败")
 		return
 	}
 	utils.ResponseOK(c, nil)
@@ -248,7 +248,7 @@ func (ctl *ContactController) GetBlockList(c *gin.Context) {
 
 	blocked, err := ctl.contactService.GetBlockList(ctx, userID)
 	if err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "获取黑名单失败")
 		return
 	}
 	utils.ResponseOK(c, blocked)
@@ -275,7 +275,7 @@ func (ctl *ContactController) SearchUsers(c *gin.Context) {
 
 	users, total, err := ctl.contactService.SearchUsers(ctx, userID, keyword, page, pageSize)
 	if err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "搜索用户失败")
 		return
 	}
 	utils.ResponseOK(c, gin.H{
@@ -296,7 +296,7 @@ func (ctl *ContactController) GetRecommendFriends(c *gin.Context) {
 
 	friends, err := ctl.contactService.GetRecommendFriends(ctx, userID)
 	if err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "获取好友推荐失败")
 		return
 	}
 	utils.ResponseOK(c, friends)
@@ -314,7 +314,7 @@ func (ctl *ContactController) GetGroups(c *gin.Context) {
 
 	groups, err := ctl.contactService.GetGroups(ctx, userID)
 	if err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "获取分组列表失败")
 		return
 	}
 	utils.ResponseOK(c, groups)
@@ -338,7 +338,7 @@ func (ctl *ContactController) CreateGroup(c *gin.Context) {
 
 	group, err := ctl.contactService.CreateGroup(ctx, userID, req.Name)
 	if err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "创建分组失败")
 		return
 	}
 	utils.ResponseCreated(c, group)
@@ -367,7 +367,7 @@ func (ctl *ContactController) UpdateGroup(c *gin.Context) {
 	}
 
 	if err := ctl.contactService.UpdateGroup(ctx, userID, groupID, req.Name, req.SortOrder); err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "修改分组失败")
 		return
 	}
 	utils.ResponseOK(c, nil)
@@ -390,7 +390,7 @@ func (ctl *ContactController) DeleteGroup(c *gin.Context) {
 	}
 
 	if err := ctl.contactService.DeleteGroup(ctx, userID, groupID); err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "删除分组失败")
 		return
 	}
 	utils.ResponseOK(c, nil)
@@ -419,14 +419,16 @@ func (ctl *ContactController) MoveToGroup(c *gin.Context) {
 	}
 
 	if err := ctl.contactService.MoveToGroup(ctx, userID, friendID, req.GroupID); err != nil {
-		ctl.handleError(c, err)
+		ctl.handleError(c, err, "移动好友到分组失败")
 		return
 	}
 	utils.ResponseOK(c, nil)
 }
 
-// handleError 统一错误处理
-func (ctl *ContactController) handleError(c *gin.Context, err error) {
+// handleError 统一业务错误映射
+// 已知业务错误 → 返回 Service 层定义的具体提示（如"对方已将你拉黑"）
+// 未知错误 → 返回 fallbackMsg（未传则默认"服务器内部错误"）
+func (ctl *ContactController) handleError(c *gin.Context, err error, fallbackMsg ...string) {
 	switch err {
 	case service.ErrSelfRequest:
 		utils.ResponseBadRequest(c, err.Error())
@@ -443,6 +445,10 @@ func (ctl *ContactController) handleError(c *gin.Context, err error) {
 	case service.ErrGroupNotFound:
 		utils.ResponseNotFound(c, err.Error())
 	default:
-		utils.ResponseError(c, "服务内部错误")
+		msg := "服务器内部错误"
+		if len(fallbackMsg) > 0 && fallbackMsg[0] != "" {
+			msg = fallbackMsg[0]
+		}
+		utils.ResponseError(c, msg)
 	}
 }

@@ -15,9 +15,10 @@ alwaysApply: true
 ## 当前进度
 
 - **Phase 1（基础设施与用户认证）**：✅ 全部完成（11 个 Task）
-- **Phase 2a（WebSocket 实时通讯与联系人管理）**：✅ 全部完成（13 个 Task）
-- **Phase 2b（即时通讯消息系统）**：待制定实施计划
+- **Phase 2a（WebSocket 实时通讯与联系人管理）**：✅ 全部完成（13 个 Task + 后期 Bug 修复 3 项）
+- **Phase 2b（即时通讯消息系统）**：待制定实施计划，架构建议已记录于 `docs/plans/2026-03-02-phase2b-architecture-notes.md`
 - 分支：`feature/phase2a-websocket-contacts`
+- **跨模块通信模式**：已建立接口注入标准（ws.FriendIDsGetter → contact.FriendshipDAO），Phase 2b 沿用此模式
 
 ## 项目概述
 

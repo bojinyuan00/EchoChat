@@ -15,14 +15,14 @@ import (
 )
 
 var (
-	ErrSelfRequest      = errors.New("不能添加自己为好友")
-	ErrAlreadyFriend    = errors.New("已经是好友了")
-	ErrPendingExists    = errors.New("已有待处理的好友申请")
-	ErrBlocked          = errors.New("对方已将你拉黑")
-	ErrRequestNotFound  = errors.New("好友申请不存在")
-	ErrFriendNotFound   = errors.New("好友关系不存在")
-	ErrGroupNotFound    = errors.New("分组不存在")
-	ErrUserNotFound     = errors.New("用户不存在")
+	ErrSelfRequest     = errors.New("不能添加自己为好友")
+	ErrAlreadyFriend   = errors.New("已经是好友了")
+	ErrPendingExists   = errors.New("已有待处理的好友申请")
+	ErrBlocked         = errors.New("对方已将你拉黑")
+	ErrRequestNotFound = errors.New("好友申请不存在")
+	ErrFriendNotFound  = errors.New("好友关系不存在")
+	ErrGroupNotFound   = errors.New("分组不存在")
+	ErrUserNotFound    = errors.New("用户不存在")
 )
 
 // ContactService 联系人业务服务

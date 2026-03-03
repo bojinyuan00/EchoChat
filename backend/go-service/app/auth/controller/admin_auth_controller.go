@@ -40,7 +40,7 @@ func (ctrl *AdminAuthController) AdminLogin(c *gin.Context) {
 
 	resp, err := ctrl.authService.AdminLogin(ctx, &req, c.ClientIP())
 	if err != nil {
-		handleAuthError(c, err)
+		handleAuthError(c, err, "管理员登录失败")
 		return
 	}
 
