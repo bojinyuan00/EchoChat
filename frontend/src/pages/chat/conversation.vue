@@ -1,21 +1,14 @@
 <!--
   聊天对话页
 
-  设计系统：design-system/echochat/MASTER.md
-  页面覆盖：design-system/echochat/pages/chat-conversation.md
-  图标方案：@dcloudio/uni-ui uni-icons
-  色板：Primary #2563EB / BG #F1F5F9 / Text #1E293B
-
-  功能：
-  - 消息气泡（左侧对方 / 右侧自己）
-  - 游标分页加载历史消息
-  - 消息发送（三态：sending → sent → failed）
-  - 正在输入提示
-  - 消息撤回（长按自己的消息）
+  布局规则：
+  - 自己的消息：靠右对齐，顺序 [状态图标] [蓝色气泡] [自己头像]
+  - 对方的消息：靠左对齐，顺序 [对方头像] [白色气泡]
+  - 导航栏：返回 / 对方昵称 / 更多
 -->
 <template>
   <view class="page-wrapper">
-    <!-- 自定义导航栏 -->
+    <!-- 导航栏 -->
     <view class="nav-bar">
       <view class="nav-left" @tap="goBack">
         <uni-icons type="back" size="20" color="#1E293B" />
@@ -37,54 +30,64 @@
       :scroll-with-animation="true"
       @scrolltoupper="onLoadMore"
     >
-      <!-- 加载更多提示 -->
       <view v-if="hasMore" class="load-more" @tap="onLoadMore">
-        <text class="load-more-text">{{ loadingMore ? '加载中...' : '上拉加载更多' }}</text>
+        <text class="load-more-text">{{ loadingMore ? '加载中...' : '加载更多' }}</text>
       </view>
 
-      <!-- 消息气泡 -->
       <view
         v-for="msg in messages"
         :key="msg.client_msg_id || msg.id"
         :id="'msg-' + (msg.id || msg.client_msg_id)"
         class="msg-row"
-        :class="{ 'msg-row-self': isSelf(msg), 'msg-row-other': !isSelf(msg) }"
+        :class="isSelf(msg) ? 'msg-row-self' : 'msg-row-other'"
       >
-        <!-- 对方头像 -->
-        <view v-if="!isSelf(msg)" class="msg-avatar-wrap">
-          <image v-if="peerAvatar" class="msg-avatar" :src="peerAvatar" mode="aspectFill" />
-          <view v-else class="msg-avatar msg-avatar-placeholder">
-            <text class="msg-avatar-text">{{ (peerName || '?')[0] }}</text>
+        <!-- ====== 对方消息（左侧）：[头像] [气泡] ====== -->
+        <template v-if="!isSelf(msg)">
+          <view class="avatar-wrap">
+            <image v-if="peerAvatar" class="avatar-img" :src="peerAvatar" mode="aspectFill" />
+            <view v-else class="avatar-img avatar-placeholder avatar-peer">
+              <text class="avatar-char">{{ (peerName || '?')[0] }}</text>
+            </view>
           </view>
-        </view>
+          <view
+            class="bubble bubble-other"
+            :class="{ 'bubble-recalled': msg.status === 2 }"
+            @longpress="onMsgLongPress(msg)"
+          >
+            <text v-if="msg.status === 2" class="recalled-text">消息已撤回</text>
+            <text v-else class="msg-text">{{ msg.content }}</text>
+          </view>
+        </template>
 
-        <!-- 消息内容 -->
-        <view
-          class="msg-bubble"
-          :class="{
-            'bubble-self': isSelf(msg),
-            'bubble-other': !isSelf(msg),
-            'bubble-recalled': msg.status === 2
-          }"
-          @longpress="onMsgLongPress(msg)"
-        >
-          <text v-if="msg.status === 2" class="msg-recalled">消息已撤回</text>
-          <text v-else class="msg-text">{{ msg.content }}</text>
-        </view>
-
-        <!-- 发送状态 -->
-        <view v-if="isSelf(msg) && msg._sending" class="msg-status">
-          <uni-icons type="loop" size="16" color="#94A3B8" />
-        </view>
-        <view v-if="isSelf(msg) && msg._failed" class="msg-status msg-status-tap" @tap="onResend(msg)">
-          <uni-icons type="info-filled" size="18" color="#EF4444" />
-        </view>
+        <!-- ====== 自己消息（右侧）：[状态] [气泡] [头像] ====== -->
+        <template v-else>
+          <view v-if="msg._sending" class="msg-status">
+            <uni-icons type="loop" size="16" color="#94A3B8" />
+          </view>
+          <view v-if="msg._failed" class="msg-status msg-status-tap" @tap="onResend(msg)">
+            <uni-icons type="info-filled" size="18" color="#EF4444" />
+          </view>
+          <view
+            class="bubble bubble-self"
+            :class="{ 'bubble-recalled': msg.status === 2 }"
+            @longpress="onMsgLongPress(msg)"
+          >
+            <text v-if="msg.status === 2" class="recalled-text">消息已撤回</text>
+            <text v-else class="msg-text msg-text-self">{{ msg.content }}</text>
+          </view>
+          <view class="avatar-wrap">
+            <image v-if="selfAvatar" class="avatar-img" :src="selfAvatar" mode="aspectFill" />
+            <view v-else class="avatar-img avatar-placeholder avatar-self">
+              <text class="avatar-char">{{ (selfName || '我')[0] }}</text>
+            </view>
+          </view>
+        </template>
       </view>
 
       <view id="msg-bottom" style="height: 2rpx;" />
     </scroll-view>
 
-    <!-- 底部输入区 -->
+    <!-- 输入栏 -->
     <view class="input-bar">
       <view class="input-wrap">
         <input
@@ -107,7 +110,7 @@
 
 <script>
 import { onLoad, onUnload } from '@dcloudio/uni-app'
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { useChatStore } from '@/store/chat'
 import { useUserStore } from '@/store/user'
 
@@ -128,9 +131,26 @@ export default {
     const messages = computed(() => chatStore.currentMessages)
     const hasMore = computed(() => chatStore.hasMoreMap[conversationId.value] !== false)
     const isTyping = computed(() => chatStore.typingMap[conversationId.value] || false)
+    const selfAvatar = computed(() => userStore.userInfo?.avatar || '')
+    const selfName = computed(() => userStore.userInfo?.nickname || userStore.userInfo?.username || '我')
 
     const isSelf = (msg) => {
-      return msg.sender_id === (userStore.userInfo?.id || 0) || msg._sending
+      const myId = Number(userStore.userInfo?.id) || 0
+      return msg.sender_id === myId || msg._sending === true || msg._failed === true
+    }
+
+    const tryFindExistingConversation = async () => {
+      try {
+        await chatStore.fetchConversations()
+        const existingConv = chatStore.conversationList.find(c => c.peer_user_id === peerId.value)
+        if (existingConv) {
+          conversationId.value = existingConv.id
+          chatStore.setCurrentConversation(existingConv.id)
+          await loadInitialMessages()
+        }
+      } catch (e) {
+        console.warn('[Chat] 查找已有会话失败', e)
+      }
     }
 
     onLoad((query) => {
@@ -144,11 +164,19 @@ export default {
       if (conversationId.value) {
         chatStore.setCurrentConversation(conversationId.value)
         loadInitialMessages()
+      } else if (peerId.value) {
+        tryFindExistingConversation()
       }
     })
 
     onUnload(() => {
       chatStore.setCurrentConversation(null)
+    })
+
+    watch(() => chatStore.currentConversationId, (newId) => {
+      if (newId && newId !== conversationId.value) {
+        conversationId.value = newId
+      }
     })
 
     const loadInitialMessages = async () => {
@@ -161,23 +189,19 @@ export default {
     const scrollToBottom = () => {
       nextTick(() => {
         scrollToId.value = ''
-        nextTick(() => {
-          scrollToId.value = 'msg-bottom'
-        })
+        nextTick(() => { scrollToId.value = 'msg-bottom' })
       })
     }
 
     const onSend = () => {
       const content = inputText.value.trim()
       if (!content) return
-
       chatStore.sendMessage({
         conversationId: conversationId.value || 0,
         targetUserId: conversationId.value ? 0 : peerId.value,
         content,
         type: 1
       })
-
       inputText.value = ''
       scrollToBottom()
     }
@@ -188,19 +212,14 @@ export default {
       if (conversationId.value) {
         chatStore.sendTyping(conversationId.value)
       }
-      typingTimer = setTimeout(() => {
-        typingTimer = null
-      }, 3000)
+      typingTimer = setTimeout(() => { typingTimer = null }, 3000)
     }
 
     const onLoadMore = async () => {
       if (loadingMore.value || !hasMore.value) return
       loadingMore.value = true
-      try {
-        await chatStore.loadHistoryMessages(conversationId.value)
-      } finally {
-        loadingMore.value = false
-      }
+      try { await chatStore.loadHistoryMessages(conversationId.value) }
+      finally { loadingMore.value = false }
     }
 
     const onMsgLongPress = (msg) => {
@@ -208,9 +227,7 @@ export default {
       uni.showActionSheet({
         itemList: ['撤回'],
         success: (res) => {
-          if (res.tapIndex === 0 && msg.id) {
-            chatStore.recallMessage(msg.id)
-          }
+          if (res.tapIndex === 0 && msg.id) chatStore.recallMessage(msg.id)
         }
       })
     }
@@ -221,18 +238,18 @@ export default {
         content: '是否重新发送？',
         success: (res) => {
           if (res.confirm) {
-            chatStore.sendMessage({
-              conversationId: conversationId.value,
-              content: msg.content,
-              type: msg.type || 1
-            })
+            chatStore.sendMessage({ conversationId: conversationId.value, content: msg.content, type: msg.type || 1 })
           }
         }
       })
     }
 
     const goBack = () => {
-      uni.navigateBack()
+      if (getCurrentPages().length > 1) {
+        uni.navigateBack()
+      } else {
+        uni.switchTab({ url: '/pages/chat/index' })
+      }
     }
 
     const goToSettings = () => {
@@ -242,22 +259,11 @@ export default {
     }
 
     return {
-      peerName,
-      peerAvatar,
-      inputText,
-      scrollToId,
-      loadingMore,
-      messages,
-      hasMore,
-      isTyping,
-      isSelf,
-      onSend,
-      onInputChange,
-      onLoadMore,
-      onMsgLongPress,
-      onResend,
-      goBack,
-      goToSettings
+      peerName, peerAvatar, selfAvatar, selfName,
+      inputText, scrollToId, loadingMore,
+      messages, hasMore, isTyping,
+      isSelf, onSend, onInputChange, onLoadMore,
+      onMsgLongPress, onResend, goBack, goToSettings
     }
   }
 }
@@ -269,9 +275,10 @@ export default {
   display: flex;
   flex-direction: column;
   background-color: #F1F5F9;
+  overflow: hidden;
 }
 
-/* 导航栏 */
+/* ===== 导航栏 ===== */
 .nav-bar {
   display: flex;
   align-items: center;
@@ -281,8 +288,7 @@ export default {
   background-color: #FFFFFF;
   border-bottom: 1rpx solid #E2E8F0;
 }
-
-.nav-left {
+.nav-left, .nav-right {
   min-width: 88rpx;
   min-height: 88rpx;
   display: flex;
@@ -290,149 +296,85 @@ export default {
   justify-content: center;
   transition: opacity 150ms ease;
 }
+.nav-left:active, .nav-right:active { opacity: 0.6; }
+.nav-center { flex: 1; text-align: center; }
+.nav-title { font-size: 32rpx; font-weight: 600; color: #1E293B; }
+.nav-typing { display: block; font-size: 22rpx; color: #2563EB; margin-top: 2rpx; }
 
-.nav-left:active {
-  opacity: 0.6;
-}
-
-.nav-center {
-  flex: 1;
-  text-align: center;
-}
-
-.nav-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #1E293B;
-}
-
-.nav-typing {
-  display: block;
-  font-size: 22rpx;
-  color: #2563EB;
-  margin-top: 2rpx;
-}
-
-.nav-right {
-  min-width: 88rpx;
-  min-height: 88rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: opacity 150ms ease;
-}
-
-.nav-right:active {
-  opacity: 0.6;
-}
-
-/* 消息列表 */
+/* ===== 消息列表 ===== */
 .msg-list {
   flex: 1;
   padding: 16rpx 24rpx;
+  box-sizing: border-box;
+  width: 100%;
 }
+.load-more { text-align: center; padding: 16rpx 0; }
+.load-more-text { font-size: 24rpx; color: #94A3B8; }
 
-.load-more {
-  text-align: center;
-  padding: 16rpx 0;
-}
-
-.load-more-text {
-  font-size: 24rpx;
-  color: #94A3B8;
-}
-
-/* 消息行 */
+/* ===== 消息行 ===== */
 .msg-row {
   display: flex;
   align-items: flex-start;
   margin-bottom: 24rpx;
 }
-
-.msg-row-self {
-  flex-direction: row-reverse;
-}
-
 .msg-row-other {
-  flex-direction: row;
+  justify-content: flex-start;
+}
+.msg-row-self {
+  justify-content: flex-end;
 }
 
-/* 头像 */
-.msg-avatar-wrap {
-  flex-shrink: 0;
-  margin-right: 16rpx;
-}
+/* ===== 头像 ===== */
+.avatar-wrap { flex-shrink: 0; }
+.msg-row-other .avatar-wrap { margin-right: 16rpx; }
+.msg-row-self .avatar-wrap { margin-left: 16rpx; }
 
-.msg-avatar {
+.avatar-img {
   width: 72rpx;
   height: 72rpx;
   border-radius: 18rpx;
 }
-
-.msg-avatar-placeholder {
-  background-color: #2563EB;
+.avatar-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
 }
+.avatar-peer { background-color: #2563EB; }
+.avatar-self { background-color: #64748B; }
+.avatar-char { color: #FFFFFF; font-size: 28rpx; font-weight: 600; }
 
-.msg-avatar-text {
-  color: #FFFFFF;
-  font-size: 28rpx;
-  font-weight: 600;
-}
-
-/* 气泡 */
-.msg-bubble {
-  max-width: 560rpx;
+/* ===== 气泡 ===== */
+.bubble {
+  max-width: 65vw;
   padding: 20rpx 24rpx;
   border-radius: 24rpx;
-  word-break: break-all;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
-
 .bubble-self {
   background-color: #2563EB;
   border-bottom-right-radius: 8rpx;
-  margin-left: 16rpx;
 }
-
 .bubble-other {
   background-color: #FFFFFF;
   border-bottom-left-radius: 8rpx;
 }
-
 .bubble-recalled {
   background-color: transparent !important;
   padding: 8rpx 16rpx;
 }
 
-.msg-text {
-  font-size: 30rpx;
-  line-height: 42rpx;
-}
+.msg-text { font-size: 30rpx; line-height: 42rpx; color: #1E293B; }
+.msg-text-self { color: #FFFFFF; }
+.recalled-text { font-size: 24rpx; color: #94A3B8; font-style: italic; }
 
-.bubble-self .msg-text {
-  color: #FFFFFF;
-}
-
-.bubble-other .msg-text {
-  color: #1E293B;
-}
-
-.msg-recalled {
-  font-size: 24rpx;
-  color: #94A3B8;
-  font-style: italic;
-}
-
-/* 发送状态 */
+/* ===== 发送状态 ===== */
 .msg-status {
   display: flex;
   align-items: center;
-  margin: 0 8rpx;
   align-self: center;
+  margin: 0 8rpx;
 }
-
 .msg-status-tap {
   min-width: 44rpx;
   min-height: 44rpx;
@@ -441,7 +383,7 @@ export default {
   justify-content: center;
 }
 
-/* 输入栏 */
+/* ===== 输入栏 ===== */
 .input-bar {
   display: flex;
   align-items: center;
@@ -450,7 +392,6 @@ export default {
   background-color: #FFFFFF;
   border-top: 1rpx solid #E2E8F0;
 }
-
 .input-wrap {
   flex: 1;
   background-color: #F1F5F9;
@@ -460,13 +401,7 @@ export default {
   display: flex;
   align-items: center;
 }
-
-.msg-input {
-  flex: 1;
-  font-size: 28rpx;
-  color: #1E293B;
-}
-
+.msg-input { flex: 1; font-size: 28rpx; color: #1E293B; }
 .send-btn {
   min-width: 72rpx;
   min-height: 72rpx;
@@ -478,12 +413,6 @@ export default {
   justify-content: center;
   transition: background-color 200ms ease;
 }
-
-.send-btn-active {
-  background-color: #2563EB;
-}
-
-.send-btn:active {
-  opacity: 0.85;
-}
+.send-btn-active { background-color: #2563EB; }
+.send-btn:active { opacity: 0.85; }
 </style>

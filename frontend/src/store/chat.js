@@ -16,6 +16,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import imApi from '@/api/im'
 import wsService from '@/services/websocket'
+import { useUserStore } from '@/store/user'
 
 export const useChatStore = defineStore('chat', () => {
   /** 会话列表 */
@@ -83,11 +84,12 @@ export const useChatStore = defineStore('chat', () => {
   const sendMessage = (params) => {
     const clientMsgId = _generateClientMsgId()
     const { conversationId, targetUserId, content, type = 1 } = params
+    const userStore = useUserStore()
 
     const tempMsg = {
       id: 0,
       conversation_id: conversationId || 0,
-      sender_id: 0,
+      sender_id: Number(userStore.userInfo?.id) || 0,
       type,
       content,
       status: 1,
@@ -263,6 +265,11 @@ export const useChatStore = defineStore('chat', () => {
     if (code === 0) {
       pending.status = 'sent'
       const convId = data.conversation_id
+
+      if (pending.tempMsg && pending.tempMsg.conversation_id === 0 && convId) {
+        currentConversationId.value = convId
+      }
+
       const messages = messagesMap.value[convId]
       if (messages) {
         const idx = messages.findIndex(m => m.client_msg_id === data.client_msg_id)

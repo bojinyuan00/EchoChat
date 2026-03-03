@@ -1,7 +1,7 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-03-03（Phase 2b 即时通讯核心开发完成）
-> **当前阶段**：Phase 2b 开发中
+> **最后更新**：2026-03-03（Phase 2b 即时通讯核心 + ui-ux-pro-max 规范改造完成）
+> **当前阶段**：Phase 2b 已完成
 > **当前分支**：`feature/phase2b-instant-messaging`
 > **实施计划**：`docs/plans/2026-03-03-phase2b-implementation.plan.md`
 > **设计文档**：`docs/plans/2026-03-03-phase2b-design.md`
@@ -22,6 +22,7 @@
 | Task 7 | 会话列表页 + 聊天对话页 | ✅ 完成 | 2 个核心页面 |
 | Task 8 | 设置页 + 搜索页 + 联系人改造 | ✅ 完成 | 2 个辅助页面 + 发消息跳转 |
 | Task 9 | 文档更新 + 代码审查 | ✅ 完成 | 进度/架构文档同步 |
+| UI 改造 | ui-ux-pro-max 规范改造 | ✅ 完成 | uni-icons 替换 emoji + 设计规范文件 |
 
 ---
 
@@ -112,7 +113,9 @@
 2. **状态管理**：Pinia 2.1.7 + pinia-plugin-persistedstate@3
 3. **WebSocket**：`uni.connectSocket`（小程序）/ `WebSocket`（H5）
 4. **IM Store**：chat.js（会话列表 + 消息缓存 + 三态确认 + 全局未读）
-5. **设计系统**：ui-ux-pro-max 规范
+5. **设计系统**：ui-ux-pro-max 规范，MASTER.md + 页面覆盖规范
+6. **图标方案**：@dcloudio/uni-ui uni-icons（easycom 自动引入，跨平台兼容）
+7. **预处理器**：sass（uni-icons SCSS 依赖）
 
 ### 后台管理端（admin/）
 1. **框架**：Vue 3.5+ + Vite 7.x + Element Plus
