@@ -108,7 +108,7 @@ func (h *Handler) Upgrade(c *gin.Context) {
 }
 
 // createReadHandler 创建带生命周期管理的消息处理函数
-// 客户端断开时自动执行下线清理
+// 优先查 Hub 事件路由表（业务模块注册的处理器），未命中再走内置 fallback
 func (h *Handler) createReadHandler(userID int64) ws.MessageHandler {
 	return func(client *ws.Client, msg *ws.Message) {
 		funcName := "ws.handler.onMessage"
@@ -117,6 +117,12 @@ func (h *Handler) createReadHandler(userID int64) ws.MessageHandler {
 			zap.String("event", msg.Event),
 			zap.Int64("seq", msg.Seq))
 
+		// 优先查事件路由表（IM、Meeting 等模块注册的处理器）
+		if h.hub.DispatchEvent(client, msg) {
+			return
+		}
+
+		// 内置事件 fallback
 		switch msg.Event {
 		case "heartbeat":
 			h.onlineService.HeartbeatRenew(context.Background(), userID)
@@ -128,7 +134,10 @@ func (h *Handler) createReadHandler(userID int64) ws.MessageHandler {
 			}
 			client.Send(data)
 		default:
-			resp := ws.NewResponse(msg.Event, msg.Seq, 0, "ok", nil)
+			logs.Warn(nil, funcName, "未知事件类型",
+				zap.String("event", msg.Event),
+				zap.Int64("user_id", client.UserID))
+			resp := ws.NewResponse(msg.Event, msg.Seq, -1, "未知事件", nil)
 			data, err := ws.MarshalResponse(resp)
 			if err != nil {
 				logs.Error(nil, funcName, "序列化响应失败", zap.Error(err))

@@ -7,23 +7,31 @@ import (
 	"go.uber.org/zap"
 )
 
+// EventHandler WS 事件处理函数签名
+// 业务模块通过 Hub.RegisterEvent 注册处理器，Hub 在消息分发时自动路由
+type EventHandler func(client *Client, msg *Message)
+
 // Hub 管理所有活跃的 WebSocket 客户端连接
 // 提供按 userID 注册/注销/查找连接的能力，支持优雅关闭
+// 同时维护事件路由表，将 WS 消息分发给对应的业务模块处理器
 type Hub struct {
-	clients    map[int64]*Client // userID -> Client 映射
-	register   chan *Client      // 注册通道
-	unregister chan *Client      // 注销通道
-	mu         sync.RWMutex     // 保护 clients map 的读写锁
-	stopCh     chan struct{}     // 停止信号，用于优雅关闭 Run 循环
+	clients       map[int64]*Client       // userID -> Client 映射
+	register      chan *Client             // 注册通道
+	unregister    chan *Client             // 注销通道
+	mu            sync.RWMutex            // 保护 clients map 的读写锁
+	stopCh        chan struct{}            // 停止信号，用于优雅关闭 Run 循环
+	eventHandlers map[string]EventHandler // 事件路由表：event -> handler
+	ehMu          sync.RWMutex            // 保护 eventHandlers 的读写锁
 }
 
 // NewHub 创建 Hub 实例
 func NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[int64]*Client),
-		register:   make(chan *Client, 256),
-		unregister: make(chan *Client, 256),
-		stopCh:     make(chan struct{}),
+		clients:       make(map[int64]*Client),
+		register:      make(chan *Client, 256),
+		unregister:    make(chan *Client, 256),
+		stopCh:        make(chan struct{}),
+		eventHandlers: make(map[string]EventHandler),
 	}
 }
 
@@ -142,4 +150,28 @@ func (h *Hub) IsOnline(userID int64) bool {
 	defer h.mu.RUnlock()
 	_, ok := h.clients[userID]
 	return ok
+}
+
+// RegisterEvent 注册事件处理器到路由表
+// 业务模块在启动时调用，将 WS 事件映射到对应的处理函数
+// 例如：hub.RegisterEvent("im.message.send", handler.HandleSendMessage)
+func (h *Hub) RegisterEvent(event string, handler EventHandler) {
+	h.ehMu.Lock()
+	defer h.ehMu.Unlock()
+	h.eventHandlers[event] = handler
+	logs.Info(nil, "ws.hub.RegisterEvent", "注册事件处理器",
+		zap.String("event", event))
+}
+
+// DispatchEvent 将消息分发到注册的事件处理器
+// 返回 true 表示找到匹配的处理器并已执行，false 表示无匹配需走 fallback 逻辑
+func (h *Hub) DispatchEvent(client *Client, msg *Message) bool {
+	h.ehMu.RLock()
+	handler, ok := h.eventHandlers[msg.Event]
+	h.ehMu.RUnlock()
+	if !ok {
+		return false
+	}
+	handler(client, msg)
+	return true
 }
