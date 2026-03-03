@@ -10,10 +10,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/echochat/backend/app/im/model"
+	"github.com/echochat/backend/app/provider"
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/logs"
 	"github.com/echochat/backend/pkg/middleware"
-	"github.com/echochat/backend/app/provider"
 	"github.com/echochat/backend/router"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -50,13 +51,23 @@ func main() {
 		logs.Fatal(ctx, "main", "初始化应用失败", zap.Error(err))
 	}
 
-	// 4. 创建 Gin Engine
+	// 4. IM 数据库表自动迁移（开发阶段使用，生产环境配合 init.sql）
+	if err := app.DB.AutoMigrate(
+		&model.Conversation{},
+		&model.ConversationMember{},
+		&model.Message{},
+	); err != nil {
+		logs.Fatal(ctx, "main", "IM 表迁移失败", zap.Error(err))
+	}
+	logs.Info(ctx, "main", "IM 表迁移完成")
+
+	// 5. 创建 Gin Engine
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	engine := gin.New()
 
-	// 5. 注册中间件（顺序：Trace → Logger → CORS → Recovery）
+	// 6. 注册中间件（顺序：Trace → Logger → CORS → Recovery）
 	engine.Use(
 		middleware.Trace(),
 		middleware.Logger(),
@@ -64,10 +75,10 @@ func main() {
 		middleware.Recovery(),
 	)
 
-	// 6. 注册路由（由 router.Setup 统一汇总各模块路由）
+	// 7. 注册路由（由 router.Setup 统一汇总各模块路由）
 	router.Setup(engine, app)
 
-	// 7. 启动 HTTP 服务（优雅关闭）
+	// 8. 启动 HTTP 服务（优雅关闭）
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	srv := &http.Server{
 		Addr:    addr,
