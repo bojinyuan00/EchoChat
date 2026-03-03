@@ -136,7 +136,11 @@ const selectGroup = () => {
 }
 
 const sendMessage = () => {
-  uni.showToast({ title: '聊天功能开发中', icon: 'none' })
+  const f = friend.value
+  if (!f) return
+  uni.navigateTo({
+    url: `/pages/chat/conversation?conversationId=0&peerId=${f.user_id}&peerName=${encodeURIComponent(f.remark || f.nickname || f.username)}&peerAvatar=${encodeURIComponent(f.avatar || '')}`
+  })
 }
 
 const handleBlock = () => {
