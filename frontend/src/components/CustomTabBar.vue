@@ -21,8 +21,10 @@
       :class="{ 'tab-active': currentIndex === index }"
       @tap="switchTo(index)"
     >
-      <!-- 图标区域：使用 Unicode 字符占位，后续替换为 SVG -->
-      <text class="tab-icon">{{ item.icon }}</text>
+      <view class="tab-icon-wrap">
+        <text class="tab-icon">{{ item.icon }}</text>
+        <text v-if="getBadge(index) > 0" class="tab-badge">{{ getBadge(index) > 99 ? '99+' : getBadge(index) }}</text>
+      </view>
       <text class="tab-label">{{ item.label }}</text>
     </view>
   </view>
@@ -35,8 +37,12 @@
  * Props:
  * - current: 当前选中的 Tab 索引
  *
- * 跳转使用 uni.switchTab，确保与 pages.json tabBar 配置的页面一致
+ * 功能：
+ * - 跳转使用 uni.switchTab，确保与 pages.json tabBar 配置的页面一致
+ * - 消息 Tab（index=0）显示全局未读消息 badge
  */
+import { useChatStore } from '@/store/chat'
+
 export default {
   name: 'CustomTabBar',
   props: {
@@ -70,6 +76,18 @@ export default {
     switchTo(index) {
       if (index === this.currentIndex) return
       uni.switchTab({ url: this.tabs[index].path })
+    },
+    /**
+     * 获取指定 Tab 的 badge 数
+     * @param {number} index - Tab 索引
+     * @returns {number} badge 数量（0 表示不显示）
+     */
+    getBadge(index) {
+      if (index === 0) {
+        const chatStore = useChatStore()
+        return chatStore.totalUnread
+      }
+      return 0
     }
   }
 }
@@ -108,9 +126,31 @@ export default {
   transition: color 200ms ease;
 }
 
+.tab-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .tab-icon {
   font-size: 40rpx;
   margin-bottom: 4rpx;
+}
+
+.tab-badge {
+  position: absolute;
+  top: -8rpx;
+  right: -20rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  padding: 0 8rpx;
+  font-size: 20rpx;
+  line-height: 32rpx;
+  color: #FFFFFF;
+  background-color: #EF4444;
+  border-radius: 16rpx;
+  text-align: center;
 }
 
 .tab-label {
