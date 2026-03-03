@@ -63,6 +63,25 @@
 			}
 		},
 		{
+			"path": "pages/chat/conversation",
+			"style": {
+				"navigationBarTitleText": "聊天",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/chat/settings",
+			"style": {
+				"navigationBarTitleText": "聊天设置"
+			}
+		},
+		{
+			"path": "pages/chat/search",
+			"style": {
+				"navigationBarTitleText": "搜索消息"
+			}
+		},
+		{
 			"path": "pages/meeting/index",
 			"style": {
 				"navigationBarTitleText": "会议"
