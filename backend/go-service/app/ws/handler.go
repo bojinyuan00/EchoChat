@@ -21,6 +21,12 @@ type TokenValidator interface {
 	ValidateAccessToken(ctx context.Context, userID int64, clientType, token string) bool
 }
 
+// OfflineMessagePusher 离线消息推送接口
+// 由 im.handler.OfflinePusher 实现，WebSocket 连接建立后触发推送
+type OfflineMessagePusher interface {
+	PushOfflineMessages(ctx context.Context, userID int64)
+}
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -31,11 +37,12 @@ var upgrader = websocket.Upgrader{
 
 // Handler WebSocket 连接处理器
 type Handler struct {
-	hub            *ws.Hub
-	pubsub         *ws.PubSub
-	jwtCfg         *config.JWTConfig
-	onlineService  *OnlineService
-	tokenValidator TokenValidator
+	hub             *ws.Hub
+	pubsub          *ws.PubSub
+	jwtCfg          *config.JWTConfig
+	onlineService   *OnlineService
+	tokenValidator  TokenValidator
+	offlinePusher   OfflineMessagePusher
 }
 
 // NewHandler 创建 WebSocket Handler 实例
@@ -47,6 +54,11 @@ func NewHandler(hub *ws.Hub, pubsub *ws.PubSub, jwtCfg *config.JWTConfig, online
 		onlineService:  onlineService,
 		tokenValidator: tokenValidator,
 	}
+}
+
+// SetOfflinePusher 设置离线消息推送器（由 IM 模块在初始化时注入）
+func (h *Handler) SetOfflinePusher(pusher OfflineMessagePusher) {
+	h.offlinePusher = pusher
 }
 
 // Upgrade 处理 WebSocket 升级请求
@@ -105,6 +117,10 @@ func (h *Handler) Upgrade(c *gin.Context) {
 
 	go client.WritePump()
 	go client.ReadPump(h.createReadHandler(claims.UserID))
+
+	if h.offlinePusher != nil {
+		go h.offlinePusher.PushOfflineMessages(context.Background(), claims.UserID)
+	}
 }
 
 // createReadHandler 创建带生命周期管理的消息处理函数

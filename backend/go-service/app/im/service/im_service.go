@@ -454,6 +454,11 @@ func (s *IMService) GetTotalUnread(ctx context.Context, userID int64) (int64, er
 	return val, err
 }
 
+// GetPeerUserID 获取单聊会话中对方的用户 ID（供 handler 层调用）
+func (s *IMService) GetPeerUserID(ctx context.Context, conversationID, userID int64) (int64, error) {
+	return s.convDAO.GetPeerUserID(ctx, conversationID, userID)
+}
+
 // ====== 内部辅助方法 ======
 
 // getOrCreatePrivateConversation 查找或创建单聊会话
