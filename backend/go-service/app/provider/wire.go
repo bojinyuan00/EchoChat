@@ -7,6 +7,9 @@ import (
 	"github.com/echochat/backend/app/admin"
 	"github.com/echochat/backend/app/auth"
 	"github.com/echochat/backend/app/contact"
+	contactDAO "github.com/echochat/backend/app/contact/dao"
+	imApp "github.com/echochat/backend/app/im"
+	imService "github.com/echochat/backend/app/im/service"
 	wsApp "github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
 	"github.com/google/wire"
@@ -20,6 +23,9 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		admin.AdminSet,
 		wsApp.WSSet,
 		contact.ContactSet,
+		imApp.IMSet,
+		wire.Bind(new(imService.FriendChecker), new(*contactDAO.FriendshipDAO)),
+		wire.Bind(new(imService.UserInfoGetter), new(*contactDAO.FriendshipDAO)),
 	)
 	return nil, nil
 }

@@ -7,6 +7,8 @@ import (
 	authController "github.com/echochat/backend/app/auth/controller"
 	"github.com/echochat/backend/app/auth/service"
 	contactController "github.com/echochat/backend/app/contact/controller"
+	imController "github.com/echochat/backend/app/im/controller"
+	imHandler "github.com/echochat/backend/app/im/handler"
 	wsApp "github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/db"
@@ -32,6 +34,9 @@ type App struct {
 	PubSub                *ws.PubSub                                  // Redis Pub/Sub 消息路由
 	OnlineService         *wsApp.OnlineService                        // 在线状态管理服务
 	ContactController     *contactController.ContactController        // 联系人控制器
+	IMController          *imController.IMController                 // IM 即时通讯控制器
+	IMEventHandler        *imHandler.EventHandler                    // IM WS 事件处理器
+	OfflinePusher         *imHandler.OfflinePusher                   // 离线消息推送器
 }
 
 // NewApp 创建应用实例
@@ -50,22 +55,31 @@ func NewApp(
 	pubsub *ws.PubSub,
 	onlineService *wsApp.OnlineService,
 	contactCtrl *contactController.ContactController,
+	imCtrl *imController.IMController,
+	imEventHandler *imHandler.EventHandler,
+	offlinePusher *imHandler.OfflinePusher,
 ) *App {
+	// 注入离线消息推送器到 WS Handler
+	wsHandler.SetOfflinePusher(offlinePusher)
+
 	return &App{
-		Config:                cfg,
-		DB:                    gormDB,
-		Redis:                 redisClient,
-		AuthService:           authService,
-		AuthController:        authCtrl,
-		AdminAuthController:   adminAuthCtrl,
+		Config:                  cfg,
+		DB:                      gormDB,
+		Redis:                   redisClient,
+		AuthService:             authService,
+		AuthController:          authCtrl,
+		AdminAuthController:     adminAuthCtrl,
 		UserManageController:    userManageCtrl,
 		OnlineController:        onlineCtrl,
 		ContactManageController: contactManageCtrl,
-		WSHandler:             wsHandler,
-		Hub:                   hub,
-		PubSub:                pubsub,
-		OnlineService:         onlineService,
-		ContactController:     contactCtrl,
+		WSHandler:               wsHandler,
+		Hub:                     hub,
+		PubSub:                  pubsub,
+		OnlineService:           onlineService,
+		ContactController:       contactCtrl,
+		IMController:            imCtrl,
+		IMEventHandler:          imEventHandler,
+		OfflinePusher:           offlinePusher,
 	}
 }
 

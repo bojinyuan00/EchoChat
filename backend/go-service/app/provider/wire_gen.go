@@ -16,6 +16,7 @@ import (
 	controller3 "github.com/echochat/backend/app/contact/controller"
 	dao3 "github.com/echochat/backend/app/contact/dao"
 	service3 "github.com/echochat/backend/app/contact/service"
+	imApp "github.com/echochat/backend/app/im"
 	"github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/db"
@@ -57,6 +58,15 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	friendGroupDAO := dao3.NewFriendGroupDAO(gormDB)
 	contactService := service3.NewContactService(friendshipDAO, friendGroupDAO, pubSub)
 	contactController := controller3.NewContactController(contactService)
-	app := NewApp(cfg, gormDB, client, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, handler, hub, pubSub, onlineService, contactController)
+
+	// IM 模块初始化
+	conversationDAO := imApp.ProvideConversationDAO(gormDB)
+	messageDAO := imApp.ProvideMessageDAO(gormDB)
+	imService := imApp.ProvideIMService(conversationDAO, messageDAO, pubSub, client, friendshipDAO, friendshipDAO)
+	imEventHandler := imApp.ProvideIMEventHandler(imService, hub)
+	offlinePusher := imApp.ProvideOfflinePusher(imService, conversationDAO, pubSub)
+	imController := imApp.ProvideIMController(imService)
+
+	app := NewApp(cfg, gormDB, client, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, handler, hub, pubSub, onlineService, contactController, imController, imEventHandler, offlinePusher)
 	return app, nil
 }
