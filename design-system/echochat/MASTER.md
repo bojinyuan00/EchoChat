@@ -1,14 +1,14 @@
 # Design System Master File
 
-> **LOGIC:** When building a specific page, first check `design-system/pages/[page-name].md`.
+> **LOGIC:** When building a specific page, first check `design-system/echochat/pages/[page-name].md`.
 > If that file exists, its rules **override** this Master file.
 > If not, strictly follow the rules below.
 
 ---
 
 **Project:** EchoChat
-**Generated:** 2026-03-02 15:16:13
-**Category:** Analytics Dashboard
+**Generated:** 2026-03-03 (via ui-ux-pro-max)
+**Category:** Mobile Messaging Application
 
 ---
 
@@ -16,136 +16,200 @@
 
 ### Color Palette
 
-| Role | Hex | CSS Variable |
-|------|-----|--------------|
-| Primary | `#7C3AED` | `--color-primary` |
-| Secondary | `#A78BFA` | `--color-secondary` |
-| CTA/Accent | `#F97316` | `--color-cta` |
-| Background | `#FAF5FF` | `--color-background` |
-| Text | `#4C1D95` | `--color-text` |
+| Role | Hex | CSS Variable | Usage |
+|------|-----|--------------|-------|
+| Primary | `#2563EB` | `--color-primary` | 按钮、链接、选中态、自己的消息气泡 |
+| Secondary | `#3B82F6` | `--color-secondary` | 次级操作、hover 态 |
+| CTA/Accent | `#10B981` | `--color-cta` | 在线状态、成功提示 |
+| Background | `#F8FAFC` | `--color-background` | 页面主背景 |
+| Surface | `#FFFFFF` | `--color-surface` | 卡片、列表项背景 |
+| Text | `#1E293B` | `--color-text` | 主要文字 |
+| Muted | `#94A3B8` | `--color-muted` | 辅助文字、时间戳、placeholder |
+| Border | `#E2E8F0` | `--color-border` | 分隔线 |
+| Border Light | `#F1F5F9` | `--color-border-light` | 浅分隔线 |
+| Danger | `#EF4444` | `--color-danger` | 错误、删除、未读 badge |
 
-**Color Notes:** Excitement purple + action orange
+**Color Notes:** Professional blue + clean slate gray
 
-### Typography
+### Typography (uni-app)
 
-- **Heading Font:** Fira Code
-- **Body Font:** Fira Sans
-- **Mood:** dashboard, data, analytics, code, technical, precise
-- **Google Fonts:** [Fira Code + Fira Sans](https://fonts.google.com/share?selection.family=Fira+Code:wght@400;500;600;700|Fira+Sans:wght@300;400;500;600;700)
+- **Body Font:** System default (uni-app 跨平台自动适配)
+- **Line Height:** 1.5 for body, 1.3 for headings
+- **Font Size Scale (rpx):**
+  - xs: `22rpx` — 极小辅助文字
+  - sm: `24rpx` — 时间戳、标签
+  - base: `28rpx` — 正文、列表内容
+  - md: `30rpx` — 列表标题
+  - lg: `32rpx` — 页面标题
+  - xl: `36rpx` — 大标题
 
-**CSS Import:**
-```css
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
-```
-
-### Spacing Variables
+### Spacing Variables (rpx)
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `--space-xs` | `4px` / `0.25rem` | Tight gaps |
-| `--space-sm` | `8px` / `0.5rem` | Icon gaps, inline spacing |
-| `--space-md` | `16px` / `1rem` | Standard padding |
-| `--space-lg` | `24px` / `1.5rem` | Section padding |
-| `--space-xl` | `32px` / `2rem` | Large gaps |
-| `--space-2xl` | `48px` / `3rem` | Section margins |
-| `--space-3xl` | `64px` / `4rem` | Hero padding |
+| `xs` | `8rpx` | 图标间距 |
+| `sm` | `16rpx` | 行内间距 |
+| `md` | `24rpx` | 列表项内边距 |
+| `lg` | `32rpx` | 区域边距 |
+| `xl` | `48rpx` | 大区域分隔 |
 
 ### Shadow Depths
 
 | Level | Value | Usage |
 |-------|-------|-------|
-| `--shadow-sm` | `0 1px 2px rgba(0,0,0,0.05)` | Subtle lift |
-| `--shadow-md` | `0 4px 6px rgba(0,0,0,0.1)` | Cards, buttons |
-| `--shadow-lg` | `0 10px 15px rgba(0,0,0,0.1)` | Modals, dropdowns |
-| `--shadow-xl` | `0 20px 25px rgba(0,0,0,0.15)` | Hero images, featured cards |
+| `sm` | `0 1px 2px rgba(0,0,0,0.05)` | 微弱浮起 |
+| `md` | `0 4px 6px rgba(0,0,0,0.07)` | 卡片 |
+| `lg` | `0 10px 15px rgba(0,0,0,0.1)` | 弹出层 |
+
+### Border Radius Scale (rpx)
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `sm` | `8rpx` | 小元素 |
+| `md` | `16rpx` | 按钮、输入框 |
+| `lg` | `24rpx` | 卡片、头像 |
+| `xl` | `36rpx` | 胶囊按钮、搜索框 |
+| `full` | `50%` | 圆形按钮 |
+
+---
+
+## Icon System (uni-icons)
+
+**图标方案:** `@dcloudio/uni-ui` 的 `uni-icons` 组件（跨平台兼容）
+
+**严禁:** 使用 emoji 或 HTML 实体字符（&#xxxx;）作为图标
+
+| 场景 | 图标名 | 尺寸 | 颜色 |
+|------|--------|------|------|
+| 搜索 | `search` | 20 | `#475569` |
+| 返回 | `back` | 20 | `#1E293B` |
+| 更多 | `more-filled` | 20 | `#475569` |
+| 发送 | `paperplane` | 22 | `#FFFFFF` |
+| 发送中 | `loop` | 16 | `#94A3B8` |
+| 发送失败 | `info-filled` | 18 | `#EF4444` |
+| 置顶 | `top` | 16 | `#94A3B8` |
+| 聊天（空状态）| `chatbubble` | 64 | `#CBD5E1` |
+| 删除 | `trash` | 20 | `#EF4444` |
+| 清除 | `clear` | 20 | `#EF4444` |
+
+**使用方式:**
+
+```html
+<uni-icons type="search" size="20" color="#475569" />
+```
 
 ---
 
 ## Component Specs
 
-### Buttons
+### Touch Targets (CRITICAL for Mobile)
 
 ```css
-/* Primary Button */
-.btn-primary {
-  background: #F97316;
-  color: white;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-weight: 600;
-  transition: all 200ms ease;
-  cursor: pointer;
-}
-
-.btn-primary:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
-}
-
-/* Secondary Button */
-.btn-secondary {
-  background: transparent;
-  color: #7C3AED;
-  border: 2px solid #7C3AED;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-weight: 600;
-  transition: all 200ms ease;
-  cursor: pointer;
+/* 所有可点击元素最小尺寸 */
+.touchable {
+  min-width: 88rpx;
+  min-height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 ```
 
-### Cards
+### Buttons
 
 ```css
-.card {
-  background: #FAF5FF;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: var(--shadow-md);
-  transition: all 200ms ease;
-  cursor: pointer;
+.btn-primary {
+  background: #2563EB;
+  color: #FFFFFF;
+  padding: 24rpx 48rpx;
+  border-radius: 16rpx;
+  font-weight: 600;
+  font-size: 28rpx;
+  transition: opacity 200ms ease;
 }
 
-.card:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
+.btn-primary:active {
+  opacity: 0.85;
 }
+
+.btn-danger {
+  background: transparent;
+  color: #EF4444;
+  font-size: 30rpx;
+}
+```
+
+### Cards / List Items
+
+```css
+.list-item {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  background-color: #FFFFFF;
+  border-bottom: 1rpx solid #F1F5F9;
+  transition: background-color 150ms ease;
+}
+
+.list-item:active {
+  background-color: #F1F5F9;
+}
+```
+
+### Avatar
+
+```css
+.avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 24rpx;
+}
+
+.avatar-placeholder {
+  background-color: #2563EB;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+.avatar-sm { width: 72rpx; height: 72rpx; border-radius: 18rpx; }
+.avatar-lg { width: 120rpx; height: 120rpx; border-radius: 30rpx; }
 ```
 
 ### Inputs
 
 ```css
-.input {
-  padding: 12px 16px;
-  border: 1px solid #E2E8F0;
-  border-radius: 8px;
-  font-size: 16px;
-  transition: border-color 200ms ease;
+.input-wrap {
+  background-color: #F1F5F9;
+  border-radius: 36rpx;
+  padding: 0 28rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
 }
 
-.input:focus {
-  border-color: #7C3AED;
-  outline: none;
-  box-shadow: 0 0 0 3px #7C3AED20;
+.input {
+  flex: 1;
+  font-size: 28rpx;
+  color: #1E293B;
 }
 ```
 
-### Modals
+### Badge
 
 ```css
-.modal-overlay {
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-}
-
-.modal {
-  background: white;
-  border-radius: 16px;
-  padding: 32px;
-  box-shadow: var(--shadow-xl);
-  max-width: 500px;
-  width: 90%;
+.badge {
+  min-width: 36rpx;
+  height: 36rpx;
+  padding: 0 8rpx;
+  background-color: #EF4444;
+  border-radius: 18rpx;
+  color: #FFFFFF;
+  font-size: 20rpx;
+  line-height: 36rpx;
+  text-align: center;
 }
 ```
 
@@ -153,40 +217,29 @@
 
 ## Style Guidelines
 
-**Style:** Data-Dense Dashboard
+**Style:** Clean & Functional Messaging
 
-**Keywords:** Multiple charts/widgets, data tables, KPI cards, minimal padding, grid layout, space-efficient, maximum data visibility
+**Keywords:** Clean, functional, chat-focused, mobile-first, fast interactions, minimal visual noise
 
-**Best For:** Business intelligence dashboards, financial analytics, enterprise reporting, operational dashboards, data warehousing
+**Best For:** Instant messaging, social chat, real-time communication
 
-**Key Effects:** Hover tooltips, chart zoom on click, row highlighting on hover, smooth filter animations, data loading spinners
-
-### Page Pattern
-
-**Pattern Name:** Horizontal Scroll Journey
-
-- **Conversion Strategy:** Immersive product discovery. High engagement. Keep navigation visible.
-28,Bento Grid Showcase,bento,  grid,  features,  modular,  apple-style,  showcase", 1. Hero, 2. Bento Grid (Key Features), 3. Detail Cards, 4. Tech Specs, 5. CTA, Floating Action Button or Bottom of Grid, Card backgrounds: #F5F5F7 or Glass. Icons: Vibrant brand colors. Text: Dark., Hover card scale (1.02), video inside cards, tilt effect, staggered reveal, Scannable value props. High information density without clutter. Mobile stack.
-29,Interactive 3D Configurator,3d,  configurator,  customizer,  interactive,  product", 1. Hero (Configurator), 2. Feature Highlight (synced), 3. Price/Specs, 4. Purchase, Inside Configurator UI + Sticky Bottom Bar, Neutral studio background. Product: Realistic materials. UI: Minimal overlay., Real-time rendering, material swap animation, camera rotate/zoom, light reflection, Increases ownership feeling. 360 view reduces return rates. Direct add-to-cart.
-30,AI-Driven Dynamic Landing,ai,  dynamic,  personalized,  adaptive,  generative", 1. Prompt/Input Hero, 2. Generated Result Preview, 3. How it Works, 4. Value Prop, Input Field (Hero) + 'Try it' Buttons, Adaptive to user input. Dark mode for compute feel. Neon accents., Typing text effects, shimmering generation loaders, morphing layouts, Immediate value demonstration. 'Show, don't tell'. Low friction start.
-- **CTA Placement:** Floating Sticky CTA or End of Horizontal Track
-- **Section Order:** 1. Intro (Vertical), 2. The Journey (Horizontal Track), 3. Detail Reveal, 4. Vertical Footer
+**Key Effects:**
+- `:active` 状态替代 `:hover`（移动端优先）
+- 所有状态切换使用 `transition: 150-200ms ease`
+- 消息气泡圆角差异化（自己 vs 对方）
+- 列表项按压态反馈
 
 ---
 
 ## Anti-Patterns (Do NOT Use)
 
-- ❌ Ornate design
-- ❌ No filtering
-
-### Additional Forbidden Patterns
-
-- ❌ **Emojis as icons** — Use SVG icons (Heroicons, Lucide, Simple Icons)
-- ❌ **Missing cursor:pointer** — All clickable elements must have cursor:pointer
-- ❌ **Layout-shifting hovers** — Avoid scale transforms that shift layout
-- ❌ **Low contrast text** — Maintain 4.5:1 minimum contrast ratio
-- ❌ **Instant state changes** — Always use transitions (150-300ms)
-- ❌ **Invisible focus states** — Focus states must be visible for a11y
+- ❌ **Emojis as icons** — 使用 `uni-icons` 组件（跨平台兼容）
+- ❌ **HTML 实体字符 (&#xxxx;) as icons** — 同上
+- ❌ **Low contrast text** — 最低 4.5:1 对比度
+- ❌ **Instant state changes** — 必须使用 transition (150-200ms)
+- ❌ **Touch targets < 44px (88rpx)** — 所有可交互元素最小 88rpx
+- ❌ **相邻触控元素间距 < 8px (16rpx)** — 保证误触防护
+- ❌ **硬编码 px** — uni-app 中统一使用 rpx（状态栏除外）
 
 ---
 
@@ -194,13 +247,14 @@
 
 Before delivering any UI code, verify:
 
-- [ ] No emojis used as icons (use SVG instead)
-- [ ] All icons from consistent icon set (Heroicons/Lucide)
-- [ ] `cursor-pointer` on all clickable elements
-- [ ] Hover states with smooth transitions (150-300ms)
-- [ ] Light mode: text contrast 4.5:1 minimum
-- [ ] Focus states visible for keyboard navigation
-- [ ] `prefers-reduced-motion` respected
-- [ ] Responsive: 375px, 768px, 1024px, 1440px
-- [ ] No content hidden behind fixed navbars
-- [ ] No horizontal scroll on mobile
+- [ ] No emojis or HTML entities used as icons (use `uni-icons`)
+- [ ] All icons from `@dcloudio/uni-ui` uni-icons
+- [ ] Touch targets ≥ 88rpx (44px) on all interactive elements
+- [ ] `:active` states for press feedback (mobile)
+- [ ] Transitions (150-200ms) on all state changes
+- [ ] Text contrast 4.5:1 minimum
+- [ ] No horizontal scroll on any screen
+- [ ] Content not hidden behind navigation bars
+- [ ] `padding-bottom` accounts for safe-area-inset-bottom
+- [ ] Avatar placeholder with first character fallback
+- [ ] Empty states with icon + text + hint

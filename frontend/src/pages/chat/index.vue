@@ -2,6 +2,8 @@
   消息 - 会话列表页（TabBar 页面）
 
   设计系统：design-system/echochat/MASTER.md
+  页面覆盖：design-system/echochat/pages/chat-index.md
+  图标方案：@dcloudio/uni-ui uni-icons（跨平台兼容）
   色板：Primary #2563EB / BG #F8FAFC / Text #1E293B / Muted #94A3B8
 -->
 <template>
@@ -11,7 +13,7 @@
       <text class="header-title">消息</text>
       <view class="header-actions">
         <view class="action-btn" @tap="goToSearch">
-          <text class="action-icon">&#128269;</text>
+          <uni-icons type="search" size="20" color="#475569" />
         </view>
       </view>
     </view>
@@ -20,7 +22,7 @@
     <scroll-view scroll-y class="conv-list" @scrolltolower="onScrollToLower">
       <!-- 空状态 -->
       <view v-if="!loading && conversations.length === 0" class="empty-state">
-        <text class="empty-icon">💬</text>
+        <uni-icons type="chatbubble" size="64" color="#CBD5E1" />
         <text class="empty-text">暂无消息</text>
         <text class="empty-hint">找好友聊聊天吧</text>
       </view>
@@ -62,7 +64,7 @@
               {{ conv.last_msg_content || ' ' }}
             </text>
             <view v-if="conv.is_pinned" class="conv-pin-tag">
-              <text class="pin-icon">📌</text>
+              <uni-icons type="top" size="14" color="#94A3B8" />
             </view>
           </view>
         </view>
@@ -199,18 +201,18 @@ export default {
 }
 
 .action-btn {
-  width: 64rpx;
-  height: 64rpx;
+  min-width: 88rpx;
+  min-height: 88rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 16rpx;
   background-color: #F1F5F9;
+  transition: background-color 150ms ease;
 }
 
-.action-icon {
-  font-size: 32rpx;
-  color: #475569;
+.action-btn:active {
+  background-color: #E2E8F0;
 }
 
 /* 会话列表 */
@@ -224,10 +226,19 @@ export default {
   padding: 24rpx 32rpx;
   background-color: #FFFFFF;
   border-bottom: 1rpx solid #F1F5F9;
+  transition: background-color 150ms ease;
+}
+
+.conv-item:active {
+  background-color: #F1F5F9;
 }
 
 .conv-pinned {
   background-color: #F8FAFC;
+}
+
+.conv-pinned:active {
+  background-color: #F1F5F9;
 }
 
 /* 头像 */
@@ -332,10 +343,8 @@ export default {
 
 .conv-pin-tag {
   flex-shrink: 0;
-}
-
-.pin-icon {
-  font-size: 22rpx;
+  display: flex;
+  align-items: center;
 }
 
 /* 空状态 */
@@ -346,15 +355,11 @@ export default {
   padding-top: 200rpx;
 }
 
-.empty-icon {
-  font-size: 80rpx;
-  margin-bottom: 24rpx;
-}
-
 .empty-text {
   font-size: 32rpx;
   font-weight: 600;
   color: #1E293B;
+  margin-top: 24rpx;
   margin-bottom: 8rpx;
 }
 

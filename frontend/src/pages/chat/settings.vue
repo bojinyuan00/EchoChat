@@ -2,6 +2,8 @@
   聊天设置页
 
   设计系统：design-system/echochat/MASTER.md
+  页面覆盖：design-system/echochat/pages/chat-settings.md
+  图标方案：@dcloudio/uni-ui uni-icons
   功能：对方信息展示、置顶、清空聊天记录、删除会话
 -->
 <template>
@@ -162,11 +164,17 @@ export default {
   align-items: center;
   justify-content: space-between;
   padding: 32rpx;
+  min-height: 88rpx;
   border-bottom: 1rpx solid #F1F5F9;
+  transition: background-color 150ms ease;
 }
 
 .settings-item:last-child {
   border-bottom: none;
+}
+
+.settings-item:active {
+  background-color: #F8FAFC;
 }
 
 .settings-label {

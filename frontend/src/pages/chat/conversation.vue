@@ -2,8 +2,10 @@
   聊天对话页
 
   设计系统：design-system/echochat/MASTER.md
-  色板：Primary #2563EB / BG #F8FAFC / Text #1E293B
-  
+  页面覆盖：design-system/echochat/pages/chat-conversation.md
+  图标方案：@dcloudio/uni-ui uni-icons
+  色板：Primary #2563EB / BG #F1F5F9 / Text #1E293B
+
   功能：
   - 消息气泡（左侧对方 / 右侧自己）
   - 游标分页加载历史消息
@@ -16,14 +18,14 @@
     <!-- 自定义导航栏 -->
     <view class="nav-bar">
       <view class="nav-left" @tap="goBack">
-        <text class="nav-back">&#10094;</text>
+        <uni-icons type="back" size="20" color="#1E293B" />
       </view>
       <view class="nav-center">
         <text class="nav-title">{{ peerName || '聊天' }}</text>
         <text v-if="isTyping" class="nav-typing">正在输入...</text>
       </view>
       <view class="nav-right" @tap="goToSettings">
-        <text class="nav-more">&#8943;</text>
+        <uni-icons type="more-filled" size="20" color="#475569" />
       </view>
     </view>
 
@@ -72,10 +74,10 @@
 
         <!-- 发送状态 -->
         <view v-if="isSelf(msg) && msg._sending" class="msg-status">
-          <text class="status-sending">&#8987;</text>
+          <uni-icons type="loop" size="16" color="#94A3B8" />
         </view>
-        <view v-if="isSelf(msg) && msg._failed" class="msg-status" @tap="onResend(msg)">
-          <text class="status-failed">&#9888;</text>
+        <view v-if="isSelf(msg) && msg._failed" class="msg-status msg-status-tap" @tap="onResend(msg)">
+          <uni-icons type="info-filled" size="18" color="#EF4444" />
         </view>
       </view>
 
@@ -97,7 +99,7 @@
         />
       </view>
       <view class="send-btn" :class="{ 'send-btn-active': inputText.trim() }" @tap="onSend">
-        <text class="send-icon">&#10148;</text>
+        <uni-icons type="paperplane" size="22" color="#FFFFFF" />
       </view>
     </view>
   </view>
@@ -281,17 +283,16 @@ export default {
 }
 
 .nav-left {
-  width: 64rpx;
-  height: 64rpx;
+  min-width: 88rpx;
+  min-height: 88rpx;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: opacity 150ms ease;
 }
 
-.nav-back {
-  font-size: 32rpx;
-  color: #1E293B;
-  font-weight: 600;
+.nav-left:active {
+  opacity: 0.6;
 }
 
 .nav-center {
@@ -313,16 +314,16 @@ export default {
 }
 
 .nav-right {
-  width: 64rpx;
-  height: 64rpx;
+  min-width: 88rpx;
+  min-height: 88rpx;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: opacity 150ms ease;
 }
 
-.nav-more {
-  font-size: 36rpx;
-  color: #475569;
+.nav-right:active {
+  opacity: 0.6;
 }
 
 /* 消息列表 */
@@ -432,14 +433,12 @@ export default {
   align-self: center;
 }
 
-.status-sending {
-  font-size: 24rpx;
-  color: #94A3B8;
-}
-
-.status-failed {
-  font-size: 28rpx;
-  color: #EF4444;
+.msg-status-tap {
+  min-width: 44rpx;
+  min-height: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 输入栏 */
@@ -469,8 +468,8 @@ export default {
 }
 
 .send-btn {
-  width: 72rpx;
-  height: 72rpx;
+  min-width: 72rpx;
+  min-height: 72rpx;
   margin-left: 16rpx;
   border-radius: 50%;
   background-color: #CBD5E1;
@@ -484,8 +483,7 @@ export default {
   background-color: #2563EB;
 }
 
-.send-icon {
-  font-size: 32rpx;
-  color: #FFFFFF;
+.send-btn:active {
+  opacity: 0.85;
 }
 </style>

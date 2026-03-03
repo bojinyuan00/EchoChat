@@ -1,16 +1,15 @@
 <!--
   自定义 TabBar 组件
-  
+
   设计系统：design-system/echochat/MASTER.md
+  图标方案：@dcloudio/uni-ui uni-icons（跨平台兼容）
   色板：Primary #2563EB / Text #1E293B / Muted #94A3B8
-  
+
   功能：
   - 底部导航栏，4 个 Tab：消息 / 联系人 / 会议 / 我的
-  - 选中状态高亮（Primary 色）
-  - 使用 Unicode 图标占位（后续可替换为 SVG 图标组件）
-  - 支持 switchTab 跳转
-  
-  使用方式：在每个 TabBar 页面中引入此组件并放在页面底部
+  - 选中态使用 filled 图标 + Primary 色，未选中态使用轮廓图标 + Muted 色
+  - 消息 Tab 支持未读消息 badge
+  - 使用 switchTab 跳转
 -->
 <template>
   <view class="tab-bar">
@@ -22,7 +21,11 @@
       @tap="switchTo(index)"
     >
       <view class="tab-icon-wrap">
-        <text class="tab-icon">{{ item.icon }}</text>
+        <uni-icons
+          :type="currentIndex === index ? item.iconActive : item.icon"
+          size="24"
+          :color="currentIndex === index ? '#2563EB' : '#94A3B8'"
+        />
         <text v-if="getBadge(index) > 0" class="tab-badge">{{ getBadge(index) > 99 ? '99+' : getBadge(index) }}</text>
       </view>
       <text class="tab-label">{{ item.label }}</text>
@@ -40,6 +43,7 @@
  * 功能：
  * - 跳转使用 uni.switchTab，确保与 pages.json tabBar 配置的页面一致
  * - 消息 Tab（index=0）显示全局未读消息 badge
+ * - 选中态使用 filled 图标变体以增强视觉区分
  */
 import { useChatStore } from '@/store/chat'
 
@@ -54,12 +58,12 @@ export default {
   },
   data() {
     return {
-      /** Tab 配置列表 */
+      /** Tab 配置列表：icon 为未选中态，iconActive 为选中态 */
       tabs: [
-        { path: '/pages/chat/index', label: '消息', icon: '💬' },
-        { path: '/pages/contact/index', label: '联系人', icon: '👥' },
-        { path: '/pages/meeting/index', label: '会议', icon: '🎥' },
-        { path: '/pages/profile/index', label: '我的', icon: '👤' }
+        { path: '/pages/chat/index', label: '消息', icon: 'chatbubble', iconActive: 'chatbubble-filled' },
+        { path: '/pages/contact/index', label: '联系人', icon: 'contact', iconActive: 'contact-filled' },
+        { path: '/pages/meeting/index', label: '会议', icon: 'videocam', iconActive: 'videocam-filled' },
+        { path: '/pages/profile/index', label: '我的', icon: 'person', iconActive: 'person-filled' }
       ]
     }
   },
@@ -94,13 +98,6 @@ export default {
 </script>
 
 <style scoped>
-/*
- * 设计系统：MASTER.md
- * 选中色：#2563EB（Primary）
- * 未选中色：#94A3B8（Muted）
- * 背景：#FFFFFF + 顶部分割线
- * 高度：适配安全区域（底部 safe area）
- */
 .tab-bar {
   position: fixed;
   bottom: 0;
@@ -123,7 +120,12 @@ export default {
   justify-content: center;
   flex: 1;
   height: 100%;
-  transition: color 200ms ease;
+  min-height: 88rpx;
+  transition: opacity 150ms ease;
+}
+
+.tab-item:active {
+  opacity: 0.7;
 }
 
 .tab-icon-wrap {
@@ -131,10 +133,6 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.tab-icon {
-  font-size: 40rpx;
   margin-bottom: 4rpx;
 }
 
@@ -159,7 +157,6 @@ export default {
   font-weight: 400;
 }
 
-/* 选中状态 */
 .tab-active .tab-label {
   color: #2563EB;
   font-weight: 500;

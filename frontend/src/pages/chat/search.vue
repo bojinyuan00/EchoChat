@@ -2,6 +2,8 @@
   消息搜索页
 
   设计系统：design-system/echochat/MASTER.md
+  页面覆盖：design-system/echochat/pages/chat-search.md
+  图标方案：@dcloudio/uni-ui uni-icons
   功能：全局消息搜索，结果按会话分组，点击跳转到聊天页
 -->
 <template>
@@ -9,7 +11,7 @@
     <!-- 搜索栏 -->
     <view class="search-bar">
       <view class="search-input-wrap">
-        <text class="search-icon">&#128269;</text>
+        <uni-icons type="search" size="18" color="#94A3B8" />
         <input
           class="search-input"
           v-model="keyword"
@@ -20,7 +22,9 @@
           @confirm="onSearch"
         />
       </view>
-      <text class="search-cancel" @tap="goBack">取消</text>
+      <view class="search-cancel" @tap="goBack">
+        <text class="search-cancel-text">取消</text>
+      </view>
     </view>
 
     <!-- 搜索结果 -->
@@ -121,12 +125,7 @@ export default {
   border-radius: 36rpx;
   padding: 0 24rpx;
   height: 68rpx;
-}
-
-.search-icon {
-  font-size: 28rpx;
-  margin-right: 12rpx;
-  color: #94A3B8;
+  gap: 12rpx;
 }
 
 .search-input {
@@ -137,8 +136,20 @@ export default {
 
 .search-cancel {
   margin-left: 20rpx;
+  min-width: 88rpx;
+  min-height: 68rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-cancel-text {
   font-size: 28rpx;
   color: #2563EB;
+}
+
+.search-cancel:active {
+  opacity: 0.6;
 }
 
 .result-list {
@@ -151,6 +162,11 @@ export default {
   padding: 24rpx 32rpx;
   background-color: #FFFFFF;
   border-bottom: 1rpx solid #F1F5F9;
+  transition: background-color 150ms ease;
+}
+
+.result-item:active {
+  background-color: #F1F5F9;
 }
 
 .result-avatar-wrap {
