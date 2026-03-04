@@ -2,7 +2,7 @@
 
 > **最后更新**：2026-03-04（Phase 2c 设计完成，待实施）
 > **当前阶段**：Phase 2c 设计完成，准备开始实施
-> **当前分支**：`feature/phase2b-instant-messaging`（Phase 2c 分支待创建）
+> **当前分支**：`feature/phase2c-group-read-receipt`（已从 phase2b 拉出）
 > **实施计划**：`docs/plans/2026-03-04-phase2c-implementation.plan.md`
 > **设计文档**：`docs/plans/2026-03-04-phase2c-design.md`
 
@@ -242,7 +242,7 @@ cd frontend && npm run dev:h5
 > **状态：** 设计完成，待实施
 > **设计文档：** `docs/plans/2026-03-04-phase2c-design.md`
 > **实施计划：** `docs/plans/2026-03-04-phase2c-implementation.plan.md`
-> **分支：** `feature/phase2c-group-read-receipt`（待创建，从 phase2b 拉出）
+> **分支：** `feature/phase2c-group-read-receipt`（已创建，从 phase2b 拉出）
 
 ### 功能范围
 
