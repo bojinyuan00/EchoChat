@@ -45,18 +45,23 @@ func (d *MessageDAO) GetByID(ctx context.Context, id int64) (*model.Message, err
 
 // GetByConversation 获取会话的历史消息（游标分页，按 ID 降序）
 // beforeID > 0 时作为游标，查询 ID 小于 beforeID 的消息
-// beforeID = 0 时查询最新的 limit 条消息
-func (d *MessageDAO) GetByConversation(ctx context.Context, conversationID int64, beforeID int64, limit int) ([]model.Message, error) {
+// clearBeforeMsgID > 0 时过滤掉用户已清空的消息（个人视图）
+func (d *MessageDAO) GetByConversation(ctx context.Context, conversationID int64, beforeID int64, clearBeforeMsgID int64, limit int) ([]model.Message, error) {
 	funcName := "dao.message_dao.GetByConversation"
 	logs.Debug(ctx, funcName, "查询历史消息",
 		zap.Int64("conversation_id", conversationID),
-		zap.Int64("before_id", beforeID), zap.Int("limit", limit))
+		zap.Int64("before_id", beforeID),
+		zap.Int64("clear_before_msg_id", clearBeforeMsgID),
+		zap.Int("limit", limit))
 
 	query := d.db.WithContext(ctx).
 		Where("conversation_id = ? AND status != ?", conversationID, constants.MessageStatusDeleted)
 
 	if beforeID > 0 {
 		query = query.Where("id < ?", beforeID)
+	}
+	if clearBeforeMsgID > 0 {
+		query = query.Where("id > ?", clearBeforeMsgID)
 	}
 
 	var messages []model.Message
@@ -79,18 +84,6 @@ func (d *MessageDAO) UpdateStatus(ctx context.Context, id int64, status int) err
 		Update("status", status).Error
 }
 
-// DeleteByConversation 软删除会话中所有消息（标记 status=3）
-func (d *MessageDAO) DeleteByConversation(ctx context.Context, conversationID int64) error {
-	funcName := "dao.message_dao.DeleteByConversation"
-	logs.Info(ctx, funcName, "清空会话消息",
-		zap.Int64("conversation_id", conversationID))
-
-	return d.db.WithContext(ctx).
-		Model(&model.Message{}).
-		Where("conversation_id = ? AND status = ?", conversationID, constants.MessageStatusNormal).
-		Update("status", constants.MessageStatusDeleted).Error
-}
-
 // SearchMessages 全局消息搜索（按关键词匹配，仅搜索用户所在会话的消息）
 // 返回匹配的消息列表（已 JOIN 成员表确保权限）
 func (d *MessageDAO) SearchMessages(ctx context.Context, userID int64, keyword string, limit int) ([]MessageSearchResult, error) {
@@ -104,10 +97,11 @@ func (d *MessageDAO) SearchMessages(ctx context.Context, userID int64, keyword s
 			 FROM im_messages m
 			 JOIN im_conversation_members cm ON cm.conversation_id = m.conversation_id
 			 WHERE cm.user_id = ? AND cm.is_deleted = false
-			   AND m.status = ? AND m.content LIKE ?
+			   AND m.status = ?
+			   AND to_tsvector('simple', m.content) @@ plainto_tsquery('simple', ?)
 			 ORDER BY m.created_at DESC
 			 LIMIT ?`,
-			userID, constants.MessageStatusNormal, "%"+keyword+"%", limit).
+			userID, constants.MessageStatusNormal, keyword, limit).
 		Scan(&results).Error
 
 	if err != nil {

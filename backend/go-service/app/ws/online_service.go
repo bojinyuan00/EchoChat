@@ -39,12 +39,43 @@ type OnlineService struct {
 }
 
 // NewOnlineService 创建 OnlineService 实例
+// 启动时清理 Redis 中残留的在线状态数据，防止服务重启后出现"幽灵在线"
 func NewOnlineService(rdb *redis.Client, hub *ws.Hub, pubsub *ws.PubSub, friendGetter FriendIDsGetter) *OnlineService {
-	return &OnlineService{
+	svc := &OnlineService{
 		rdb:          rdb,
 		hub:          hub,
 		pubsub:       pubsub,
 		friendGetter: friendGetter,
+	}
+	svc.cleanStaleOnlineData()
+	return svc
+}
+
+// cleanStaleOnlineData 服务启动时清理上次残留的在线状态
+// 单实例部署下，启动时不可能有合法的在线用户，直接清空即可
+func (s *OnlineService) cleanStaleOnlineData() {
+	ctx := context.Background()
+	funcName := "ws.online_service.cleanStaleOnlineData"
+
+	members, err := s.rdb.SMembers(ctx, onlineSetKey).Result()
+	if err != nil {
+		logs.Warn(ctx, funcName, "读取旧在线集合失败", zap.Error(err))
+		return
+	}
+	if len(members) == 0 {
+		return
+	}
+
+	pipe := s.rdb.Pipeline()
+	pipe.Del(ctx, onlineSetKey)
+	for _, m := range members {
+		pipe.Del(ctx, statusKeyPrefix+m)
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		logs.Error(ctx, funcName, "清理旧在线数据失败", zap.Error(err))
+	} else {
+		logs.Info(ctx, funcName, "已清理残留在线状态",
+			zap.Int("stale_count", len(members)))
 	}
 }
 

@@ -1,7 +1,7 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-03-03（Phase 2b 即时通讯核心 + ui-ux-pro-max 规范改造完成）
-> **当前阶段**：Phase 2b 已完成
+> **最后更新**：2026-03-03（Phase 2b 全部完成，含代码审查修复 + 用户测试修复）
+> **当前阶段**：Phase 2b 全部完成，准备进入 Phase 2c
 > **当前分支**：`feature/phase2b-instant-messaging`
 > **实施计划**：`docs/plans/2026-03-03-phase2b-implementation.plan.md`
 > **设计文档**：`docs/plans/2026-03-03-phase2b-design.md`
@@ -23,6 +23,33 @@
 | Task 8 | 设置页 + 搜索页 + 联系人改造 | ✅ 完成 | 2 个辅助页面 + 发消息跳转 |
 | Task 9 | 文档更新 + 代码审查 | ✅ 完成 | 进度/架构文档同步 |
 | UI 改造 | ui-ux-pro-max 规范改造 | ✅ 完成 | uni-icons 替换 emoji + 设计规范文件 |
+| 代码审查修复 | 后端 7 项修复 | ✅ 完成 | P0×2 + P1×3 + 推送补全×2 |
+| 用户测试修复 | 8 项 Bug 修复 | ✅ 完成 | 好友申请/接受、在线状态、UI 布局等 |
+
+### 代码审查修复详情
+
+| # | 优先级 | 修复内容 |
+|---|--------|----------|
+| Fix 1 | P0 | ClearHistory 改为个人视图操作（ClearBeforeMsgID），不再删除双方消息 |
+| Fix 2 | P0 | Redis 未读数负数保护（Lua 脚本原子递减，下限为 0） |
+| Fix 3 | P1 | GetConversationList N+1 查询优化（LEFT JOIN 一次获取 peerID） |
+| Fix 4 | P1 | 消息搜索改用 GIN 全文索引（to_tsvector/plainto_tsquery 替代 LIKE） |
+| Fix 5 | P1 | 撤回消息后更新会话预览（last_msg_content = "XX 撤回了一条消息"） |
+| Fix 6 | - | im.message.new 推送补充 sender_name、sender_avatar |
+| Fix 7 | - | im.message.recalled 推送补充 sender_id |
+
+### 用户测试修复详情
+
+| # | 修复内容 |
+|---|----------|
+| Fix 8 | 好友申请拒绝后重新申请失败 — FriendshipDAO 新增 ReactivateRejectedRequest 方法 |
+| Fix 9 | 好友接受申请失败（反向记录 UNIQUE 冲突）— AcceptRequest 先查后改，避免重复插入 |
+| Fix 10 | Redis 在线状态残留 — OnlineService 启动时清理旧在线数据（cleanStaleOnlineData） |
+| Fix 11 | WS 断开时在线状态未清理 — 修正 onDisconnect 判断条件（closedByHub && isOnline） |
+| Fix 12 | 前端 WS 连接未全局初始化 — App.vue onLaunch/onShow + login.vue 登录后建立连接 |
+| Fix 13 | 后台管理端好友关系页用户 A 列名称错误 — 修正字段绑定 row.user_username |
+| Fix 14 | 前台好友在线状态初始值缺失 — ContactService 注入 OnlineChecker，GetFriendList 返回 is_online |
+| Fix 15 | 聊天页消息过多时输入框被挤出 — scroll-view 添加 height:0 + min-height:0 约束 |
 
 ---
 
@@ -37,9 +64,9 @@
 
 ### 会话管理
 - **自动创建**：首次发消息时自动创建单聊会话
-- **会话列表**：置顶优先 → 最后消息时间降序，冗余 last_msg_* 避免 JOIN
-- **会话操作**：置顶/取消、软删除（不影响对方）、清空聊天记录
-- **未读管理**：DB unread_count + Redis 全局未读数，TabBar badge 显示
+- **会话列表**：置顶优先 → 最后消息时间降序，LEFT JOIN 一次获取 peerID（N+1 优化）
+- **会话操作**：置顶/取消、软删除（不影响对方）、清空聊天记录（个人视图 ClearBeforeMsgID）
+- **未读管理**：DB unread_count + Redis STRING 全局未读数（Lua 脚本负数保护），TabBar badge 显示
 
 ### WebSocket 事件路由表
 - **Hub.RegisterEvent**：业务模块注册事件处理器
@@ -212,8 +239,9 @@ cd frontend && npm run dev:h5
 
 ## 八、下一阶段规划
 
-### Phase 2c - 群聊与增强
-- 群聊会话（建群/加入/退出）
+### Phase 2c - 群聊与增强（待规划）
+- 群聊会话（建群/加入/退出/管理）
 - 群消息收发
-- 已读回执
+- 已读回执（单聊 + 群聊）
 - 消息类型扩展（图片/语音/文件）
+- 管理端消息管理功能

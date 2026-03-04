@@ -160,7 +160,7 @@ func (s *IMService) SendMessage(ctx context.Context, senderID int64, req *dto.Se
 
 	s.incrementTotalUnread(ctx, peerID)
 
-	s.pushToUser(ctx, peerID, "im.message.new", map[string]interface{}{
+	pushData := map[string]interface{}{
 		"id":              msg.ID,
 		"conversation_id": convID,
 		"sender_id":       senderID,
@@ -168,12 +168,18 @@ func (s *IMService) SendMessage(ctx context.Context, senderID int64, req *dto.Se
 		"content":         msg.Content,
 		"client_msg_id":   msg.ClientMsgID,
 		"created_at":      msg.CreatedAt.Format("2006-01-02 15:04:05"),
-	})
+	}
+	if senderUsers, sErr := s.userInfoGetter.GetUsersByIDs(ctx, []int64{senderID}); sErr == nil && len(senderUsers) > 0 {
+		pushData["sender_name"] = senderUsers[0].Nickname
+		pushData["sender_avatar"] = senderUsers[0].Avatar
+	}
+	s.pushToUser(ctx, peerID, "im.message.new", pushData)
 
 	return s.toMessageDTO(msg), nil
 }
 
 // RecallMessage 撤回消息（2分钟内）
+// 撤回成功后，若被撤回消息是会话最后一条，则同步更新会话预览文本
 func (s *IMService) RecallMessage(ctx context.Context, senderID int64, messageID int64) error {
 	funcName := "service.im_service.RecallMessage"
 	logs.Info(ctx, funcName, "撤回消息",
@@ -195,6 +201,20 @@ func (s *IMService) RecallMessage(ctx context.Context, senderID int64, messageID
 		return err
 	}
 
+	conv, err := s.convDAO.GetByID(ctx, msg.ConversationID)
+	if err != nil {
+		logs.Error(ctx, funcName, "获取会话信息失败", zap.Error(err))
+	} else if conv.LastMessageID != nil && *conv.LastMessageID == msg.ID {
+		senderInfo, infoErr := s.userInfoGetter.GetUsersByIDs(ctx, []int64{senderID})
+		recallText := "撤回了一条消息"
+		if infoErr == nil && len(senderInfo) > 0 {
+			recallText = senderInfo[0].Nickname + " 撤回了一条消息"
+		}
+		if updateErr := s.convDAO.UpdateLastMessage(ctx, msg.ConversationID, msg.ID, recallText, senderID, msg.CreatedAt); updateErr != nil {
+			logs.Error(ctx, funcName, "更新会话预览失败", zap.Error(updateErr))
+		}
+	}
+
 	memberIDs, err := s.convDAO.GetConversationMemberIDs(ctx, msg.ConversationID)
 	if err != nil {
 		logs.Error(ctx, funcName, "获取会话成员失败", zap.Error(err))
@@ -207,6 +227,7 @@ func (s *IMService) RecallMessage(ctx context.Context, senderID int64, messageID
 		s.pushToUser(ctx, uid, "im.message.recalled", map[string]interface{}{
 			"message_id":      messageID,
 			"conversation_id": msg.ConversationID,
+			"sender_id":       senderID,
 		})
 	}
 
@@ -224,15 +245,10 @@ func (s *IMService) GetConversationList(ctx context.Context, userID int64) (*dto
 	}
 
 	peerIDs := make([]int64, 0, len(convs))
-	convIDToPeerID := make(map[int64]int64, len(convs))
 	for _, c := range convs {
-		peerID, err := s.convDAO.GetPeerUserID(ctx, c.ID, userID)
-		if err != nil {
-			logs.Error(ctx, funcName, "查询对方用户 ID 失败", zap.Int64("conv_id", c.ID), zap.Error(err))
-			continue
+		if c.PeerUserID > 0 {
+			peerIDs = append(peerIDs, c.PeerUserID)
 		}
-		peerIDs = append(peerIDs, peerID)
-		convIDToPeerID[c.ID] = peerID
 	}
 
 	userMap := make(map[int64]*userBrief)
@@ -250,7 +266,7 @@ func (s *IMService) GetConversationList(ctx context.Context, userID int64) (*dto
 
 	list := make([]dto.ConversationDTO, 0, len(convs))
 	for _, c := range convs {
-		peerID := convIDToPeerID[c.ID]
+		peerID := c.PeerUserID
 		item := dto.ConversationDTO{
 			ID:              c.ID,
 			Type:            c.Type,
@@ -259,6 +275,10 @@ func (s *IMService) GetConversationList(ctx context.Context, userID int64) (*dto
 			LastMsgSenderID: c.LastMsgSenderID,
 			IsPinned:        c.IsPinned,
 			UnreadCount:     c.UnreadCount,
+		}
+		if c.ClearBeforeMsgID > 0 && c.LastMessageID != nil && *c.LastMessageID <= c.ClearBeforeMsgID {
+			item.LastMsgContent = ""
+			item.LastMsgSenderID = nil
 		}
 		if c.LastMsgTime != nil {
 			item.LastMsgTime = c.LastMsgTime.Format("2006-01-02 15:04:05")
@@ -292,7 +312,7 @@ func (s *IMService) GetHistoryMessages(ctx context.Context, userID int64, req *d
 		limit = maxPageSize
 	}
 
-	messages, err := s.msgDAO.GetByConversation(ctx, req.ConversationID, req.BeforeID, limit+1)
+	messages, err := s.msgDAO.GetByConversation(ctx, req.ConversationID, req.BeforeID, member.ClearBeforeMsgID, limit+1)
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +390,8 @@ func (s *IMService) DeleteConversation(ctx context.Context, userID int64, conver
 	return s.convDAO.SoftDeleteMember(ctx, conversationID, userID)
 }
 
-// ClearHistory 清空聊天记录（标记消息为已删除）
+// ClearHistory 清空聊天记录（个人视图操作，仅影响当前用户，不影响对方）
+// 通过记录清空截止消息 ID 实现，而非真正删除消息
 func (s *IMService) ClearHistory(ctx context.Context, userID int64, conversationID int64) error {
 	funcName := "service.im_service.ClearHistory"
 	logs.Info(ctx, funcName, "清空聊天记录",
@@ -380,7 +401,23 @@ func (s *IMService) ClearHistory(ctx context.Context, userID int64, conversation
 	if err != nil || member == nil {
 		return ErrNotMember
 	}
-	return s.msgDAO.DeleteByConversation(ctx, conversationID)
+
+	latestMsgID, err := s.msgDAO.GetLatestMessageID(ctx, conversationID)
+	if err != nil {
+		logs.Error(ctx, funcName, "获取最新消息 ID 失败", zap.Error(err))
+		return err
+	}
+
+	if err := s.convDAO.UpdateClearBefore(ctx, conversationID, userID, latestMsgID); err != nil {
+		logs.Error(ctx, funcName, "更新清空截止 ID 失败", zap.Error(err))
+		return err
+	}
+
+	if member.UnreadCount > 0 {
+		s.decrementTotalUnread(ctx, userID, member.UnreadCount)
+	}
+
+	return nil
 }
 
 // SearchMessages 全局消息搜索
@@ -459,6 +496,20 @@ func (s *IMService) GetPeerUserID(ctx context.Context, conversationID, userID in
 	return s.convDAO.GetPeerUserID(ctx, conversationID, userID)
 }
 
+// PushTypingNotification 向对方推送正在输入通知（通过 PubSub 支持跨实例）
+func (s *IMService) PushTypingNotification(ctx context.Context, conversationID, senderID int64) {
+	peerID, err := s.convDAO.GetPeerUserID(ctx, conversationID, senderID)
+	if err != nil {
+		logs.Warn(ctx, "service.im_service.PushTypingNotification", "查询对方用户 ID 失败",
+			zap.Int64("conversation_id", conversationID), zap.Error(err))
+		return
+	}
+	s.pushToUser(ctx, peerID, "im.typing", map[string]interface{}{
+		"conversation_id": conversationID,
+		"user_id":         senderID,
+	})
+}
+
 // ====== 内部辅助方法 ======
 
 // getOrCreatePrivateConversation 查找或创建单聊会话
@@ -510,11 +561,19 @@ func (s *IMService) incrementTotalUnread(ctx context.Context, userID int64) {
 	}
 }
 
-// decrementTotalUnread Redis 全局未读 -N（下限为 0）
+// decrementTotalUnread Redis 全局未读 -N（使用 Lua 脚本保证原子性，下限为 0）
 func (s *IMService) decrementTotalUnread(ctx context.Context, userID int64, count int) {
 	key := fmt.Sprintf("%s%d", unreadKeyPrefix, userID)
-	if err := s.rdb.DecrBy(ctx, key, int64(count)).Err(); err != nil {
-		logs.Error(ctx, "service.im_service.decrementTotalUnread", "Redis DECRBY 失败",
+	script := redis.NewScript(`
+		local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+		local decr = tonumber(ARGV[1])
+		local newVal = current - decr
+		if newVal < 0 then newVal = 0 end
+		redis.call('SET', KEYS[1], newVal)
+		return newVal
+	`)
+	if err := script.Run(ctx, s.rdb, []string{key}, count).Err(); err != nil {
+		logs.Error(ctx, "service.im_service.decrementTotalUnread", "Redis Lua 脚本执行失败",
 			zap.Int64("user_id", userID), zap.Error(err))
 	}
 }

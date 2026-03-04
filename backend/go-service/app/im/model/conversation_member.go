@@ -11,8 +11,9 @@ type ConversationMember struct {
 	IsPinned       bool      `json:"is_pinned" gorm:"default:false"`                              // 是否置顶该会话
 	IsDeleted      bool      `json:"is_deleted" gorm:"default:false"`                             // 是否删除该会话（软删除，不影响对方）
 	UnreadCount    int       `json:"unread_count" gorm:"default:0"`                               // 该成员在此会话中的未读消息数
-	LastReadMsgID  int64     `json:"last_read_msg_id" gorm:"default:0"`                           // 该成员最后已读消息 ID
-	CreatedAt      time.Time `json:"created_at" gorm:"not null;autoCreateTime;type:timestamp(0)"` // 加入会话时间
+	LastReadMsgID    int64     `json:"last_read_msg_id" gorm:"default:0"`                           // 该成员最后已读消息 ID
+	ClearBeforeMsgID int64     `json:"clear_before_msg_id" gorm:"default:0"`                       // 清空记录时的消息截止 ID（个人视图，不影响对方）
+	CreatedAt        time.Time `json:"created_at" gorm:"not null;autoCreateTime;type:timestamp(0)"` // 加入会话时间
 	UpdatedAt      time.Time `json:"updated_at" gorm:"not null;autoUpdateTime;type:timestamp(0)"` // 最后更新时间
 }
 

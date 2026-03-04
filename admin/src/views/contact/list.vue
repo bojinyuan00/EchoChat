@@ -32,7 +32,7 @@
           <template #default="{ row }">
             <div class="user-cell">
               <span class="user-id">#{{ row.user_id }}</span>
-              <span class="username">{{ row.username || '--' }}</span>
+              <span class="username">{{ row.user_username || '--' }}</span>
             </div>
           </template>
         </el-table-column>
@@ -130,7 +130,7 @@ const fetchList = async () => {
 const handleDelete = async (row) => {
   try {
     await ElMessageBox.confirm(
-      `确定要删除用户 ${row.username || row.user_id} 与 ${row.friend_username || row.friend_id} 之间的好友关系吗？此操作将双向解除。`,
+      `确定要删除用户 ${row.user_username || row.user_id} 与 ${row.friend_username || row.friend_id} 之间的好友关系吗？此操作将双向解除。`,
       '删除确认',
       { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
     )

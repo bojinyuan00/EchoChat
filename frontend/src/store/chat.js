@@ -42,9 +42,11 @@ export const useChatStore = defineStore('chat', () => {
 
   // ==================== Computed ====================
 
-  /** 当前会话的消息列表 */
+  /** 当前会话的消息列表（conversationId 为 null 时取 pending 队列） */
   const currentMessages = computed(() => {
-    if (!currentConversationId.value) return []
+    if (!currentConversationId.value) {
+      return messagesMap.value['pending'] || []
+    }
     return messagesMap.value[currentConversationId.value] || []
   })
 
@@ -98,9 +100,8 @@ export const useChatStore = defineStore('chat', () => {
       _sending: true
     }
 
-    if (conversationId) {
-      _appendMessage(conversationId, tempMsg)
-    }
+    const displayConvId = conversationId || 'pending'
+    _appendMessage(displayConvId, tempMsg)
 
     pendingMessages.value[clientMsgId] = { status: 'sending', tempMsg }
 
@@ -226,12 +227,16 @@ export const useChatStore = defineStore('chat', () => {
       created_at: data.created_at
     })
 
-    _updateConversationPreview(data.conversation_id, data.content, data.created_at, data.sender_id)
+    const existingConv = conversationList.value.find(c => c.id === data.conversation_id)
+    if (existingConv) {
+      _updateConversationPreview(data.conversation_id, data.content, data.created_at, data.sender_id)
+    } else {
+      fetchConversations()
+    }
 
     if (data.conversation_id !== currentConversationId.value) {
-      const conv = conversationList.value.find(c => c.id === data.conversation_id)
-      if (conv) {
-        conv.unread_count = (conv.unread_count || 0) + 1
+      if (existingConv) {
+        existingConv.unread_count = (existingConv.unread_count || 0) + 1
       }
       totalUnread.value++
     } else {
@@ -268,6 +273,12 @@ export const useChatStore = defineStore('chat', () => {
 
       if (pending.tempMsg && pending.tempMsg.conversation_id === 0 && convId) {
         currentConversationId.value = convId
+        const pendingMsgs = messagesMap.value['pending'] || []
+        if (pendingMsgs.length > 0) {
+          if (!messagesMap.value[convId]) messagesMap.value[convId] = []
+          messagesMap.value[convId].push(...pendingMsgs)
+          delete messagesMap.value['pending']
+        }
       }
 
       const messages = messagesMap.value[convId]
@@ -312,12 +323,19 @@ export const useChatStore = defineStore('chat', () => {
 
   // ==================== 内部工具方法 ====================
 
-  /** 追加消息到缓存 */
+  /** 追加消息到缓存（带去重检查，防止重连/ACK 导致重复） */
   const _appendMessage = (conversationId, message) => {
     if (!messagesMap.value[conversationId]) {
       messagesMap.value[conversationId] = []
     }
-    messagesMap.value[conversationId].push(message)
+    const list = messagesMap.value[conversationId]
+    const isDup = list.some(m =>
+      (message.id && m.id === message.id) ||
+      (message.client_msg_id && m.client_msg_id === message.client_msg_id)
+    )
+    if (!isDup) {
+      list.push(message)
+    }
   }
 
   /** 更新会话列表中的预览信息 */

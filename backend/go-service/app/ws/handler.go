@@ -37,12 +37,12 @@ var upgrader = websocket.Upgrader{
 
 // Handler WebSocket 连接处理器
 type Handler struct {
-	hub             *ws.Hub
-	pubsub          *ws.PubSub
-	jwtCfg          *config.JWTConfig
-	onlineService   *OnlineService
-	tokenValidator  TokenValidator
-	offlinePusher   OfflineMessagePusher
+	hub            *ws.Hub
+	pubsub         *ws.PubSub
+	jwtCfg         *config.JWTConfig
+	onlineService  *OnlineService
+	tokenValidator TokenValidator
+	offlinePusher  OfflineMessagePusher
 }
 
 // NewHandler 创建 WebSocket Handler 实例
@@ -99,8 +99,8 @@ func (h *Handler) Upgrade(c *gin.Context) {
 
 	client := ws.NewClient(h.hub, conn, claims.UserID)
 	client.SetOnDisconnect(func(userID int64) {
-		if client.IsClosedByHub() {
-			logs.Info(nil, "ws.handler.onDisconnect", "连接被 Hub 踢出（重复连接），跳过下线清理",
+		if client.IsClosedByHub() && h.hub.IsOnline(userID) {
+			logs.Info(nil, "ws.handler.onDisconnect", "连接被新连接替换，跳过下线清理",
 				zap.Int64("user_id", userID))
 			return
 		}

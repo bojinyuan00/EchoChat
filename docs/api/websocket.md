@@ -84,24 +84,38 @@
 
 **方向：** 客户端 → 服务端
 
-**说明：** 发送消息到会话
+**说明：** 发送消息到会话。`conversation_id` 和 `target_user_id` 二选一：首次发消息使用 `target_user_id`（自动创建会话），后续使用 `conversation_id`。
 
 **data 参数：**
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| conversation_id | int | 是 | 目标会话 ID |
-| type | int | 是 | 消息类型：1=文本，2=图片，3=文件，4=语音 |
-| content | string | 否 | 文本内容 |
-| extra | object | 否 | 附加数据（图片/文件信息） |
+| conversation_id | int | 否 | 已有会话 ID（与 target_user_id 二选一） |
+| target_user_id | int | 否 | 对方用户 ID（首次发消息时使用） |
+| type | int | 是 | 消息类型：1=文本 |
+| content | string | 是 | 文本内容 |
+| client_msg_id | string | 否 | 客户端消息唯一 ID，用于幂等去重 |
 
-**ACK 响应 data：** `{ "msg_id": 10086 }`
+**ACK 响应 data：**
+
+```json
+{
+    "id": 10086,
+    "conversation_id": 1,
+    "sender_id": 1,
+    "type": 1,
+    "content": "你好",
+    "status": 1,
+    "client_msg_id": "xxxx-xxxx",
+    "created_at": "2026-03-03 10:30:00"
+}
+```
 
 ---
 
 ### im.message.new
 
-**方向：** 服务端 → 客户端
+**方向：** 服务端 → 客户端（推送）
 
 **说明：** 收到新消息推送
 
@@ -116,50 +130,76 @@
     "sender_avatar": "https://...",
     "type": 1,
     "content": "你好",
-    "extra": {},
-    "created_at": "2026-02-27 10:30:00"
+    "client_msg_id": "",
+    "created_at": "2026-03-03 10:30:00"
 }
 ```
 
 ---
 
-### im.message.revoke
+### im.message.recall
 
 **方向：** 客户端 → 服务端
 
-**说明：** 撤回消息（发送后 2 分钟内）
+**说明：** 撤回消息（发送后 2 分钟内）。撤回成功后若该消息是会话最后一条，会同步更新会话预览为"XX 撤回了一条消息"。
 
 **data 参数：** `{ "message_id": 10086 }`
 
 ---
 
-### im.message.read
+### im.message.recalled
 
-**方向：** 客户端 → 服务端
+**方向：** 服务端 → 客户端（推送）
 
-**说明：** 消息已读回执
+**说明：** 消息被撤回通知
 
-**data 参数：** `{ "conversation_id": 1, "message_id": 10086 }`
+**data 内容：** `{ "message_id": 10086, "conversation_id": 1, "sender_id": 2 }`
 
 ---
 
-### im.typing.start
+### im.conversation.read
 
 **方向：** 客户端 → 服务端
 
-**说明：** 通知对方"正在输入"
+**说明：** 标记会话已读（清零未读数 + 更新 Redis 全局未读数）
 
 **data 参数：** `{ "conversation_id": 1 }`
 
 ---
 
-### im.typing.stop
+### im.typing
 
-**方向：** 客户端 → 服务端
+**方向：** 双向（客户端发送 → 服务端转发给对方）
 
-**说明：** 停止输入
+**说明：** 正在输入通知。客户端发送后服务端转发给对方，前端收到后设置 3 秒超时自动清除。
 
-**data 参数：** `{ "conversation_id": 1 }`
+**data 参数（客户端发送）：** `{ "conversation_id": 1 }`
+
+**data 内容（服务端推送）：** `{ "conversation_id": 1, "user_id": 2 }`
+
+---
+
+### im.offline.sync
+
+**方向：** 服务端 → 客户端（推送）
+
+**说明：** WebSocket 连接成功后服务端主动推送离线未读摘要
+
+**data 内容：**
+
+```json
+{
+    "total_unread": 5,
+    "conversations": [
+        {
+            "conversation_id": 1,
+            "unread_count": 3,
+            "last_msg_content": "你好",
+            "last_msg_time": "2026-03-03 10:30:00"
+        }
+    ]
+}
+```
 
 ---
 

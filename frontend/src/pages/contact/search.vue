@@ -37,7 +37,7 @@
       <view v-else-if="searchResults.length > 0" class="result-list">
         <view
           v-for="user in searchResults"
-          :key="user.user_id"
+          :key="user.id"
           class="user-item"
         >
           <view class="avatar" :style="{ backgroundColor: getAvatarColor(user.nickname || user.username) }">
@@ -53,10 +53,10 @@
           <view
             v-else
             class="add-btn"
-            :class="{ 'add-btn--disabled': addingMap[user.user_id] }"
+            :class="{ 'add-btn--disabled': addingMap[user.id] }"
             @tap="showAddDialog(user)"
           >
-            <text class="add-btn-text">{{ addingMap[user.user_id] ? '已发送' : '添加' }}</text>
+            <text class="add-btn-text">{{ addingMap[user.id] ? '已发送' : '添加' }}</text>
           </view>
         </view>
       </view>
@@ -79,7 +79,7 @@
       <view v-else-if="recommendations.length > 0" class="result-list">
         <view
           v-for="user in recommendations"
-          :key="user.user_id"
+          :key="user.id"
           class="user-item"
         >
           <view class="avatar" :style="{ backgroundColor: getAvatarColor(user.nickname || user.username) }">
@@ -91,10 +91,10 @@
           </view>
           <view
             class="add-btn"
-            :class="{ 'add-btn--disabled': addingMap[user.user_id] }"
+            :class="{ 'add-btn--disabled': addingMap[user.id] }"
             @tap="showAddDialog(user)"
           >
-            <text class="add-btn-text">{{ addingMap[user.user_id] ? '已发送' : '添加' }}</text>
+            <text class="add-btn-text">{{ addingMap[user.id] ? '已发送' : '添加' }}</text>
           </view>
         </view>
       </view>
@@ -141,7 +141,7 @@ const doSearch = async () => {
 }
 
 const showAddDialog = (user) => {
-  if (addingMap[user.user_id]) return
+  if (addingMap[user.id]) return
   uni.showModal({
     title: '添加好友',
     editable: true,
@@ -149,13 +149,17 @@ const showAddDialog = (user) => {
     content: '',
     success: async (res) => {
       if (res.confirm) {
-        addingMap[user.user_id] = true
+        addingMap[user.id] = true
         try {
-          await contactStore.sendRequest(user.user_id, res.content || '')
+          await contactStore.sendRequest(user.id, res.content || '')
           uni.showToast({ title: '申请已发送', icon: 'success' })
         } catch (e) {
           console.error('发送好友申请失败', e)
-          addingMap[user.user_id] = false
+          addingMap[user.id] = false
+          uni.showToast({
+            title: e?.data?.message || '发送申请失败',
+            icon: 'none'
+          })
         }
       }
     }

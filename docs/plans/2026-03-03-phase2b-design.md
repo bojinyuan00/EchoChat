@@ -1,10 +1,10 @@
 # Phase 2b 设计文档：即时通讯消息系统（单聊）
 
-> **状态：** 📋 设计完成，待实施
+> **状态：** ✅ 已完成（含代码审查修复）
 > **分支：** `feature/phase2b-instant-messaging`
 > **前置依赖：** Phase 2a 全部完成（WebSocket + 联系人管理）
 > **架构备忘：** `docs/plans/2026-03-02-phase2b-architecture-notes.md`
-> **最后更新：** 2026-03-03
+> **最后更新：** 2026-03-03（含代码审查修复 7 项 + 用户测试修复 8 项 + 文档同步）
 
 ---
 
@@ -98,7 +98,7 @@ func (h *Hub) RegisterEvent(event string, handler EventHandler)
 func (h *Hub) DispatchEvent(client *Client, msg *Message) bool
 ```
 
-IM 模块在启动时向 Hub 注册事件：`im.message.send`、`im.message.recall`、`im.typing.start`、`im.typing.stop`、`im.conversation.sync`。
+IM 模块在启动时向 Hub 注册事件：`im.message.send`、`im.message.recall`、`im.conversation.read`、`im.typing`。
 
 ### 3.3 离线消息推送
 
@@ -117,14 +117,14 @@ IM 模块在启动时向 Hub 注册事件：`im.message.send`、`im.message.reca
 
 ```
 发送方 Client
-    │ WS: im.message.recall { message_id, conversation_id }
+    │ WS: im.message.recall { message_id }
     ▼
 IM Service.RecallMessage()
     ├── 校验：是否为自己的消息、是否在 2 分钟内
     ├── DB: UPDATE im_messages SET status = 2(已撤回)
-    ├── DB: UPDATE im_conversations (last_msg_content = "XX 撤回了一条消息")
+    ├── 若被撤回的是会话最后一条消息 → UPDATE im_conversations (last_msg_content = "XX 撤回了一条消息")
     ├── WS Response: im.message.recall.ack { message_id }
-    └── PubSub.PublishToUser(receiverID, im.message.recalled)
+    └── PubSub.PublishToUser(receiverID, im.message.recalled { message_id, conversation_id, sender_id })
 ```
 
 ### 3.5 消息收发时序图
@@ -198,15 +198,16 @@ CREATE INDEX idx_im_conversations_updated ON im_conversations(updated_at DESC);
 
 ```sql
 CREATE TABLE im_conversation_members (
-    id               BIGSERIAL PRIMARY KEY,
-    conversation_id  BIGINT NOT NULL REFERENCES im_conversations(id),
-    user_id          BIGINT NOT NULL,                 -- 成员用户 ID
-    is_pinned        BOOLEAN DEFAULT FALSE,           -- 是否置顶
-    is_deleted       BOOLEAN DEFAULT FALSE,           -- 是否删除会话（软删除，不影响对方）
-    unread_count     INT DEFAULT 0,                   -- 未读消息数
-    last_read_msg_id BIGINT DEFAULT 0,                -- 最后已读消息 ID
-    created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    id                  BIGSERIAL PRIMARY KEY,
+    conversation_id     BIGINT NOT NULL REFERENCES im_conversations(id),
+    user_id             BIGINT NOT NULL,                 -- 成员用户 ID
+    is_pinned           BOOLEAN DEFAULT FALSE,           -- 是否置顶
+    is_deleted          BOOLEAN DEFAULT FALSE,           -- 是否删除会话（软删除，不影响对方）
+    unread_count        INT DEFAULT 0,                   -- 未读消息数
+    last_read_msg_id    BIGINT DEFAULT 0,                -- 最后已读消息 ID
+    clear_before_msg_id BIGINT DEFAULT 0,                -- 清空记录截止消息 ID（个人视图，不影响对方）
+    created_at          TIMESTAMP(0) NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMP(0) NOT NULL DEFAULT NOW(),
 
     UNIQUE(conversation_id, user_id)
 );
@@ -214,6 +215,8 @@ CREATE TABLE im_conversation_members (
 CREATE INDEX idx_im_conv_members_user ON im_conversation_members(user_id, is_deleted);
 CREATE INDEX idx_im_conv_members_conv ON im_conversation_members(conversation_id);
 ```
+
+> **设计说明**：`clear_before_msg_id` 用于实现"清空聊天记录"的个人视图。用户 A 清空记录后，仅 A 看不到清空前的消息，用户 B 不受影响。查询历史消息时增加 `id > clear_before_msg_id` 过滤条件。
 
 ### 4.3 im_messages（消息表）
 
@@ -253,11 +256,13 @@ LIMIT 1
 
 | Key | 类型 | 说明 |
 |-----|------|------|
-| `echo:im:unread:{user_id}` | HASH | 每个会话的未读数 `{ conv_id: count }` |
+| `echo:im:unread:{user_id}` | STRING | 全局未读消息总数（会话级别的未读数存储在 DB `im_conversation_members.unread_count`） |
 
-- 收到新消息：`HINCRBY echo:im:unread:{user_id} {conv_id} 1`
-- 标记已读：`HDEL echo:im:unread:{user_id} {conv_id}`
-- 获取总未读数：`HVALS echo:im:unread:{user_id}` 求和
+- 收到新消息：`INCR echo:im:unread:{user_id}`（全局 +1）
+- 标记已读/清空/删除会话：Lua 脚本原子递减（下限为 0，防止负数）
+- 获取总未读数：`GET echo:im:unread:{user_id}`
+
+> **设计说明**：选择 STRING 而非 HASH 的原因：DB 已有会话级别的 `unread_count` 字段，Redis 仅用于 TabBar badge 的快速读取，不需要冗余存储每个会话的未读数。Lua 脚本保证递减操作的原子性和下限保护。
 
 ---
 
@@ -267,11 +272,12 @@ LIMIT 1
 
 | 事件 | 说明 | Data 字段 |
 |------|------|-----------|
-| `im.message.send` | 发送消息 | `{ target_user_id, content, type, client_msg_id }` |
-| `im.message.recall` | 撤回消息 | `{ message_id, conversation_id }` |
-| `im.typing.start` | 开始输入 | `{ conversation_id }` |
-| `im.typing.stop` | 停止输入 | `{ conversation_id }` |
-| `im.conversation.sync` | 请求同步离线消息 | `{ conversation_id, last_msg_id }` |
+| `im.message.send` | 发送消息 | `{ conversation_id, target_user_id, content, type, client_msg_id }` |
+| `im.message.recall` | 撤回消息 | `{ message_id }` |
+| `im.conversation.read` | 标记已读 | `{ conversation_id }` |
+| `im.typing` | 正在输入 | `{ conversation_id }` |
+
+> **说明**：`im.message.send` 中 `conversation_id` 和 `target_user_id` 二选一。首次发消息时使用 `target_user_id`（自动创建会话），后续使用 `conversation_id`。
 
 ### 5.2 服务端 → 客户端（ACK 响应）
 
@@ -288,10 +294,12 @@ LIMIT 1
 
 | 事件 | 说明 | Data 字段 |
 |------|------|-----------|
-| `im.message.new` | 新消息推送 | `{ message_id, conversation_id, sender_id, sender_name, sender_avatar, type, content, created_at }` |
+| `im.message.new` | 新消息推送 | `{ id, conversation_id, sender_id, sender_name, sender_avatar, type, content, client_msg_id, created_at }` |
 | `im.message.recalled` | 消息被撤回 | `{ message_id, conversation_id, sender_id }` |
-| `im.typing.notify` | 正在输入通知 | `{ conversation_id, user_id, is_typing }` |
-| `im.conversation.unread` | 离线未读摘要 | `{ conversations: [{ id, type, unread_count, last_msg_content, last_msg_time, peer_user_id, peer_nickname, peer_avatar }] }` |
+| `im.typing` | 正在输入通知 | `{ conversation_id, user_id }` |
+| `im.offline.sync` | 离线未读摘要 | `{ total_unread, conversations: [{ conversation_id, unread_count, last_msg_content, last_msg_time }] }` |
+
+> **说明**：正在输入通知前端收到后设置 3 秒超时自动清除。离线同步事件在 WS 连接成功后由服务端主动推送。
 
 ---
 
@@ -302,14 +310,14 @@ LIMIT 1
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/conversations` | 获取会话列表（含未读数、最后消息、对方信息） |
-| GET | `/conversations/:id/messages` | 获取历史消息（游标分页：`before_id` + `limit`） |
+| GET | `/messages?conversation_id=xx&before_id=xx&limit=30` | 获取历史消息（游标分页） |
 | PUT | `/conversations/:id/pin` | 置顶/取消置顶 |
 | DELETE | `/conversations/:id` | 删除会话（软删除） |
-| DELETE | `/conversations/:id/messages` | 清空聊天记录 |
-| PUT | `/conversations/:id/read` | 标记会话已读（清零未读数 + 清 Redis） |
-| GET | `/messages/search?keyword=xxx` | 全局消息搜索（结果按会话分组） |
+| DELETE | `/conversations/:id/messages` | 清空聊天记录（个人视图，不影响对方） |
+| GET | `/messages/search?keyword=xxx&limit=50` | 全局消息搜索（GIN 全文索引） |
+| GET | `/unread` | 获取全局未读消息总数 |
 
-共 **7 个 REST API**，均需 JWT 认证。
+共 **7 个 REST API**，均需 JWT 认证。标记已读通过 WS 事件 `im.conversation.read` 实现。
 
 ---
 
@@ -363,7 +371,7 @@ Wire 注入链：
 | `GetMessages(ctx, userID, conversationID, beforeID, limit)` | 获取历史消息（游标分页） |
 | `PinConversation(ctx, userID, conversationID, isPinned)` | 置顶/取消置顶 |
 | `DeleteConversation(ctx, userID, conversationID)` | 删除会话（软删除） |
-| `ClearMessages(ctx, userID, conversationID)` | 清空聊天记录 |
+| `ClearMessages(ctx, userID, conversationID)` | 清空聊天记录（个人视图，ClearBeforeMsgID） |
 | `MarkAsRead(ctx, userID, conversationID)` | 标记已读 |
 | `SearchMessages(ctx, userID, keyword)` | 全局搜索 |
 | `PushOfflineMessages(ctx, userID)` | 推送离线未读摘要 |
@@ -406,8 +414,8 @@ frontend/src/pages/chat/
 **WS 事件监听：**
 - `im.message.new` → 更新 conversations + messages + totalUnread
 - `im.message.recalled` → 更新消息状态为"已撤回"
-- `im.typing.notify` → 更新 typingUsers
-- `im.conversation.unread` → 初始化未读数 + 会话列表
+- `im.typing` → 更新 typingUsers（3 秒自动清除）
+- `im.offline.sync` → 初始化未读数 + 刷新会话列表
 
 ### 8.3 API 封装（api/chat.js）
 

@@ -42,7 +42,7 @@ func (d *FriendshipDAO) CreateRequest(ctx context.Context, userID, friendID int6
 	return f, err
 }
 
-// AcceptRequest 接受好友申请（事务内：更新 A→B 为 accepted + 创建 B→A）
+// AcceptRequest 接受好友申请（事务内：更新 A→B 为 accepted + 创建或更新 B→A 为 accepted）
 func (d *FriendshipDAO) AcceptRequest(ctx context.Context, requestID, userID int64) error {
 	funcName := "dao.friendship_dao.AcceptRequest"
 	logs.Info(ctx, funcName, "接受好友申请",
@@ -63,6 +63,15 @@ func (d *FriendshipDAO) AcceptRequest(ctx context.Context, requestID, userID int
 			"updated_at": now,
 		}).Error; err != nil {
 			return err
+		}
+
+		var existing model.Friendship
+		err := tx.Where("user_id = ? AND friend_id = ?", userID, req.UserID).First(&existing).Error
+		if err == nil {
+			return tx.Model(&existing).Updates(map[string]interface{}{
+				"status":     constants.FriendshipStatusAccepted,
+				"updated_at": now,
+			}).Error
 		}
 
 		reverse := &model.Friendship{
@@ -266,6 +275,28 @@ func (d *FriendshipDAO) HasPendingRequest(ctx context.Context, userID, friendID 
 			userID, friendID, friendID, userID, constants.FriendshipStatusPending).
 		Count(&count).Error
 	return count > 0, err
+}
+
+// ReactivateRejectedRequest 将已拒绝的申请重新激活为待处理状态
+// 返回是否找到并更新了已拒绝的记录
+func (d *FriendshipDAO) ReactivateRejectedRequest(ctx context.Context, userID, friendID int64, message string) (bool, error) {
+	funcName := "dao.friendship_dao.ReactivateRejectedRequest"
+	logs.Info(ctx, funcName, "重新激活已拒绝的好友申请",
+		zap.Int64("user_id", userID), zap.Int64("friend_id", friendID))
+
+	result := d.db.WithContext(ctx).
+		Model(&model.Friendship{}).
+		Where("user_id = ? AND friend_id = ? AND status = ?", userID, friendID, constants.FriendshipStatusRejected).
+		Updates(map[string]interface{}{
+			"status":  constants.FriendshipStatusPending,
+			"message": message,
+		})
+
+	if result.Error != nil {
+		logs.Error(ctx, funcName, "重新激活好友申请失败", zap.Error(result.Error))
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
 }
 
 // GetRequestByID 根据 ID 获取好友申请

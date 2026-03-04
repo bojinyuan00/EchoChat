@@ -186,22 +186,24 @@ CREATE TABLE im_conversation_members (
     is_pinned        BOOLEAN      DEFAULT FALSE,
     is_deleted       BOOLEAN      DEFAULT FALSE,
     unread_count     INT          DEFAULT 0,
-    last_read_msg_id BIGINT       DEFAULT 0,
-    created_at       TIMESTAMP(0) NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMP(0) NOT NULL DEFAULT NOW(),
+    last_read_msg_id     BIGINT       DEFAULT 0,
+    clear_before_msg_id  BIGINT       DEFAULT 0,
+    created_at           TIMESTAMP(0) NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMP(0) NOT NULL DEFAULT NOW(),
     UNIQUE (conversation_id, user_id)
 );
 
-COMMENT ON TABLE  im_conversation_members                   IS '会话成员表，存储每个成员对会话的个人视图';
-COMMENT ON COLUMN im_conversation_members.id                IS '记录唯一标识';
-COMMENT ON COLUMN im_conversation_members.conversation_id   IS '所属会话 ID';
-COMMENT ON COLUMN im_conversation_members.user_id           IS '成员用户 ID';
-COMMENT ON COLUMN im_conversation_members.is_pinned         IS '是否置顶该会话';
-COMMENT ON COLUMN im_conversation_members.is_deleted        IS '是否删除该会话（软删除，不影响对方视图）';
-COMMENT ON COLUMN im_conversation_members.unread_count      IS '该成员在此会话中的未读消息数';
-COMMENT ON COLUMN im_conversation_members.last_read_msg_id  IS '该成员最后已读消息 ID';
-COMMENT ON COLUMN im_conversation_members.created_at        IS '加入会话时间';
-COMMENT ON COLUMN im_conversation_members.updated_at        IS '最后更新时间';
+COMMENT ON TABLE  im_conversation_members                        IS '会话成员表，存储每个成员对会话的个人视图';
+COMMENT ON COLUMN im_conversation_members.id                     IS '记录唯一标识';
+COMMENT ON COLUMN im_conversation_members.conversation_id        IS '所属会话 ID';
+COMMENT ON COLUMN im_conversation_members.user_id                IS '成员用户 ID';
+COMMENT ON COLUMN im_conversation_members.is_pinned              IS '是否置顶该会话';
+COMMENT ON COLUMN im_conversation_members.is_deleted             IS '是否删除该会话（软删除，不影响对方视图）';
+COMMENT ON COLUMN im_conversation_members.unread_count           IS '该成员在此会话中的未读消息数';
+COMMENT ON COLUMN im_conversation_members.last_read_msg_id       IS '该成员最后已读消息 ID';
+COMMENT ON COLUMN im_conversation_members.clear_before_msg_id    IS '清空聊天记录时的消息截止 ID（个人视图，不影响对方）';
+COMMENT ON COLUMN im_conversation_members.created_at             IS '加入会话时间';
+COMMENT ON COLUMN im_conversation_members.updated_at             IS '最后更新时间';
 
 CREATE INDEX idx_im_conv_members_user ON im_conversation_members (user_id, is_deleted);
 CREATE INDEX idx_im_conv_members_conv ON im_conversation_members (conversation_id);

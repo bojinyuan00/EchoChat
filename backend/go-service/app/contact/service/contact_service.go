@@ -25,11 +25,17 @@ var (
 	ErrUserNotFound    = errors.New("用户不存在")
 )
 
+// OnlineChecker 在线状态查询接口（避免直接依赖 ws 模块的 OnlineService）
+type OnlineChecker interface {
+	BatchCheckOnline(ctx context.Context, userIDs []int64) map[int64]bool
+}
+
 // ContactService 联系人业务服务
 type ContactService struct {
 	friendshipDAO  *dao.FriendshipDAO
 	friendGroupDAO *dao.FriendGroupDAO
 	pubsub         *ws.PubSub
+	onlineChecker  OnlineChecker
 }
 
 // NewContactService 创建 ContactService 实例
@@ -37,11 +43,13 @@ func NewContactService(
 	friendshipDAO *dao.FriendshipDAO,
 	friendGroupDAO *dao.FriendGroupDAO,
 	pubsub *ws.PubSub,
+	onlineChecker OnlineChecker,
 ) *ContactService {
 	return &ContactService{
 		friendshipDAO:  friendshipDAO,
 		friendGroupDAO: friendGroupDAO,
 		pubsub:         pubsub,
+		onlineChecker:  onlineChecker,
 	}
 }
 
@@ -80,9 +88,15 @@ func (s *ContactService) SendFriendRequest(ctx context.Context, userID, targetID
 		return ErrPendingExists
 	}
 
-	_, err = s.friendshipDAO.CreateRequest(ctx, userID, targetID, message)
+	reactivated, err := s.friendshipDAO.ReactivateRejectedRequest(ctx, userID, targetID, message)
 	if err != nil {
 		return err
+	}
+	if !reactivated {
+		_, err = s.friendshipDAO.CreateRequest(ctx, userID, targetID, message)
+		if err != nil {
+			return err
+		}
 	}
 
 	push := ws.NewPushMessage("notify.friend.request", map[string]interface{}{
@@ -141,7 +155,7 @@ func (s *ContactService) RejectFriendRequest(ctx context.Context, requestID, use
 	return err
 }
 
-// GetFriendList 获取好友列表
+// GetFriendList 获取好友列表（包含在线状态）
 func (s *ContactService) GetFriendList(ctx context.Context, userID int64, groupID *int64) ([]dto.FriendInfo, error) {
 	funcName := "service.contact_service.GetFriendList"
 	logs.Debug(ctx, funcName, "获取好友列表", zap.Int64("user_id", userID))
@@ -149,6 +163,15 @@ func (s *ContactService) GetFriendList(ctx context.Context, userID int64, groupI
 	friends, err := s.friendshipDAO.GetFriendList(ctx, userID, groupID)
 	if err != nil {
 		return nil, err
+	}
+
+	friendIDs := make([]int64, 0, len(friends))
+	for _, f := range friends {
+		friendIDs = append(friendIDs, f.UserID)
+	}
+	onlineMap := make(map[int64]bool)
+	if s.onlineChecker != nil && len(friendIDs) > 0 {
+		onlineMap = s.onlineChecker.BatchCheckOnline(ctx, friendIDs)
 	}
 
 	result := make([]dto.FriendInfo, 0, len(friends))
@@ -161,6 +184,7 @@ func (s *ContactService) GetFriendList(ctx context.Context, userID int64, groupI
 			Avatar:    f.Avatar,
 			Remark:    f.Remark,
 			GroupID:   f.GroupID,
+			IsOnline:  onlineMap[f.UserID],
 			CreatedAt: f.CreatedAt.Format("2006-01-02 15:04:05"),
 		})
 	}

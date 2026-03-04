@@ -111,7 +111,7 @@ func (h *EventHandler) handleMarkRead(client *ws.Client, msg *ws.Message) {
 	h.sendACK(client, msg, 0, "ok", nil)
 }
 
-// handleTyping 处理正在输入事件（转发给对方）
+// handleTyping 处理正在输入事件（通过 PubSub 转发给对方，支持跨实例）
 func (h *EventHandler) handleTyping(client *ws.Client, msg *ws.Message) {
 	funcName := "handler.event_handler.handleTyping"
 	ctx := context.Background()
@@ -123,23 +123,7 @@ func (h *EventHandler) handleTyping(client *ws.Client, msg *ws.Message) {
 		return
 	}
 
-	peerID, err := h.imService.GetPeerUserID(ctx, req.ConversationID, client.UserID)
-	if err != nil {
-		logs.Warn(ctx, funcName, "查询对方用户 ID 失败",
-			zap.Int64("conversation_id", req.ConversationID), zap.Error(err))
-		return
-	}
-
-	push := ws.NewPushMessage("im.typing", map[string]interface{}{
-		"conversation_id": req.ConversationID,
-		"user_id":         client.UserID,
-	})
-	data, err := ws.MarshalPush(push)
-	if err != nil {
-		return
-	}
-
-	h.hub.SendToUser(peerID, data)
+	h.imService.PushTypingNotification(ctx, req.ConversationID, client.UserID)
 }
 
 // sendACK 发送 ACK 响应给客户端

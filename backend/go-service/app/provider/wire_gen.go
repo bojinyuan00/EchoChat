@@ -56,7 +56,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	contactManageController := controller2.NewContactManageController(contactManageService)
 	handler := ws.ProvideWSHandler(hub, pubSub, jwtConfig, onlineService, authService)
 	friendGroupDAO := dao3.NewFriendGroupDAO(gormDB)
-	contactService := service3.NewContactService(friendshipDAO, friendGroupDAO, pubSub)
+	contactService := service3.NewContactService(friendshipDAO, friendGroupDAO, pubSub, onlineService)
 	contactController := controller3.NewContactController(contactService)
 
 	// IM 模块初始化

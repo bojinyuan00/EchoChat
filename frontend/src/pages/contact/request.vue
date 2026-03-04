@@ -97,6 +97,7 @@ const handleAccept = async (requestId) => {
     uni.showToast({ title: '已接受', icon: 'success' })
   } catch (e) {
     console.error('接受好友申请失败', e)
+    uni.showToast({ title: e?.data?.message || '接受申请失败', icon: 'none' })
   } finally {
     processingMap[requestId] = false
   }
@@ -110,6 +111,7 @@ const handleReject = async (requestId) => {
     uni.showToast({ title: '已拒绝', icon: 'none' })
   } catch (e) {
     console.error('拒绝好友申请失败', e)
+    uni.showToast({ title: e?.data?.message || '拒绝申请失败', icon: 'none' })
   } finally {
     processingMap[requestId] = false
   }

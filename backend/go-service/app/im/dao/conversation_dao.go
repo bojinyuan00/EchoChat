@@ -77,20 +77,22 @@ func (d *ConversationDAO) CreateWithMembers(ctx context.Context, conv *model.Con
 }
 
 // GetUserConversations 获取用户的会话列表（排除已软删除的）
-// 返回会话基本信息和该用户的成员视图（未读数、置顶等）
+// 返回会话基本信息、该用户的成员视图（未读数、置顶等）和单聊对方用户 ID
 func (d *ConversationDAO) GetUserConversations(ctx context.Context, userID int64) ([]ConversationWithMember, error) {
 	funcName := "dao.conversation_dao.GetUserConversations"
 	logs.Debug(ctx, funcName, "查询用户会话列表", zap.Int64("user_id", userID))
 
 	var results []ConversationWithMember
 	err := d.db.WithContext(ctx).
-		Raw(`SELECT c.id, c.type, c.last_msg_content, c.last_msg_time, c.last_msg_sender_id,
-			        cm.is_pinned, cm.unread_count
+		Raw(`SELECT c.id, c.type, c.last_message_id, c.last_msg_content, c.last_msg_time, c.last_msg_sender_id,
+			        cm.is_pinned, cm.unread_count, cm.clear_before_msg_id,
+			        peer.user_id AS peer_user_id
 			 FROM im_conversations c
-			 JOIN im_conversation_members cm ON cm.conversation_id = c.id
-			 WHERE cm.user_id = ? AND cm.is_deleted = false
+			 JOIN im_conversation_members cm ON cm.conversation_id = c.id AND cm.user_id = ?
+			 LEFT JOIN im_conversation_members peer ON peer.conversation_id = c.id AND peer.user_id != ?
+			 WHERE cm.is_deleted = false
 			 ORDER BY cm.is_pinned DESC, c.last_msg_time DESC NULLS LAST`,
-			userID).
+			userID, userID).
 		Scan(&results).Error
 
 	if err != nil {
@@ -99,15 +101,18 @@ func (d *ConversationDAO) GetUserConversations(ctx context.Context, userID int64
 	return results, err
 }
 
-// ConversationWithMember 会话列表查询结果（JOIN 成员表）
+// ConversationWithMember 会话列表查询结果（JOIN 成员表 + LEFT JOIN 对方成员）
 type ConversationWithMember struct {
-	ID              int64      `json:"id"`
-	Type            int        `json:"type"`
-	LastMsgContent  string     `json:"last_msg_content"`
-	LastMsgTime     *time.Time `json:"last_msg_time"`
-	LastMsgSenderID *int64     `json:"last_msg_sender_id"`
-	IsPinned        bool       `json:"is_pinned"`
-	UnreadCount     int        `json:"unread_count"`
+	ID               int64      `json:"id"`
+	Type             int        `json:"type"`
+	LastMessageID    *int64     `json:"last_message_id"`
+	LastMsgContent   string     `json:"last_msg_content"`
+	LastMsgTime      *time.Time `json:"last_msg_time"`
+	LastMsgSenderID  *int64     `json:"last_msg_sender_id"`
+	IsPinned         bool       `json:"is_pinned"`
+	UnreadCount      int        `json:"unread_count"`
+	ClearBeforeMsgID int64      `json:"clear_before_msg_id"`
+	PeerUserID       int64      `json:"peer_user_id"`
 }
 
 // GetMember 获取指定会话中指定用户的成员记录
@@ -242,6 +247,22 @@ func (d *ConversationDAO) GetUnreadConversations(ctx context.Context, userID int
 		logs.Error(ctx, funcName, "查询未读会话失败", zap.Error(err))
 	}
 	return results, err
+}
+
+// UpdateClearBefore 更新用户的清空记录截止消息 ID（个人视图操作，不影响对方）
+func (d *ConversationDAO) UpdateClearBefore(ctx context.Context, conversationID, userID, lastMsgID int64) error {
+	funcName := "dao.conversation_dao.UpdateClearBefore"
+	logs.Info(ctx, funcName, "更新清空记录截止 ID",
+		zap.Int64("conversation_id", conversationID), zap.Int64("user_id", userID),
+		zap.Int64("last_msg_id", lastMsgID))
+
+	return d.db.WithContext(ctx).
+		Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
+		Updates(map[string]interface{}{
+			"clear_before_msg_id": lastMsgID,
+			"unread_count":        0,
+		}).Error
 }
 
 // GetByID 根据 ID 获取会话

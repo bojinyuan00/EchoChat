@@ -90,6 +90,9 @@
  * 登录成功后 reLaunch 到首页
  */
 import { useUserStore } from '@/store/user'
+import { useWebSocketStore } from '@/store/websocket'
+import { useChatStore } from '@/store/chat'
+import { useContactStore } from '@/store/contact'
 
 export default {
   name: 'LoginPage',
@@ -152,6 +155,10 @@ export default {
           account: this.form.account.trim(),
           password: this.form.password
         })
+        const wsStore = useWebSocketStore()
+        wsStore.connect()
+        useChatStore().initWsListeners()
+        useContactStore().initWsListeners()
         uni.showToast({ title: '登录成功', icon: 'success' })
         setTimeout(() => uni.reLaunch({ url: '/pages/index/index' }), 800)
       } catch (e) {

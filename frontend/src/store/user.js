@@ -14,6 +14,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import authApi from '@/api/auth'
+import { useWebSocketStore } from '@/store/websocket'
 import {
   saveToken,
   getToken,
@@ -112,10 +113,11 @@ export const useUserStore = defineStore('user', () => {
    * 3. 重置 Store 状态
    */
   const logout = async () => {
+    const wsStore = useWebSocketStore()
+    wsStore.disconnect()
     try {
       await authApi.logout()
     } catch (e) {
-      // 即使后端请求失败，也要清除本地状态（避免用户被卡住）
       console.warn('登出 API 调用失败，仍然清除本地状态', e)
     }
     token.value = ''

@@ -222,8 +222,13 @@ export default {
       finally { loadingMore.value = false }
     }
 
+    const canRecall = (msg) => {
+      if (!msg.created_at) return false
+      return (Date.now() - new Date(msg.created_at).getTime()) < 2 * 60 * 1000
+    }
+
     const onMsgLongPress = (msg) => {
-      if (!isSelf(msg) || msg.status === 2) return
+      if (!isSelf(msg) || msg.status === 2 || !canRecall(msg)) return
       uni.showActionSheet({
         itemList: ['撤回'],
         success: (res) => {
@@ -304,9 +309,12 @@ export default {
 /* ===== 消息列表 ===== */
 .msg-list {
   flex: 1;
+  height: 0;
+  min-height: 0;
   padding: 16rpx 24rpx;
   box-sizing: border-box;
   width: 100%;
+  overflow: hidden;
 }
 .load-more { text-align: center; padding: 16rpx 0; }
 .load-more-text { font-size: 24rpx; color: #94A3B8; }

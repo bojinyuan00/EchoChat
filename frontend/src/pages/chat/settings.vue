@@ -67,9 +67,13 @@ export default {
 
     const togglePin = async () => {
       const newVal = !isPinned.value
-      await chatStore.pinConversation(conversationId.value, newVal)
-      isPinned.value = newVal
-      uni.showToast({ title: newVal ? '已置顶' : '已取消置顶', icon: 'none' })
+      try {
+        await chatStore.pinConversation(conversationId.value, newVal)
+        isPinned.value = newVal
+        uni.showToast({ title: newVal ? '已置顶' : '已取消置顶', icon: 'none' })
+      } catch {
+        uni.showToast({ title: '操作失败', icon: 'none' })
+      }
     }
 
     const onClearHistory = () => {
@@ -78,8 +82,12 @@ export default {
         content: '确定清空聊天记录？此操作不可恢复',
         success: async (res) => {
           if (res.confirm) {
-            await chatStore.clearHistory(conversationId.value)
-            uni.showToast({ title: '已清空', icon: 'none' })
+            try {
+              await chatStore.clearHistory(conversationId.value)
+              uni.showToast({ title: '已清空', icon: 'none' })
+            } catch {
+              uni.showToast({ title: '清空失败', icon: 'none' })
+            }
           }
         }
       })
@@ -91,8 +99,12 @@ export default {
         content: '确定删除该会话？',
         success: async (res) => {
           if (res.confirm) {
-            await chatStore.deleteConversation(conversationId.value)
-            uni.navigateBack({ delta: 2 })
+            try {
+              await chatStore.deleteConversation(conversationId.value)
+              uni.navigateBack({ delta: 2 })
+            } catch {
+              uni.showToast({ title: '删除失败', icon: 'none' })
+            }
           }
         }
       })

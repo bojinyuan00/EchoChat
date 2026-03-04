@@ -15,7 +15,7 @@
 | [frontend/auth.md](frontend/auth.md) | 用户认证 | ✅ Phase 1 | 注册、登录、Token 刷新、个人信息管理 |
 | [frontend/contact.md](frontend/contact.md) | 联系人 | ✅ Phase 2a | 17 个 API：好友申请/管理、好友分组、黑名单、搜索/推荐、在线状态 |
 | [frontend/websocket.md](frontend/websocket.md) | WebSocket | ✅ Phase 2a | 前端 WebSocket 连接管理、事件协议、心跳、重连 |
-| [frontend/im.md](frontend/im.md) | 即时通讯 | 📋 Phase 2b | 会话列表、消息历史、群聊创建与管理 |
+| [frontend/im.md](frontend/im.md) | 即时通讯 | ✅ Phase 2b | 7 个 API：会话列表/置顶/删除/清空、历史消息、全局搜索、未读数 |
 | [frontend/meeting.md](frontend/meeting.md) | 会议 | 📋 后续 | 即时会议、预约会议、加入/离开、会议列表 |
 | [frontend/notify.md](frontend/notify.md) | 通知 | 📋 后续 | 通知列表、标记已读 |
 
@@ -34,7 +34,7 @@
 
 | 文档 | 状态 | 说明 |
 |------|------|------|
-| [websocket.md](websocket.md) | ✅ Phase 2a | WebSocket 实时事件协议（联系人通知、在线状态、心跳） |
+| [websocket.md](websocket.md) | ✅ Phase 2a/2b | WebSocket 实时事件协议（IM 消息收发/撤回/已读/输入、联系人通知、在线状态、心跳） |
 
 ---
 
@@ -194,7 +194,7 @@ docs/api/
 │   ├── auth.md            # 用户认证                    ✅ Phase 1
 │   ├── contact.md         # 联系人管理（17 个 API）      ✅ Phase 2a
 │   ├── websocket.md       # WebSocket 事件协议          ✅ Phase 2a
-│   ├── im.md              # 即时通讯                    📋 Phase 2b
+│   ├── im.md              # 即时通讯（7 个 API）          ✅ Phase 2b
 │   ├── meeting.md         # 会议                        📋 后续
 │   └── notify.md          # 通知                        📋 后续
 ├── admin/                 # 后台管理端 API
@@ -204,5 +204,5 @@ docs/api/
 │   ├── contact.md         # 好友关系管理                  ✅ Phase 2a
 │   ├── meeting.md         # 会议管理                     📋 后续
 │   └── system.md          # 系统管理                     📋 待定
-└── websocket.md           # WebSocket 全量事件协议       ✅ Phase 2a
+└── websocket.md           # WebSocket 全量事件协议       ✅ Phase 2a/2b
 ```

@@ -16,9 +16,12 @@ alwaysApply: true
 
 - **Phase 1（基础设施与用户认证）**：✅ 全部完成（11 个 Task）
 - **Phase 2a（WebSocket 实时通讯与联系人管理）**：✅ 全部完成（13 个 Task + 后期 Bug 修复 3 项）
-- **Phase 2b（即时通讯消息系统）**：✅ 核心功能开发完成（10 个 Task），设计文档 `docs/plans/2026-03-03-phase2b-design.md`
+- **Phase 2b（即时通讯消息系统）**：✅ 全部完成（10 个 Task + 代码审查修复 7 项 + 用户测试修复 8 项），设计文档 `docs/plans/2026-03-03-phase2b-design.md`
 - 分支：`feature/phase2b-instant-messaging`
-- **跨模块通信模式**：已建立接口注入标准（ws.FriendIDsGetter / im.FriendChecker / im.UserInfoGetter → contact.FriendshipDAO，im.OfflineMessagePusher → ws.Handler）
+- 代码审查修复：ClearHistory 个人视图、Redis 负数保护、N+1 查询优化、全文索引搜索、撤回更新预览、推送补全 sender 信息
+- 用户测试修复：好友申请/接受唯一约束、Redis 在线状态残留清理、WS 全局初始化、管理端字段修正、好友列表在线状态初始值、聊天页布局约束
+- **Phase 2c（群聊与增强）**：待规划设计
+- **跨模块通信模式**：已建立接口注入标准（ws.FriendIDsGetter / im.FriendChecker / im.UserInfoGetter → contact.FriendshipDAO，im.OfflineMessagePusher → ws.Handler，contact.OnlineChecker → ws.OnlineService）
 
 ## 项目概述
 
