@@ -315,20 +315,28 @@ JWT Token 的 Claims 中包含 `client_type` 字段，用于：
 
 ---
 
-## 8. WebSocket 事件联动规范
+## 8. Go 后端架构与编码规范
 
-### 8.1 适用范围
+> 详细规范已拆分为独立文档，见 `docs/conventions/backend-module-architecture.md`
+>
+> 包含：模块分层架构、层间调用规则、跨模块接口注入模式、Wire 依赖注入、日志标准、Controller 错误处理、批量查询优化、系统消息规范、WS 事件推送模式、前端 Store/API 封装规范
+
+---
+
+## 9. WebSocket 事件联动规范
+
+### 9.1 适用范围
 
 仅前台用户端（frontend）使用 WebSocket 实时通讯，管理端（admin）使用 REST 轮询。
 
-### 8.2 连接管理
+### 9.2 连接管理
 
 - WebSocket 地址：`ws(s)://host/ws?token=xxx`
 - 认证方式：URL Query 参数传递 JWT Token（前台 frontend Token）
 - 心跳间隔：30 秒 ping/pong
 - 断线重连：指数退避（1s → 2s → 4s → 8s → 30s max）
 
-### 8.3 事件命名规范
+### 9.3 事件命名规范
 
 格式：`{模块}.{对象}.{动作}`
 
@@ -340,12 +348,13 @@ JWT Token 的 Claims 中包含 `client_type` 字段，用于：
 | `user.status.online` | 服务端 → 客户端 | 好友上线 |
 | `user.status.offline` | 服务端 → 客户端 | 好友下线 |
 
-### 8.4 前端事件处理原则
+### 9.4 前端事件处理原则
 
 1. **WebSocket Store 统一管理**：连接状态、事件监听、消息发送由 `store/websocket.js` 管理
 2. **业务 Store 订阅事件**：各模块 Store（如 `contact.js`）通过 WebSocket Store 注册事件回调
 3. **避免页面直接操作 WebSocket**：页面组件通过 Store 间接与 WebSocket 交互
 
-### 8.5 WebSocket 详细协议
+### 9.5 WebSocket 详细协议
 
 > 完整事件协议见 `docs/api/frontend/websocket.md`
+> WS 事件推送模式和代码示例见 `docs/conventions/backend-module-architecture.md` 第九章
