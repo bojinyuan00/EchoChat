@@ -16,6 +16,7 @@
 | [frontend/contact.md](frontend/contact.md) | 联系人 | ✅ Phase 2a | 17 个 API：好友申请/管理、好友分组、黑名单、搜索/推荐、在线状态 |
 | [frontend/websocket.md](frontend/websocket.md) | WebSocket | ✅ Phase 2a | 前端 WebSocket 连接管理、事件协议、心跳、重连 |
 | [frontend/im.md](frontend/im.md) | 即时通讯 | ✅ Phase 2b | 7 个 API：会话列表/置顶/删除/清空、历史消息、全局搜索、未读数 |
+| [frontend/group.md](frontend/group.md) | 群聊管理 | 🔜 Phase 2c | 16 个 API：建群/管理/成员/角色/禁言/公告/搜索/入群审批 |
 | [frontend/meeting.md](frontend/meeting.md) | 会议 | 📋 后续 | 即时会议、预约会议、加入/离开、会议列表 |
 | [frontend/notify.md](frontend/notify.md) | 通知 | 📋 后续 | 通知列表、标记已读 |
 
@@ -27,6 +28,7 @@
 | [admin/user.md](admin/user.md) | 用户管理 | ✅ Phase 1 | 用户列表/详情、状态管理、角色分配、创建用户 |
 | [admin/online.md](admin/online.md) | 在线监控 | ✅ Phase 2a | 在线用户列表、在线用户计数 |
 | [admin/contact.md](admin/contact.md) | 好友关系管理 | ✅ Phase 2a | 好友关系列表（分页）、管理员解除好友关系 |
+| [admin/group.md](admin/group.md) | 群聊管理 | 🔜 Phase 2c | 群列表/详情、管理员解散群/移除成员 |
 | [admin/meeting.md](admin/meeting.md) | 会议管理 | 📋 后续 | 会议列表/详情、强制结束、会议统计 |
 | [admin/system.md](admin/system.md) | 系统管理 | 📋 待定 | 仪表盘数据、操作日志、系统配置 |
 
