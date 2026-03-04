@@ -1,10 +1,10 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-03-03（Phase 2b 全部完成，含代码审查修复 + 用户测试修复）
-> **当前阶段**：Phase 2b 全部完成，准备进入 Phase 2c
-> **当前分支**：`feature/phase2b-instant-messaging`
-> **实施计划**：`docs/plans/2026-03-03-phase2b-implementation.plan.md`
-> **设计文档**：`docs/plans/2026-03-03-phase2b-design.md`
+> **最后更新**：2026-03-04（Phase 2c 设计完成，待实施）
+> **当前阶段**：Phase 2c 设计完成，准备开始实施
+> **当前分支**：`feature/phase2b-instant-messaging`（Phase 2c 分支待创建）
+> **实施计划**：`docs/plans/2026-03-04-phase2c-implementation.plan.md`
+> **设计文档**：`docs/plans/2026-03-04-phase2c-design.md`
 
 ---
 
@@ -237,11 +237,44 @@ cd frontend && npm run dev:h5
 
 ---
 
-## 八、下一阶段规划
+## 八、下一阶段：Phase 2c — 群聊与已读回执
 
-### Phase 2c - 群聊与增强（待规划）
-- 群聊会话（建群/加入/退出/管理）
-- 群消息收发
-- 已读回执（单聊 + 群聊）
+> **状态：** 设计完成，待实施
+> **设计文档：** `docs/plans/2026-03-04-phase2c-design.md`
+> **实施计划：** `docs/plans/2026-03-04-phase2c-implementation.plan.md`
+> **分支：** `feature/phase2c-group-read-receipt`（待创建，从 phase2b 拉出）
+
+### 功能范围
+
+| 模块 | 内容 |
+|------|------|
+| 群聊管理 | 建群/加入/退出/解散/搜索/三级角色/禁言/全体禁言/群公告/群昵称/免打扰 |
+| 群消息 | 复用 im.message.* 事件 + @某人/@所有人 + 管理员撤回（无时限）+ 系统消息 |
+| 已读回执 | 单聊会话级（last_read_msg_id）+ 群聊消息级（im_message_reads 表）+ 实时推送 |
+| MinIO | Docker 容器 + Go SDK + 通用上传 API（群头像） |
+| 管理端 | 群列表/群详情/解散群/移除成员 |
+| 前端 | 9 个新页面 + 群聊 Store + 会话列表 Tab 改造 |
+
+### Task 概览（14 个）
+
+| Task | 描述 | 状态 |
+|------|------|------|
+| Task 0 | MinIO Docker + SDK + 通用上传 API | 📋 |
+| Task 1 | 数据库迁移 + Model + 常量 | 📋 |
+| Task 2 | Group DAO 层 | 📋 |
+| Task 3 | Group Service 业务逻辑 | 📋 |
+| Task 4 | Group Controller + Router + Wire | 📋 |
+| Task 5 | WS 群管理事件处理器 | 📋 |
+| Task 6 | IM Service 扩展（群消息/@提醒/管理员撤回） | 📋 |
+| Task 7 | 已读回执后端 | 📋 |
+| Task 8 | 前端已读回执 UI | 📋 |
+| Task 9 | 前端群聊 Store + API + WS 监听 | 📋 |
+| Task 10 | 群聊核心页面（Tab + 对话 + 创建） | 📋 |
+| Task 11 | 群聊管理页面（设置 + 成员 + 邀请 + @选择器） | 📋 |
+| Task 12 | 群聊辅助功能（审批 + 搜索 + 免打扰 + 公告） | 📋 |
+| Task 13 | 管理端 + 文档更新 + 代码审查 | 📋 |
+
+### 留待后续阶段
+
 - 消息类型扩展（图片/语音/文件）
 - 管理端消息管理功能
