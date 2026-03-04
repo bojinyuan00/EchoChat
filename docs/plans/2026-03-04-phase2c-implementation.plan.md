@@ -75,7 +75,7 @@
    - `im_message_reads` 表
 
 2. **ALTER 现有表**
-   - `im_conversation_members` 新增 5 字段：role, nickname, is_muted, is_do_not_disturb, joined_at
+   - `im_conversation_members` 新增 6 字段：role, nickname, is_muted, is_do_not_disturb, joined_at, at_me_count
    - `im_messages` 新增 1 字段：at_user_ids (BIGINT[])
 
 3. **Go Model 文件**

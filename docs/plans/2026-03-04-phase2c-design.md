@@ -624,3 +624,91 @@ type ConversationDTO struct {
     AtMeCount      int     `json:"at_me_count,omitempty"`     // 被@计数
 }
 ```
+
+---
+
+## 十一、补充设计细节
+
+### 11.1 @提醒计数存储
+
+会话列表需要显示 "[N条] @了我"，需要在 `im_conversation_members` 表新增字段存储：
+
+```sql
+ALTER TABLE im_conversation_members
+    ADD COLUMN at_me_count INT DEFAULT 0;
+
+COMMENT ON COLUMN im_conversation_members.at_me_count IS '被@提醒未读计数，打开会话后清零';
+```
+
+**操作流程：**
+- 收到含 at_user_ids 的消息时：若当前用户在列表中 → `at_me_count += 1`
+- @所有人（at_user_ids 含 0）：群内所有成员（排除发送者）`at_me_count += 1`
+- 用户打开会话：`at_me_count = 0`（同清零 unread_count 时一并清零）
+
+### 11.2 系统消息内容格式
+
+系统消息（type=10）的 `content` 字段使用**纯文本格式**，不采用结构化 JSON。理由：
+- 简单直观，前端直接渲染无需解析
+- 系统消息种类有限且模板固定
+- 不需要国际化（当前仅中文）
+
+**系统消息模板：**
+
+| 场景 | content 示例 |
+|------|-------------|
+| 创建群 | "XX 创建了群聊，邀请了 A、B、C 加入" |
+| 邀请入群 | "XX 邀请了 A、B 加入群聊" |
+| 退出群 | "XX 退出了群聊" |
+| 被踢出 | "XX 被移出了群聊" |
+| 转让群主 | "XX 将群主转让给了 YY" |
+| 设管理员 | "XX 被设为管理员" |
+| 取消管理员 | "XX 被取消了管理员" |
+| 群公告 | "XX 修改了群公告" |
+| 管理员撤回 | "管理员 XX 撤回了 YY 的一条消息" |
+| 解散群 | "群主 XX 解散了群聊" |
+| 禁言 | "XX 被禁言" |
+| 全体禁言 | "管理员 XX 开启了全体禁言" |
+
+### 11.3 群聊离线消息推送
+
+沿用 Phase 2b 的离线推送机制（`OfflineMessagePusher`）：
+
+1. 用户 WebSocket 连接后，服务端检查该用户的所有未读会话（含群聊）
+2. 推送 `im.offline.sync` 事件，包含未读会话摘要列表
+3. 群聊会话的摘要包含：conversation_id、type=2、group_name、group_avatar、unread_count、last_msg_content、at_me_count
+4. 前端收到后更新群聊会话列表和 TabBar badge
+
+### 11.4 文件上传策略
+
+群头像上传不需要 `FileUploader` 接口注入。流程：
+
+```
+1. 前端调用 POST /api/v1/upload 上传图片 → 获取 MinIO URL
+2. 前端调用 PUT /api/v1/groups/:id {avatar: "minio-url"} 更新群头像
+```
+
+两步操作，`file` 模块和 `group` 模块完全解耦，无需接口注入。
+
+### 11.5 群聊错误常量规划
+
+```go
+// app/constants/group.go 错误定义（在 group/service 中使用）
+
+var (
+    ErrGroupNotFound        = errors.New("群聊不存在")
+    ErrGroupDissolved       = errors.New("群聊已解散")
+    ErrNotGroupMember       = errors.New("你不是该群成员")
+    ErrNotGroupOwner        = errors.New("仅群主可执行此操作")
+    ErrNotGroupAdmin        = errors.New("仅群主或管理员可执行此操作")
+    ErrGroupFull            = errors.New("群成员已满")
+    ErrAlreadyMember        = errors.New("该用户已是群成员")
+    ErrCannotKickHigherRole = errors.New("不能操作同级或更高权限的成员")
+    ErrOwnerCannotLeave     = errors.New("群主不能退出群聊，请先转让群主")
+    ErrCannotMuteSelf       = errors.New("不能禁言自己")
+    ErrAlreadyMuted         = errors.New("该成员已被禁言")
+    ErrUserMuted            = errors.New("你已被禁言，无法发送消息")
+    ErrGroupAllMuted        = errors.New("当前群已开启全体禁言")
+    ErrPendingRequestExists = errors.New("已有待处理的入群申请")
+    ErrJoinRequestNotFound  = errors.New("入群申请不存在")
+)
+```
