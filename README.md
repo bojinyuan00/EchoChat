@@ -47,7 +47,7 @@ mediasoup Worker (C++ SFU)
 
 ---
 
-## 项目结构
+## 项目结构：
 
 ```
 EchoChat/
