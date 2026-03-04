@@ -1,9 +1,9 @@
 # Phase 2c 实施计划：群聊与已读回执
 
-> **状态：** 📋 待执行
+> **状态：** ✅ 已完成（含代码审查修复 14 项）
 > **设计文档：** `docs/plans/2026-03-04-phase2c-design.md`
 > **分支：** `feature/phase2c-group-read-receipt`
-> **预计 Task 数：** 14 个
+> **预计 Task 数：** 14 个（全部完成）
 > **最后更新：** 2026-03-04
 
 ---
@@ -12,20 +12,20 @@
 
 | Task | 阶段 | 描述 | 依赖 | 状态 |
 |------|------|------|------|------|
-| Task 0 | 基础设施 | MinIO Docker + SDK + 通用上传 API | 无 | 📋 |
-| Task 1 | 基础设施 | 数据库迁移 + Model + 常量定义 | 无 | 📋 |
-| Task 2 | 群聊后端 | Group DAO 层 | Task 1 | 📋 |
-| Task 3 | 群聊后端 | Group Service 业务逻辑 | Task 2 | 📋 |
-| Task 4 | 群聊后端 | Group Controller + Router + Wire | Task 3 | 📋 |
-| Task 5 | 群聊后端 | WS 群管理事件处理器 | Task 3 | 📋 |
-| Task 6 | 群聊后端 | IM Service 扩展（群消息 + @提醒 + 管理员撤回） | Task 2 | 📋 |
-| Task 7 | 已读回执 | 已读回执后端（ReadDAO + Service + API + WS 推送） | Task 1 | 📋 |
-| Task 8 | 已读回执 | 前端已读回执 UI（单聊标记 + 群聊计数 + 详情页） | Task 7 | 📋 |
-| Task 9 | 前端 | 群聊 Store + API 封装 + WS 事件监听 | Task 4, 5 | 📋 |
-| Task 10 | 前端 | 群聊核心页面（Tab 改造 + 群对话页 + 创建群页） | Task 9 | 📋 |
-| Task 11 | 前端 | 群聊管理页面（群设置 + 成员 + 邀请 + @选择器） | Task 10 | 📋 |
-| Task 12 | 前端 | 群聊辅助功能（审批 + 搜索 + 免打扰 + 公告 UI） | Task 11 | 📋 |
-| Task 13 | 管理端 | 管理端群聊管理 + 全量文档更新 + 代码审查 | Task 12 | 📋 |
+| Task 0 | 基础设施 | MinIO Docker + SDK + 通用上传 API | 无 | ✅ |
+| Task 1 | 基础设施 | 数据库迁移 + Model + 常量定义 | 无 | ✅ |
+| Task 2 | 群聊后端 | Group DAO 层 | Task 1 | ✅ |
+| Task 3 | 群聊后端 | Group Service 业务逻辑 | Task 2 | ✅ |
+| Task 4 | 群聊后端 | Group Controller + Router + Wire | Task 3 | ✅ |
+| Task 5 | 群聊后端 | WS 群管理事件处理器 | Task 3 | ✅ |
+| Task 6 | 群聊后端 | IM Service 扩展（群消息 + @提醒 + 管理员撤回） | Task 2 | ✅ |
+| Task 7 | 已读回执 | 已读回执后端（ReadDAO + Service + API + WS 推送） | Task 1 | ✅ |
+| Task 8 | 已读回执 | 前端已读回执 UI（单聊标记 + 群聊计数 + 详情页） | Task 7 | ✅ |
+| Task 9 | 前端 | 群聊 Store + API 封装 + WS 事件监听 | Task 4, 5 | ✅ |
+| Task 10 | 前端 | 群聊核心页面（Tab 改造 + 群对话页 + 创建群页） | Task 9 | ✅ |
+| Task 11 | 前端 | 群聊管理页面（群设置 + 成员 + 邀请 + @选择器） | Task 10 | ✅ |
+| Task 12 | 前端 | 群聊辅助功能（审批 + 搜索 + 免打扰 + 公告 UI） | Task 11 | ✅ |
+| Task 13 | 管理端 | 管理端群聊管理 + 全量文档更新 + 代码审查 | Task 12 | ✅ |
 
 ---
 
@@ -553,10 +553,75 @@ Task 0 + Task 12 ── Task 13 (管理端+文档+审查)
 
 ## 开发注意事项
 
-1. **代码风格一致性**：严格遵循 Phase 2b 的代码风格（日志记录、错误处理、常量命名、DTO 设计）
-2. **接口注入模式**：新模块间通信必须走 interface injection，禁止直接 import
-3. **批量查询优化**：群成员信息获取使用批量查询 + Map 映射，避免 N+1
-4. **前端设计规范**：所有前端页面使用 ui-ux-pro-max 技能包设计
-5. **系统消息**：群管理操作产生的系统消息统一使用 type=10（MessageTypeSystem），内容格式化
-6. **权限层级**：群主(2) > 管理员(1) > 成员(0)，操作时必须校验层级
-7. **Wire 依赖**：Phase 2b 中 Wire 有过手动 patch 历史，注意检查 wire_gen.go 一致性
+### 代码风格全局一致（最高优先级）
+
+**编写任何新代码前，必须先阅读同层级现有模块的实际代码，严格复制其风格。** 详细规范见 `docs/conventions/backend-module-architecture.md`。
+
+**强制执行流程：**
+1. 写代码前 → 用 Read/Grep 读取同类型现有文件
+2. 写代码时 → 逐行对照导入、结构体、方法签名、日志调用、错误处理
+3. 写代码后 → 与参照文件做差异比对，确认风格完全一致
+
+**各层参照文件（Phase 2c 新模块必读）：**
+
+| 新模块文件 | 参照现有文件 |
+|-----------|------------|
+| group/controller | `app/contact/controller/contact_controller.go`、`app/im/controller/im_controller.go` |
+| group/service | `app/im/service/im_service.go`、`app/contact/service/contact_service.go` |
+| group/dao | `app/im/dao/conversation_dao.go`、`app/contact/dao/friendship_dao.go` |
+| group/model | `app/im/model/conversation.go`、`app/im/model/message.go` |
+| group/router.go | `app/contact/router.go`、`app/im/router.go` |
+| group/provider.go | `app/contact/provider.go` |
+| constants/group.go | `app/constants/im.go`、`app/constants/contact.go` |
+| dto/group_dto.go | `app/dto/im_dto.go`、`app/dto/contact_dto.go` |
+
+**严格禁止事项：**
+- 禁止调用不存在的 API（如 `logs.LogFunctionEntry`）
+- 禁止引入与当前 Go 版本不兼容的依赖
+- 禁止自创新封装模式（如自定义错误处理框架）
+- 禁止在 Controller 层记日志（auth/admin 模块除外）
+- 禁止使用未经项目验证的第三方库
+
+### Code Review 遗留问题清单（Important/Minor）
+
+以下问题在首轮 Code Review 中被标记为 Important 或 Minor，已在后续 Task 中逐步处理。
+
+#### Important 级别
+
+| # | 模块 | 问题 | 修复优先级 |
+|---|------|------|-----------|
+| I-1 | group/service | `UpdateGroup` 中 `_ = member` 无效赋值，应改为 `_, _, err :=` | 低（代码清洁） |
+| I-2 | group/service | `MuteMember` 使用 `ErrCannotKickHigherRole` 语义不精确，应新增通用错误 | 中 |
+| I-3 | group/dao | `SearchGroups` 的 `to_tsquery` 对特殊字符敏感，应改用 `plainto_tsquery` | 高（用户输入安全） |
+| I-4 | group/service | `InviteMembers` 循环逐条插入缺少事务包裹和批量优化 | 中（性能） |
+| I-5 | group/controller | `handleError` 缺少 `ErrAlreadyMuted/ErrUserMuted/ErrGroupAllMuted` 映射 | 高 |
+| I-6 | group/model | `MessageRead` 放在 `group/model` 而非 `im/model`，领域归属可议 | 低（架构决策） |
+| I-7 | im/service | `sendGroupMessage` 推送未检查成员免打扰设置 | 中（业务逻辑） |
+| I-8 | im/service | 群消息推送逐用户查询 N+1 问题 | 中（性能） |
+| I-9 | im/service | WS 群已读事件 `im.message.read` 处理器未注册 | 高（Task 5 实现） |
+| I-10 | im/service | 消息推送数据缺少 `conv_type` 字段 | 高（前端适配） |
+| I-11 | im/service | `GetMessageReadDetail` 无分页参数 | 中 |
+| I-12 | file/service | 文件上传缺少 MIME 类型校验 | 中（安全性） |
+| I-13 | file/service | 上传返回 URL 使用内部地址，应返回可配置前缀 | 中 |
+| I-14 | pkg/storage | MinIO 初始化无超时控制 | 低 |
+
+#### Minor 级别
+
+| # | 模块 | 问题 |
+|---|------|------|
+| M-1 | group/dao | `GetMemberCount` / `GetMemberIDs` 缺少 funcName 和日志 |
+| M-2 | group/dao | `HasRead` 缺少 funcName 和日志 |
+| M-3 | group/provider | 与 IM 模块 Provider 风格略有差异（无 ProvideXxx 包装） |
+| M-4 | group/service | `SearchGroups` 逐群查 `GetMemberCount`，建议批量 COUNT |
+| M-5 | group/service | `imMember` 内部类型可直接使用 `imModel.ConversationMember` |
+| M-6 | group/controller | `SetAllMuted` 使用匿名结构体，建议改用 DTO |
+
+### 其他注意事项
+
+1. **接口注入模式**：新模块间通信必须走 interface injection，禁止直接 import
+2. **批量查询优化**：群成员信息获取使用批量查询 + Map 映射，避免 N+1
+3. **前端设计规范**：所有前端页面使用 ui-ux-pro-max 技能包设计
+4. **系统消息**：群管理操作产生的系统消息统一使用 type=10（MessageTypeSystem），内容格式化
+5. **权限层级**：群主(2) > 管理员(1) > 成员(0)，操作时必须校验层级
+6. **Wire 依赖**：Phase 2b 中 Wire 有过手动 patch 历史，注意检查 wire_gen.go 一致性
+7. **依赖管理**：当前 Go 版本 1.23.12，添加新依赖必须选择兼容版本

@@ -23,5 +23,8 @@ func RegisterRoutes(r *gin.Engine, ctrl *controller.IMController, jwtAuth gin.Ha
 
 		// 未读数
 		authed.GET("/unread", ctrl.GetTotalUnread)
+
+		// 已读回执
+		authed.GET("/messages/:id/reads", ctrl.GetMessageReadDetail)
 	}
 }

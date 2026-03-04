@@ -61,25 +61,32 @@
 
         <!-- ====== 自己消息（右侧）：[状态] [气泡] [头像] ====== -->
         <template v-else>
-          <view v-if="msg._sending" class="msg-status">
-            <uni-icons type="loop" size="16" color="#94A3B8" />
-          </view>
-          <view v-if="msg._failed" class="msg-status msg-status-tap" @tap="onResend(msg)">
-            <uni-icons type="info-filled" size="18" color="#EF4444" />
-          </view>
-          <view
-            class="bubble bubble-self"
-            :class="{ 'bubble-recalled': msg.status === 2 }"
-            @longpress="onMsgLongPress(msg)"
-          >
-            <text v-if="msg.status === 2" class="recalled-text">消息已撤回</text>
-            <text v-else class="msg-text msg-text-self">{{ msg.content }}</text>
-          </view>
-          <view class="avatar-wrap">
-            <image v-if="selfAvatar" class="avatar-img" :src="selfAvatar" mode="aspectFill" />
-            <view v-else class="avatar-img avatar-placeholder avatar-self">
-              <text class="avatar-char">{{ (selfName || '我')[0] }}</text>
+          <view class="self-msg-col">
+            <view class="self-msg-row">
+              <view v-if="msg._sending" class="msg-status">
+                <uni-icons type="loop" size="16" color="#94A3B8" />
+              </view>
+              <view v-if="msg._failed" class="msg-status msg-status-tap" @tap="onResend(msg)">
+                <uni-icons type="info-filled" size="18" color="#EF4444" />
+              </view>
+              <view
+                class="bubble bubble-self"
+                :class="{ 'bubble-recalled': msg.status === 2 }"
+                @longpress="onMsgLongPress(msg)"
+              >
+                <text v-if="msg.status === 2" class="recalled-text">消息已撤回</text>
+                <text v-else class="msg-text msg-text-self">{{ msg.content }}</text>
+              </view>
+              <view class="avatar-wrap">
+                <image v-if="selfAvatar" class="avatar-img" :src="selfAvatar" mode="aspectFill" />
+                <view v-else class="avatar-img avatar-placeholder avatar-self">
+                  <text class="avatar-char">{{ (selfName || '我')[0] }}</text>
+                </view>
+              </view>
             </view>
+            <text v-if="getReadLabel(msg)" class="read-label" :class="isRead(msg) ? 'read-label-read' : 'read-label-unread'">
+              {{ getReadLabel(msg) }}
+            </text>
           </view>
         </template>
       </view>
@@ -134,9 +141,27 @@ export default {
     const selfAvatar = computed(() => userStore.userInfo?.avatar || '')
     const selfName = computed(() => userStore.userInfo?.nickname || userStore.userInfo?.username || '我')
 
+    const convType = ref(1)
+
     const isSelf = (msg) => {
       const myId = Number(userStore.userInfo?.id) || 0
       return msg.sender_id === myId || msg._sending === true || msg._failed === true
+    }
+
+    const isRead = (msg) => {
+      if (convType.value === 2) return false
+      if (msg.status === 2 || msg._sending || msg._failed || !msg.id) return false
+      const lastReadId = chatStore.readStatusMap[conversationId.value] || 0
+      return msg.id <= lastReadId
+    }
+
+    const getReadLabel = (msg) => {
+      if (msg.status === 2 || msg._sending || msg._failed || !msg.id) return ''
+      if (convType.value === 2) {
+        const count = chatStore.groupReadCountMap[msg.id]
+        return count > 0 ? `${count}人已读` : ''
+      }
+      return isRead(msg) ? '已读' : '未读'
     }
 
     const tryFindExistingConversation = async () => {
@@ -158,6 +183,7 @@ export default {
       peerId.value = parseInt(query.peerId) || 0
       peerName.value = decodeURIComponent(query.peerName || '')
       peerAvatar.value = decodeURIComponent(query.peerAvatar || '')
+      convType.value = parseInt(query.convType) || 1
 
       chatStore.initWsListeners()
 
@@ -265,9 +291,10 @@ export default {
 
     return {
       peerName, peerAvatar, selfAvatar, selfName,
-      inputText, scrollToId, loadingMore,
+      inputText, scrollToId, loadingMore, convType,
       messages, hasMore, isTyping,
-      isSelf, onSend, onInputChange, onLoadMore,
+      isSelf, isRead, getReadLabel,
+      onSend, onInputChange, onLoadMore,
       onMsgLongPress, onResend, goBack, goToSettings
     }
   }
@@ -375,6 +402,25 @@ export default {
 .msg-text { font-size: 30rpx; line-height: 42rpx; color: #1E293B; }
 .msg-text-self { color: #FFFFFF; }
 .recalled-text { font-size: 24rpx; color: #94A3B8; font-style: italic; }
+
+/* ===== 自己消息布局（含已读标记） ===== */
+.self-msg-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.self-msg-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+.read-label {
+  font-size: 20rpx;
+  margin-top: 4rpx;
+  margin-right: 88rpx;
+}
+.read-label-read { color: #2563EB; }
+.read-label-unread { color: #94A3B8; }
 
 /* ===== 发送状态 ===== */
 .msg-status {

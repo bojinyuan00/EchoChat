@@ -40,3 +40,10 @@ log:
     max_backups: 10
     max_age: 30
     compress: false
+
+minio:
+  endpoint: "minio:9000"
+  access_key: "echochat"
+  secret_key: "echochat123456"
+  bucket: "echochat"
+  use_ssl: false

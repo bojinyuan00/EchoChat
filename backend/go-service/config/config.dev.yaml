@@ -45,3 +45,11 @@ log:
     max_backups: 10    # 保留的旧日志归档文件最大数量，超出的自动删除
     max_age: 30        # 旧日志归档文件保留天数，超过天数的自动删除
     compress: false    # 是否对归档的旧日志文件进行 gzip 压缩（生产环境建议 true）
+
+# MinIO 对象存储配置
+minio:
+  endpoint: "localhost:9000"           # MinIO 服务地址
+  access_key: "echochat"               # 访问密钥（与 docker-compose 中的 MINIO_ROOT_USER 一致）
+  secret_key: "echochat123456"         # 密钥（与 docker-compose 中的 MINIO_ROOT_PASSWORD 一致）
+  bucket: "echochat"                   # 存储桶名称
+  use_ssl: false                       # 开发环境不使用 HTTPS

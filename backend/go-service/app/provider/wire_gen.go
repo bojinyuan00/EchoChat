@@ -16,10 +16,16 @@ import (
 	controller3 "github.com/echochat/backend/app/contact/controller"
 	dao3 "github.com/echochat/backend/app/contact/dao"
 	service3 "github.com/echochat/backend/app/contact/service"
+	controller4 "github.com/echochat/backend/app/file/controller"
+	service4 "github.com/echochat/backend/app/file/service"
+	controller5 "github.com/echochat/backend/app/group/controller"
+	dao4 "github.com/echochat/backend/app/group/dao"
+	service5 "github.com/echochat/backend/app/group/service"
 	imApp "github.com/echochat/backend/app/im"
 	"github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/db"
+	"github.com/echochat/backend/pkg/storage"
 )
 
 // Injectors from wire.go:
@@ -33,6 +39,11 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	}
 	redisConfig := provideRedisConfig(cfg)
 	client, err := db.NewRedis(redisConfig)
+	if err != nil {
+		return nil, err
+	}
+	minioConfig := provideMinioConfig(cfg)
+	minioClient, err := storage.NewMinioClient(minioConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -62,11 +73,26 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	// IM 模块初始化
 	conversationDAO := imApp.ProvideConversationDAO(gormDB)
 	messageDAO := imApp.ProvideMessageDAO(gormDB)
-	imService := imApp.ProvideIMService(conversationDAO, messageDAO, pubSub, client, friendshipDAO, friendshipDAO)
+	groupDAO := dao4.NewGroupDAO(gormDB)
+	messageReadDAO := dao4.NewMessageReadDAO(gormDB)
+	imService := imApp.ProvideIMService(conversationDAO, messageDAO, pubSub, client, friendshipDAO, friendshipDAO, groupDAO, messageReadDAO)
 	imEventHandler := imApp.ProvideIMEventHandler(imService, hub)
 	offlinePusher := imApp.ProvideOfflinePusher(imService, conversationDAO, pubSub)
 	imController := imApp.ProvideIMController(imService)
 
-	app := NewApp(cfg, gormDB, client, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, handler, hub, pubSub, onlineService, contactController, imController, imEventHandler, offlinePusher)
+	// File 模块初始化
+	fileService := service4.NewFileService(minioClient, minioConfig)
+	fileController := controller4.NewFileController(fileService)
+
+	// Group 模块初始化
+	joinRequestDAO := dao4.NewJoinRequestDAO(gormDB)
+	groupService := service5.NewGroupService(groupDAO, joinRequestDAO, friendshipDAO, pubSub, messageDAO)
+	groupController := controller5.NewGroupController(groupService)
+
+	// Admin 群组管理初始化
+	groupManageService := service2.NewGroupManageService(gormDB, groupDAO)
+	groupManageController := controller2.NewGroupManageController(groupManageService)
+
+	app := NewApp(cfg, gormDB, client, minioClient, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, groupManageController, handler, hub, pubSub, onlineService, contactController, imController, imEventHandler, offlinePusher, fileController, groupController)
 	return app, nil
 }

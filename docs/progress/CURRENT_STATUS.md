@@ -1,8 +1,8 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-03-04（Phase 2c 设计完成，待实施）
-> **当前阶段**：Phase 2c 设计完成，准备开始实施
-> **当前分支**：`feature/phase2c-group-read-receipt`（已从 phase2b 拉出）
+> **最后更新**：2026-03-04（Phase 2c 代码审查修复完成）
+> **当前阶段**：Phase 2c 代码审查修复完成，待最终验证
+> **当前分支**：`feature/phase2c-group-read-receipt`
 > **实施计划**：`docs/plans/2026-03-04-phase2c-implementation.plan.md`
 > **设计文档**：`docs/plans/2026-03-04-phase2c-design.md`
 
@@ -178,14 +178,24 @@ EchoChat/
 │   └── router/router.go
 ├── frontend/                    # 前台（uni-app）
 │   └── src/
-│       ├── api/{auth,contact,user,im}.js
+│       ├── api/{auth,contact,user,im,group,file}.js
+│       ├── constants/group.js    # [Phase 2c] 群聊角色/状态常量
 │       ├── services/websocket.js
-│       ├── store/{user,websocket,contact,chat}.js
-│       ├── pages/chat/          # [Phase 2b] 4 个页面
-│       │   ├── index.vue        # 会话列表
-│       │   ├── conversation.vue # 聊天对话
+│       ├── store/{user,websocket,contact,chat,group}.js
+│       ├── pages/chat/          # [Phase 2b] 5 个页面
+│       │   ├── index.vue        # 会话列表（含群聊 Tab）
+│       │   ├── conversation.vue # 单聊对话
+│       │   ├── read-detail.vue  # [Phase 2c] 已读详情
 │       │   ├── settings.vue     # 聊天设置
 │       │   └── search.vue       # 消息搜索
+│       ├── pages/group/         # [Phase 2c] 7 个页面
+│       │   ├── conversation.vue # 群聊对话（含 @选择器 + 已读计数 + 禁言提示）
+│       │   ├── create.vue       # 创建群聊
+│       │   ├── settings.vue     # 群设置
+│       │   ├── members.vue      # 成员管理
+│       │   ├── invite.vue       # 邀请入群
+│       │   ├── join-requests.vue # 入群审批
+│       │   └── search.vue       # 搜索群聊
 │       ├── pages/contact/       # [Phase 2a] 6 个页面
 │       └── components/CustomTabBar.vue（含 badge）
 ├── admin/                       # 管理端（Vue 3 + Element Plus）
@@ -237,12 +247,12 @@ cd frontend && npm run dev:h5
 
 ---
 
-## 八、下一阶段：Phase 2c — 群聊与已读回执
+## 八、Phase 2c — 群聊与已读回执
 
-> **状态：** 设计完成，待实施
+> **状态：** 实施中
 > **设计文档：** `docs/plans/2026-03-04-phase2c-design.md`
 > **实施计划：** `docs/plans/2026-03-04-phase2c-implementation.plan.md`
-> **分支：** `feature/phase2c-group-read-receipt`（已创建，从 phase2b 拉出）
+> **分支：** `feature/phase2c-group-read-receipt`
 
 ### 功能范围
 
@@ -252,29 +262,84 @@ cd frontend && npm run dev:h5
 | 群消息 | 复用 im.message.* 事件 + @某人/@所有人 + 管理员撤回（无时限）+ 系统消息 |
 | 已读回执 | 单聊会话级（last_read_msg_id）+ 群聊消息级（im_message_reads 表）+ 实时推送 |
 | MinIO | Docker 容器 + Go SDK + 通用上传 API（群头像） |
-| 管理端 | 群列表/群详情/解散群/移除成员 |
+| 管理端 | 群列表/群详情/解散群 |
 | 前端 | 9 个新页面 + 群聊 Store + 会话列表 Tab 改造 |
 
-### Task 概览（14 个）
+### Task 完成状态
 
 | Task | 描述 | 状态 |
 |------|------|------|
-| Task 0 | MinIO Docker + SDK + 通用上传 API | 📋 |
-| Task 1 | 数据库迁移 + Model + 常量 | 📋 |
-| Task 2 | Group DAO 层 | 📋 |
-| Task 3 | Group Service 业务逻辑 | 📋 |
-| Task 4 | Group Controller + Router + Wire | 📋 |
-| Task 5 | WS 群管理事件处理器 | 📋 |
-| Task 6 | IM Service 扩展（群消息/@提醒/管理员撤回） | 📋 |
-| Task 7 | 已读回执后端 | 📋 |
-| Task 8 | 前端已读回执 UI | 📋 |
-| Task 9 | 前端群聊 Store + API + WS 监听 | 📋 |
-| Task 10 | 群聊核心页面（Tab + 对话 + 创建） | 📋 |
-| Task 11 | 群聊管理页面（设置 + 成员 + 邀请 + @选择器） | 📋 |
-| Task 12 | 群聊辅助功能（审批 + 搜索 + 免打扰 + 公告） | 📋 |
-| Task 13 | 管理端 + 文档更新 + 代码审查 | 📋 |
+| Task 0 | MinIO Docker + SDK + 通用上传 API | ✅ 完成 |
+| Task 1 | 数据库迁移 + Model + 常量 | ✅ 完成 |
+| Task 2 | Group DAO 层 | ✅ 完成 |
+| Task 3 | Group Service 业务逻辑 + WS 推送 | ✅ 完成 |
+| Task 4 | Group Controller + Router + Wire | ✅ 完成 |
+| Task 5 | IM Service 扩展（群消息/@提醒/管理员撤回） | ✅ 完成 |
+| Task 6 | 已读回执后端（单聊 + 群聊） | ✅ 完成 |
+| Task 7 | 代码审查修复（Critical 4 项 + Important 4 项） | ✅ 完成 |
+| Task 8 | 前端已读回执 UI（单聊标记 + 群聊计数 + 详情页） | ✅ 完成 |
+| Task 9 | 前端群聊 Store + API 封装 + WS 事件监听 | ✅ 完成 |
+| Task 10 | 群聊核心页面（Tab 切换 + 群聊对话页 + 创建群聊页） | ✅ 完成 |
+| Task 11 | 群聊管理页面（群设置 + 成员管理 + 邀请入群） | ✅ 完成 |
+| Task 12 | 群聊辅助功能（入群审批 + 搜索群聊） | ✅ 完成 |
+| Task 13 | 管理端群组管理 + 文档更新 | ✅ 完成 |
+| 代码审查修复 | 14 项修复（Critical×5 + Important×4 + Minor×2 + Suggestion×3） | ✅ 完成 |
+
+### 代码审查修复详情（Phase 2c）
+
+| # | 优先级 | 修复内容 |
+|---|--------|----------|
+| Fix C1 | Critical | conversation.vue 角色类型不匹配：字符串改为 GROUP_ROLE 数字常量 |
+| Fix C2 | Critical | settings.vue 群公告字段名 announcement 改为 notice（对齐后端 DTO） |
+| Fix C3 | Critical | chat.js sendMessage 未传递 at_user_ids 到 WS payload |
+| Fix C4 | Critical | create.vue 创建成功后导航错误：改为 /pages/group/conversation + 正确参数 |
+| Fix C5 | Critical | admin/provider.go Wire Set 未注册 GroupManageService/Controller |
+| Fix I1 | Important | store/group.js searchGroups 添加 append 参数解决分页加载竞态 |
+| Fix I2 | Important | settings.vue 改为 fetchMembers() 刷新数据，不直接修改 computed 引用 |
+| Fix I3 | Important | 新增 constants/group.js 前端角色常量定义，消除魔数 |
+| Fix I4 | Important | group_manage_service.go 列表查询 N+1 优化：批量查询用户名和成员数 |
+| Fix M1 | Minor | file.js JSON.parse 添加 try/catch 异常保护 |
+| Fix M2 | Minor | conversation.vue isSelf 移除冗余临时状态条件 |
+| Fix S1 | Suggestion | 群聊对话页新增禁言状态检测和输入栏禁用提示 |
+| Fix S2 | Suggestion | join-requests.vue 注册 WS group.join.request 事件实时刷新 |
+| Fix S3 | Suggestion | read-detail.vue 获取失败时添加 uni.showToast 用户提示 |
+
+### Phase 2c 新增内容
+
+#### 后端新增模块
+- **file/** — 文件上传（MinIO SDK + 通用上传 API）
+- **group/** — 群聊管理（Controller + Service + DAO + Model + Router）
+  - 18 个群管理 REST API + 11 个 WS 群事件推送
+- **im/ 扩展** — 群消息发送/撤回 + @提醒 + 单聊/群聊已读回执
+- **admin/ 扩展** — 群组列表 + 群组详情 + 解散群聊
+
+#### 前端新增页面（9 个）
+| 页面 | 路径 | 功能 |
+|------|------|------|
+| 群聊对话页 | `pages/group/conversation.vue` | 群消息收发 + @选择器 + 已读计数 |
+| 创建群聊页 | `pages/group/create.vue` | 好友多选 + 群名称输入 |
+| 群设置页 | `pages/group/settings.vue` | 群信息修改 + 成员概览 + 退出/解散 |
+| 群成员页 | `pages/group/members.vue` | 成员列表 + 角色管理 + 禁言操作 |
+| 邀请入群页 | `pages/group/invite.vue` | 好友多选 + 排除已在群内成员 |
+| 入群审批页 | `pages/group/join-requests.vue` | 申请列表 + 通过/拒绝操作 |
+| 搜索群聊页 | `pages/group/search.vue` | 关键词搜索 + 申请加入 |
+| 已读详情页 | `pages/chat/read-detail.vue` | 已读/未读成员列表（群聊消息级） |
+| 会话列表改造 | `pages/chat/index.vue` | Tab 切换（全部/单聊/群聊）+ @标记 + 免打扰标识 |
+
+#### 管理端新增
+| 页面 | 路径 | 功能 |
+|------|------|------|
+| 群组列表 | `views/group/list.vue` | 搜索 + 分页 + 详情弹窗 + 解散群聊 |
+
+#### 数据库新增/变更
+- `im_groups` — 群信息表（新增）
+- `im_group_join_requests` — 入群申请表（新增）
+- `im_message_reads` — 群消息已读表（新增）
+- `im_conversation_members` — 扩展字段（role, nickname, is_muted, is_do_not_disturb, joined_at, at_me_count）
+- `im_messages` — 扩展字段（at_user_ids BIGINT[]）
 
 ### 留待后续阶段
 
 - 消息类型扩展（图片/语音/文件）
 - 管理端消息管理功能
+- 群头像上传 UI 完善

@@ -18,4 +18,6 @@ var AdminSet = wire.NewSet(
 	controller.NewOnlineController,
 	service.NewContactManageService,
 	controller.NewContactManageController,
+	service.NewGroupManageService,
+	controller.NewGroupManageController,
 )

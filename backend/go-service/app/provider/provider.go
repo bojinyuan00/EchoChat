@@ -7,13 +7,17 @@ import (
 	authController "github.com/echochat/backend/app/auth/controller"
 	"github.com/echochat/backend/app/auth/service"
 	contactController "github.com/echochat/backend/app/contact/controller"
+	fileController "github.com/echochat/backend/app/file/controller"
+	groupController "github.com/echochat/backend/app/group/controller"
 	imController "github.com/echochat/backend/app/im/controller"
 	imHandler "github.com/echochat/backend/app/im/handler"
 	wsApp "github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/db"
+	"github.com/echochat/backend/pkg/storage"
 	"github.com/echochat/backend/pkg/ws"
 	"github.com/google/wire"
+	"github.com/minio/minio-go/v7"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -23,12 +27,14 @@ type App struct {
 	Config                *config.Config
 	DB                    *gorm.DB
 	Redis                 *redis.Client
+	MinioClient           *minio.Client                               // MinIO 对象存储客户端
 	AuthService           *service.AuthService                        // Auth 认证服务
 	AuthController        *authController.AuthController              // 前台认证控制器
 	AdminAuthController   *authController.AdminAuthController         // 后台认证控制器
 	UserManageController    *adminController.UserManageController       // 管理端用户管理控制器
 	OnlineController        *adminController.OnlineController           // 管理端在线监控控制器
 	ContactManageController *adminController.ContactManageController    // 管理端好友关系管理控制器
+	GroupManageController   *adminController.GroupManageController      // 管理端群组管理控制器
 	WSHandler             *wsApp.Handler                              // WebSocket 连接处理器
 	Hub                   *ws.Hub                                     // WebSocket Hub 连接管理
 	PubSub                *ws.PubSub                                  // Redis Pub/Sub 消息路由
@@ -37,6 +43,8 @@ type App struct {
 	IMController          *imController.IMController                 // IM 即时通讯控制器
 	IMEventHandler        *imHandler.EventHandler                    // IM WS 事件处理器
 	OfflinePusher         *imHandler.OfflinePusher                   // 离线消息推送器
+	FileController        *fileController.FileController             // 文件上传控制器
+	GroupController       *groupController.GroupController           // 群聊管理控制器
 }
 
 // NewApp 创建应用实例
@@ -44,12 +52,14 @@ func NewApp(
 	cfg *config.Config,
 	gormDB *gorm.DB,
 	redisClient *redis.Client,
+	minioClient *minio.Client,
 	authService *service.AuthService,
 	authCtrl *authController.AuthController,
 	adminAuthCtrl *authController.AdminAuthController,
 	userManageCtrl *adminController.UserManageController,
 	onlineCtrl *adminController.OnlineController,
 	contactManageCtrl *adminController.ContactManageController,
+	groupManageCtrl *adminController.GroupManageController,
 	wsHandler *wsApp.Handler,
 	hub *ws.Hub,
 	pubsub *ws.PubSub,
@@ -58,6 +68,8 @@ func NewApp(
 	imCtrl *imController.IMController,
 	imEventHandler *imHandler.EventHandler,
 	offlinePusher *imHandler.OfflinePusher,
+	fileCtrl *fileController.FileController,
+	groupCtrl *groupController.GroupController,
 ) *App {
 	// 注入离线消息推送器到 WS Handler
 	wsHandler.SetOfflinePusher(offlinePusher)
@@ -66,12 +78,14 @@ func NewApp(
 		Config:                  cfg,
 		DB:                      gormDB,
 		Redis:                   redisClient,
+		MinioClient:             minioClient,
 		AuthService:             authService,
 		AuthController:          authCtrl,
 		AdminAuthController:     adminAuthCtrl,
 		UserManageController:    userManageCtrl,
 		OnlineController:        onlineCtrl,
 		ContactManageController: contactManageCtrl,
+		GroupManageController:   groupManageCtrl,
 		WSHandler:               wsHandler,
 		Hub:                     hub,
 		PubSub:                  pubsub,
@@ -80,6 +94,8 @@ func NewApp(
 		IMController:            imCtrl,
 		IMEventHandler:          imEventHandler,
 		OfflinePusher:           offlinePusher,
+		FileController:          fileCtrl,
+		GroupController:         groupCtrl,
 	}
 }
 
@@ -98,12 +114,19 @@ func provideJWTConfig(cfg *config.Config) *config.JWTConfig {
 	return &cfg.JWT
 }
 
+// provideMinioConfig 从全局 Config 中提取 MinioConfig
+func provideMinioConfig(cfg *config.Config) *config.MinioConfig {
+	return &cfg.Minio
+}
+
 // InfraSet 基础设施层 Provider Set
 var InfraSet = wire.NewSet(
 	provideDBConfig,
 	provideRedisConfig,
 	provideJWTConfig,
+	provideMinioConfig,
 	db.NewPostgres,
 	db.NewRedis,
+	storage.NewMinioClient,
 	NewApp,
 )

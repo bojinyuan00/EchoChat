@@ -10,6 +10,7 @@ import { useUserStore } from '@/store/user'
 import { useWebSocketStore } from '@/store/websocket'
 import { useChatStore } from '@/store/chat'
 import { useContactStore } from '@/store/contact'
+import { useGroupStore } from '@/store/group'
 
 export default {
   onLaunch() {
@@ -35,8 +36,10 @@ export default {
       wsStore.connect()
       const chatStore = useChatStore()
       const contactStore = useContactStore()
+      const groupStore = useGroupStore()
       chatStore.initWsListeners()
       contactStore.initWsListeners()
+      groupStore.initWsListeners()
     }
   }
 }

@@ -6,11 +6,16 @@ package provider
 import (
 	"github.com/echochat/backend/app/admin"
 	"github.com/echochat/backend/app/auth"
-	"github.com/echochat/backend/app/contact"
 	authService "github.com/echochat/backend/app/auth/service"
+	"github.com/echochat/backend/app/contact"
 	contactDAO "github.com/echochat/backend/app/contact/dao"
 	contactService "github.com/echochat/backend/app/contact/service"
+	fileApp "github.com/echochat/backend/app/file"
+	groupApp "github.com/echochat/backend/app/group"
+	groupDAO "github.com/echochat/backend/app/group/dao"
+	groupService "github.com/echochat/backend/app/group/service"
 	imApp "github.com/echochat/backend/app/im"
+	imDAO "github.com/echochat/backend/app/im/dao"
 	imService "github.com/echochat/backend/app/im/service"
 	wsApp "github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
@@ -26,11 +31,17 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		wsApp.WSSet,
 		contact.ContactSet,
 		imApp.IMSet,
+		fileApp.FileSet,
+		groupApp.GroupSet,
 		wire.Bind(new(wsApp.FriendIDsGetter), new(*contactDAO.FriendshipDAO)),
+		wire.Bind(new(groupService.UserInfoProvider), new(*contactDAO.FriendshipDAO)),
+		wire.Bind(new(imService.GroupInfoGetter), new(*groupDAO.GroupDAO)),
+		wire.Bind(new(imService.MessageReadRecorder), new(*groupDAO.MessageReadDAO)),
 		wire.Bind(new(wsApp.TokenValidator), new(*authService.AuthService)),
 		wire.Bind(new(imService.FriendChecker), new(*contactDAO.FriendshipDAO)),
 		wire.Bind(new(imService.UserInfoGetter), new(*contactDAO.FriendshipDAO)),
 		wire.Bind(new(contactService.OnlineChecker), new(*wsApp.OnlineService)),
+		wire.Bind(new(groupService.MessageWriter), new(*imDAO.MessageDAO)),
 	)
 	return nil, nil
 }

@@ -435,3 +435,214 @@
     "message": "我是你的同事"
 }
 ```
+
+---
+
+## 群聊事件（Phase 2c）
+
+### im.group.read
+
+**方向：** 客户端 → 服务端
+
+**说明：** 标记群聊消息已读（消息级已读回执）
+
+**data 内容：**
+```json
+{
+    "conversation_id": 100,
+    "message_ids": [501, 502, 503]
+}
+```
+
+**ACK 响应：** `{ "code": 0, "message": "ok" }`
+
+---
+
+### group.created
+
+**方向：** 服务端 → 客户端
+
+**说明：** 群聊创建成功，推送给所有初始成员
+
+**data 内容：**
+```json
+{
+    "group_id": 10,
+    "conversation_id": 100,
+    "name": "项目讨论组",
+    "owner_id": 1
+}
+```
+
+---
+
+### group.info.update
+
+**方向：** 服务端 → 客户端
+
+**说明：** 群信息更新（名称、头像、公告等），推送给所有群成员
+
+**data 内容：**
+```json
+{
+    "group_id": 10,
+    "conversation_id": 100,
+    "operator_id": 1
+}
+```
+
+---
+
+### group.dissolved
+
+**方向：** 服务端 → 客户端
+
+**说明：** 群聊已解散，推送给所有群成员
+
+**data 内容：**
+```json
+{
+    "group_id": 10,
+    "conversation_id": 100,
+    "operator_id": 1
+}
+```
+
+---
+
+### group.member.join
+
+**方向：** 服务端 → 客户端
+
+**说明：** 新成员加入群聊（邀请加入或审批通过），推送给所有群成员
+
+**data 内容：**
+```json
+{
+    "group_id": 10,
+    "conversation_id": 100,
+    "user_ids": [5, 6]
+}
+```
+
+---
+
+### group.member.kicked
+
+**方向：** 服务端 → 客户端
+
+**说明：** 成员被移出群聊，推送给所有群成员
+
+**data 内容：**
+```json
+{
+    "group_id": 10,
+    "conversation_id": 100,
+    "user_id": 5,
+    "operator_id": 1
+}
+```
+
+---
+
+### group.member.leave
+
+**方向：** 服务端 → 客户端
+
+**说明：** 成员主动退出群聊，推送给其余群成员
+
+**data 内容：**
+```json
+{
+    "group_id": 10,
+    "conversation_id": 100,
+    "user_id": 5
+}
+```
+
+---
+
+### group.role.update
+
+**方向：** 服务端 → 客户端
+
+**说明：** 成员角色变更（设为/取消管理员），推送给所有群成员
+
+**data 内容：**
+```json
+{
+    "group_id": 10,
+    "conversation_id": 100,
+    "user_id": 5,
+    "new_role": 1,
+    "operator_id": 1
+}
+```
+
+> `new_role`：0=普通成员，1=管理员，2=群主
+
+---
+
+### group.mute.update
+
+**方向：** 服务端 → 客户端
+
+**说明：** 禁言状态变更（个人禁言或全体禁言），推送给所有群成员
+
+**data 内容（个人禁言）：**
+```json
+{
+    "group_id": 10,
+    "conversation_id": 100,
+    "user_id": 5,
+    "is_muted": true,
+    "operator_id": 1
+}
+```
+
+**data 内容（全体禁言）：**
+```json
+{
+    "group_id": 10,
+    "conversation_id": 100,
+    "is_all_muted": true,
+    "operator_id": 1
+}
+```
+
+---
+
+### group.owner.transfer
+
+**方向：** 服务端 → 客户端
+
+**说明：** 群主转让，推送给所有群成员
+
+**data 内容：**
+```json
+{
+    "group_id": 10,
+    "conversation_id": 100,
+    "old_owner_id": 1,
+    "new_owner_id": 5
+}
+```
+
+---
+
+### group.join.request
+
+**方向：** 服务端 → 客户端
+
+**说明：** 新的入群申请，推送给群主和管理员
+
+**data 内容：**
+```json
+{
+    "group_id": 10,
+    "request_id": 20,
+    "user_id": 8,
+    "user_nickname": "新用户",
+    "message": "请让我加入"
+}
+```

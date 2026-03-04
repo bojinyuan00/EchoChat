@@ -22,7 +22,8 @@ func ProvideMessageDAO(db *gorm.DB) *dao.MessageDAO {
 }
 
 // ProvideIMService 创建 IMService 实例
-// friendChecker 和 userInfoGetter 由 contact 模块的 FriendshipDAO 隐式实现
+// friendChecker / userInfoGetter 由 contact.FriendshipDAO 隐式实现
+// groupInfo 由 group.GroupDAO 隐式实现
 func ProvideIMService(
 	convDAO *dao.ConversationDAO,
 	msgDAO *dao.MessageDAO,
@@ -30,8 +31,10 @@ func ProvideIMService(
 	rdb *redis.Client,
 	friendChecker service.FriendChecker,
 	userInfoGetter service.UserInfoGetter,
+	groupInfo service.GroupInfoGetter,
+	readRecorder service.MessageReadRecorder,
 ) *service.IMService {
-	return service.NewIMService(convDAO, msgDAO, pubsub, rdb, friendChecker, userInfoGetter)
+	return service.NewIMService(convDAO, msgDAO, pubsub, rdb, friendChecker, userInfoGetter, groupInfo, readRecorder)
 }
 
 // ProvideIMEventHandler 创建 IM WS 事件处理器并注册事件到 Hub

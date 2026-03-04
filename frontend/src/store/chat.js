@@ -40,6 +40,12 @@ export const useChatStore = defineStore('chat', () => {
   /** 是否还有更多历史消息 conversationId -> boolean */
   const hasMoreMap = ref({})
 
+  /** 单聊已读状态：conversationId -> lastReadMsgId（对方已读到的消息 ID） */
+  const readStatusMap = ref({})
+
+  /** 群聊已读计数：messageId -> readCount */
+  const groupReadCountMap = ref({})
+
   // ==================== Computed ====================
 
   /** 当前会话的消息列表（conversationId 为 null 时取 pending 队列） */
@@ -85,7 +91,7 @@ export const useChatStore = defineStore('chat', () => {
    */
   const sendMessage = (params) => {
     const clientMsgId = _generateClientMsgId()
-    const { conversationId, targetUserId, content, type = 1 } = params
+    const { conversationId, targetUserId, content, type = 1, at_user_ids } = params
     const userStore = useUserStore()
 
     const tempMsg = {
@@ -105,13 +111,18 @@ export const useChatStore = defineStore('chat', () => {
 
     pendingMessages.value[clientMsgId] = { status: 'sending', tempMsg }
 
-    const seq = wsService.send('im.message.send', {
+    const payload = {
       conversation_id: conversationId || 0,
       target_user_id: targetUserId || 0,
       type,
       content,
       client_msg_id: clientMsgId
-    })
+    }
+    if (at_user_ids && at_user_ids.length > 0) {
+      payload.at_user_ids = at_user_ids
+    }
+
+    const seq = wsService.send('im.message.send', payload)
 
     if (seq === -1) {
       pendingMessages.value[clientMsgId].status = 'failed'
@@ -209,6 +220,8 @@ export const useChatStore = defineStore('chat', () => {
     wsService.on('im.message.send.ack', _onSendACK)
     wsService.on('im.offline.sync', _onOfflineSync)
     wsService.on('im.typing', _onTyping)
+    wsService.on('im.message.read.ack', _onReadACK)
+    wsService.on('im.message.read.count', _onReadCount)
   }
 
   /** 收到新消息推送 */
@@ -311,6 +324,29 @@ export const useChatStore = defineStore('chat', () => {
     fetchConversations()
   }
 
+  /** 单聊已读确认（对方已读到某条消息） */
+  const _onReadACK = (msg) => {
+    if (!msg || !msg.data) return
+    const { conversation_id, last_read_msg_id } = msg.data
+    readStatusMap.value[conversation_id] = last_read_msg_id
+  }
+
+  /** 群聊已读计数更新 */
+  const _onReadCount = (msg) => {
+    if (!msg || !msg.data) return
+    const { message_id, read_count } = msg.data
+    groupReadCountMap.value[message_id] = read_count
+  }
+
+  /** 群聊标记已读（发送 WS 事件） */
+  const markGroupRead = (conversationId, messageIds) => {
+    if (!messageIds || messageIds.length === 0) return
+    wsService.send('im.group.read', {
+      conversation_id: conversationId,
+      message_ids: messageIds
+    })
+  }
+
   /** 正在输入通知 */
   const _onTyping = (msg) => {
     if (!msg || !msg.data) return
@@ -366,6 +402,8 @@ export const useChatStore = defineStore('chat', () => {
     totalUnread,
     typingMap,
     hasMoreMap,
+    readStatusMap,
+    groupReadCountMap,
     currentMessages,
     sortedConversations,
     fetchConversations,
@@ -373,6 +411,7 @@ export const useChatStore = defineStore('chat', () => {
     sendMessage,
     recallMessage,
     markRead,
+    markGroupRead,
     sendTyping,
     loadHistoryMessages,
     pinConversation,

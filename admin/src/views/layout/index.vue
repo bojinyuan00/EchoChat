@@ -48,6 +48,14 @@
           <el-menu-item index="/contact/list">好友关系</el-menu-item>
         </el-sub-menu>
 
+        <el-sub-menu index="group-manage">
+          <template #title>
+            <el-icon><ChatDotSquare /></el-icon>
+            <span>群组管理</span>
+          </template>
+          <el-menu-item index="/group/list">群组列表</el-menu-item>
+        </el-sub-menu>
+
         <el-menu-item index="/monitor/online">
           <el-icon><Monitor /></el-icon>
           <template #title>在线监控</template>

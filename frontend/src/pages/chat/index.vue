@@ -15,6 +15,22 @@
         <view class="action-btn" @tap="goToSearch">
           <uni-icons type="search" size="20" color="#475569" />
         </view>
+        <view class="action-btn" @tap="goToCreateGroup">
+          <uni-icons type="plusempty" size="20" color="#475569" />
+        </view>
+      </view>
+    </view>
+
+    <!-- Tab 筛选栏 -->
+    <view class="tab-filter">
+      <view class="tab-item" :class="{ 'tab-active': activeTab === 'all' }" @tap="activeTab = 'all'">
+        <text class="tab-text">全部</text>
+      </view>
+      <view class="tab-item" :class="{ 'tab-active': activeTab === 'private' }" @tap="activeTab = 'private'">
+        <text class="tab-text">单聊</text>
+      </view>
+      <view class="tab-item" :class="{ 'tab-active': activeTab === 'group' }" @tap="activeTab = 'group'">
+        <text class="tab-text">群聊</text>
       </view>
     </view>
 
@@ -47,7 +63,7 @@
           <view v-else class="conv-avatar conv-avatar-placeholder">
             <text class="avatar-text">{{ (conv.peer_nickname || '?')[0] }}</text>
           </view>
-          <view v-if="conv.unread_count > 0" class="conv-badge">
+          <view v-if="conv.unread_count > 0" class="conv-badge" :class="{ 'conv-badge-mute': conv.is_do_not_disturb }">
             <text class="conv-badge-text">{{ conv.unread_count > 99 ? '99+' : conv.unread_count }}</text>
           </view>
         </view>
@@ -60,9 +76,13 @@
           </view>
           <view class="conv-bottom">
             <text v-if="isTyping(conv.id)" class="conv-typing">对方正在输入...</text>
-            <text v-else class="conv-preview" :class="{ 'conv-preview-unread': conv.unread_count > 0 }">
-              {{ conv.last_msg_content || ' ' }}
-            </text>
+            <view v-else class="conv-preview-row">
+              <text v-if="conv.at_me_count > 0" class="conv-at-tag">[{{ conv.at_me_count }}条] @了我</text>
+              <text v-if="conv.is_do_not_disturb" class="conv-dnd-icon">🔕</text>
+              <text class="conv-preview" :class="{ 'conv-preview-unread': conv.unread_count > 0 }">
+                {{ conv.last_msg_content || ' ' }}
+              </text>
+            </view>
             <view v-if="conv.is_pinned" class="conv-pin-tag">
               <uni-icons type="top" size="14" color="#94A3B8" />
             </view>
@@ -87,8 +107,14 @@ export default {
   setup() {
     const chatStore = useChatStore()
     const loading = ref(false)
+    const activeTab = ref('all')
 
-    const conversations = computed(() => chatStore.sortedConversations)
+    const conversations = computed(() => {
+      const all = chatStore.sortedConversations
+      if (activeTab.value === 'private') return all.filter(c => c.type === 1)
+      if (activeTab.value === 'group') return all.filter(c => c.type === 2)
+      return all
+    })
 
     const loadData = async () => {
       loading.value = true
@@ -105,13 +131,23 @@ export default {
     })
 
     const openChat = (conv) => {
-      uni.navigateTo({
-        url: `/pages/chat/conversation?conversationId=${conv.id}&peerId=${conv.peer_user_id}&peerName=${encodeURIComponent(conv.peer_nickname || '')}&peerAvatar=${encodeURIComponent(conv.peer_avatar || '')}`
-      })
+      if (conv.type === 2) {
+        uni.navigateTo({
+          url: `/pages/group/conversation?conversationId=${conv.id}&groupId=${conv.group_id || 0}&peerName=${encodeURIComponent(conv.peer_nickname || '')}&peerAvatar=${encodeURIComponent(conv.peer_avatar || '')}`
+        })
+      } else {
+        uni.navigateTo({
+          url: `/pages/chat/conversation?conversationId=${conv.id}&peerId=${conv.peer_user_id}&peerName=${encodeURIComponent(conv.peer_nickname || '')}&peerAvatar=${encodeURIComponent(conv.peer_avatar || '')}&convType=1`
+        })
+      }
     }
 
     const goToSearch = () => {
       uni.navigateTo({ url: '/pages/chat/search' })
+    }
+
+    const goToCreateGroup = () => {
+      uni.navigateTo({ url: '/pages/group/create' })
     }
 
     const isTyping = (convId) => {
@@ -160,9 +196,11 @@ export default {
 
     return {
       loading,
+      activeTab,
       conversations,
       openChat,
       goToSearch,
+      goToCreateGroup,
       isTyping,
       formatTime,
       onLongPress,
@@ -215,9 +253,25 @@ export default {
   background-color: #E2E8F0;
 }
 
+/* Tab 筛选栏 */
+.tab-filter {
+  display: flex;
+  padding: 0 32rpx;
+  background-color: #FFFFFF;
+  border-bottom: 1rpx solid #E2E8F0;
+}
+.tab-item {
+  padding: 16rpx 24rpx;
+  margin-right: 8rpx;
+  position: relative;
+}
+.tab-active { border-bottom: 4rpx solid #2563EB; }
+.tab-text { font-size: 26rpx; color: #475569; }
+.tab-active .tab-text { color: #2563EB; font-weight: 600; }
+
 /* 会话列表 */
 .conv-list {
-  height: calc(100vh - 88rpx - var(--status-bar-height, 44px) - 120rpx);
+  height: calc(100vh - 88rpx - var(--status-bar-height, 44px) - 120rpx - 72rpx);
 }
 
 .conv-item {
@@ -334,6 +388,31 @@ export default {
 .conv-preview-unread {
   color: #64748B;
   font-weight: 500;
+}
+
+.conv-preview-row {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  flex: 1;
+}
+
+.conv-at-tag {
+  font-size: 22rpx;
+  color: #EF4444;
+  font-weight: 600;
+  margin-right: 8rpx;
+  flex-shrink: 0;
+}
+
+.conv-dnd-icon {
+  font-size: 22rpx;
+  margin-right: 4rpx;
+  flex-shrink: 0;
+}
+
+.conv-badge-mute {
+  background-color: #94A3B8;
 }
 
 .conv-typing {

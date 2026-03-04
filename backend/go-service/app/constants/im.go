@@ -14,20 +14,22 @@ var ConversationTypeMap = map[int]string{
 
 // 消息类型
 const (
-	MessageTypeText  = 1 // 文本消息
-	MessageTypeImage = 2 // 图片消息（预留）
-	MessageTypeVoice = 3 // 语音消息（预留）
-	MessageTypeVideo = 4 // 视频消息（预留）
-	MessageTypeFile  = 5 // 文件消息（预留）
+	MessageTypeText   = 1  // 文本消息
+	MessageTypeImage  = 2  // 图片消息（预留）
+	MessageTypeVoice  = 3  // 语音消息（预留）
+	MessageTypeVideo  = 4  // 视频消息（预留）
+	MessageTypeFile   = 5  // 文件消息（预留）
+	MessageTypeSystem = 10 // 系统消息（群聊操作通知）
 )
 
 // MessageTypeMap 消息类型中文映射
 var MessageTypeMap = map[int]string{
-	MessageTypeText:  "文本",
-	MessageTypeImage: "图片",
-	MessageTypeVoice: "语音",
-	MessageTypeVideo: "视频",
-	MessageTypeFile:  "文件",
+	MessageTypeText:   "文本",
+	MessageTypeImage:  "图片",
+	MessageTypeVoice:  "语音",
+	MessageTypeVideo:  "视频",
+	MessageTypeFile:   "文件",
+	MessageTypeSystem: "系统消息",
 }
 
 // 消息状态

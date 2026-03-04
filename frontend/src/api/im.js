@@ -46,6 +46,11 @@ const getTotalUnread = () => {
   return get('/api/v1/im/unread')
 }
 
+/** 获取消息已读详情（已读/未读用户列表） */
+const getMessageReadDetail = (messageId, page = 1, pageSize = 50) => {
+  return get(`/api/v1/im/messages/${messageId}/reads`, { page, page_size: pageSize })
+}
+
 export default {
   getConversations,
   getHistoryMessages,
@@ -53,5 +58,6 @@ export default {
   deleteConversation,
   clearHistory,
   searchMessages,
-  getTotalUnread
+  getTotalUnread,
+  getMessageReadDetail
 }

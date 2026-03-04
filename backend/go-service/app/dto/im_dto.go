@@ -4,23 +4,25 @@ package dto
 
 // SendMessageRequest 发送消息请求（WS 事件 im.message.send 的 data 字段）
 type SendMessageRequest struct {
-	ConversationID int64  `json:"conversation_id"`  // 会话 ID（与 TargetUserID 二选一）
-	TargetUserID   int64  `json:"target_user_id"`   // 对方用户 ID（首次发消息时使用，自动创建会话）
-	Type           int    `json:"type"`              // 消息类型：1=文本
-	Content        string `json:"content"`           // 消息内容
-	ClientMsgID    string `json:"client_msg_id"`     // 客户端消息唯一 ID，用于幂等去重
+	ConversationID int64   `json:"conversation_id"`  // 会话 ID（与 TargetUserID 二选一）
+	TargetUserID   int64   `json:"target_user_id"`   // 对方用户 ID（首次发消息时使用，自动创建会话）
+	Type           int     `json:"type"`              // 消息类型：1=文本
+	Content        string  `json:"content"`           // 消息内容
+	ClientMsgID    string  `json:"client_msg_id"`     // 客户端消息唯一 ID，用于幂等去重
+	AtUserIDs      []int64 `json:"at_user_ids"`       // @提醒用户 ID 列表（含 0 表示 @所有人）
 }
 
 // MessageDTO 消息传输对象（返回给前端）
 type MessageDTO struct {
-	ID             int64  `json:"id"`              // 消息 ID
-	ConversationID int64  `json:"conversation_id"` // 所属会话 ID
-	SenderID       int64  `json:"sender_id"`       // 发送者用户 ID
-	Type           int    `json:"type"`            // 消息类型
-	Content        string `json:"content"`         // 消息内容
-	Status         int    `json:"status"`          // 消息状态：1=正常，2=已撤回
-	ClientMsgID    string `json:"client_msg_id"`   // 客户端消息 ID
-	CreatedAt      string `json:"created_at"`      // 发送时间
+	ID             int64   `json:"id"`              // 消息 ID
+	ConversationID int64   `json:"conversation_id"` // 所属会话 ID
+	SenderID       int64   `json:"sender_id"`       // 发送者用户 ID
+	Type           int     `json:"type"`            // 消息类型
+	Content        string  `json:"content"`         // 消息内容
+	Status         int     `json:"status"`          // 消息状态：1=正常，2=已撤回
+	ClientMsgID    string  `json:"client_msg_id"`   // 客户端消息 ID
+	AtUserIDs      []int64 `json:"at_user_ids"`     // @提醒用户 ID 列表
+	CreatedAt      string  `json:"created_at"`      // 发送时间
 }
 
 // RecallMessageRequest 撤回消息请求（WS 事件 im.message.recall 的 data 字段）
@@ -32,16 +34,19 @@ type RecallMessageRequest struct {
 
 // ConversationDTO 会话列表条目（返回给前端）
 type ConversationDTO struct {
-	ID              int64  `json:"id"`                // 会话 ID
-	Type            int    `json:"type"`              // 会话类型：1=单聊
-	PeerUserID      int64  `json:"peer_user_id"`      // 单聊对方用户 ID
-	PeerNickname    string `json:"peer_nickname"`     // 对方昵称
-	PeerAvatar      string `json:"peer_avatar"`       // 对方头像
-	LastMsgContent  string `json:"last_msg_content"`  // 最后消息预览
-	LastMsgTime     string `json:"last_msg_time"`     // 最后消息时间
+	ID              int64  `json:"id"`                 // 会话 ID
+	Type            int    `json:"type"`               // 会话类型：1=单聊，2=群聊
+	PeerUserID      int64  `json:"peer_user_id"`       // 单聊对方用户 ID（群聊为 0）
+	PeerNickname    string `json:"peer_nickname"`      // 对方昵称（群聊时为群名称）
+	PeerAvatar      string `json:"peer_avatar"`        // 对方头像（群聊时为群头像）
+	LastMsgContent  string `json:"last_msg_content"`   // 最后消息预览
+	LastMsgTime     string `json:"last_msg_time"`      // 最后消息时间
 	LastMsgSenderID *int64 `json:"last_msg_sender_id"` // 最后消息发送者 ID
-	IsPinned        bool   `json:"is_pinned"`         // 是否置顶
-	UnreadCount     int    `json:"unread_count"`      // 未读消息数
+	IsPinned        bool   `json:"is_pinned"`          // 是否置顶
+	UnreadCount     int    `json:"unread_count"`       // 未读消息数
+	GroupID         int64  `json:"group_id,omitempty"` // 群聊 ID（仅 type=2 有值）
+	IsDoNotDisturb  bool   `json:"is_do_not_disturb"`  // 是否免打扰
+	AtMeCount       int    `json:"at_me_count"`        // 被@提醒未读计数
 }
 
 // ConversationListResponse 会话列表响应

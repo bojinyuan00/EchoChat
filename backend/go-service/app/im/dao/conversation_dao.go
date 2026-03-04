@@ -86,13 +86,14 @@ func (d *ConversationDAO) GetUserConversations(ctx context.Context, userID int64
 	err := d.db.WithContext(ctx).
 		Raw(`SELECT c.id, c.type, c.last_message_id, c.last_msg_content, c.last_msg_time, c.last_msg_sender_id,
 			        cm.is_pinned, cm.unread_count, cm.clear_before_msg_id,
-			        peer.user_id AS peer_user_id
+			        cm.is_do_not_disturb, cm.at_me_count,
+			        COALESCE(peer.user_id, 0) AS peer_user_id
 			 FROM im_conversations c
 			 JOIN im_conversation_members cm ON cm.conversation_id = c.id AND cm.user_id = ?
-			 LEFT JOIN im_conversation_members peer ON peer.conversation_id = c.id AND peer.user_id != ?
+			 LEFT JOIN im_conversation_members peer ON peer.conversation_id = c.id AND peer.user_id != ? AND c.type = ?
 			 WHERE cm.is_deleted = false
 			 ORDER BY cm.is_pinned DESC, c.last_msg_time DESC NULLS LAST`,
-			userID, userID).
+			userID, userID, constants.ConversationTypePrivate).
 		Scan(&results).Error
 
 	if err != nil {
@@ -112,6 +113,8 @@ type ConversationWithMember struct {
 	IsPinned         bool       `json:"is_pinned"`
 	UnreadCount      int        `json:"unread_count"`
 	ClearBeforeMsgID int64      `json:"clear_before_msg_id"`
+	IsDoNotDisturb   bool       `json:"is_do_not_disturb"`
+	AtMeCount        int        `json:"at_me_count"`
 	PeerUserID       int64      `json:"peer_user_id"`
 }
 
@@ -214,6 +217,44 @@ func (d *ConversationDAO) IncrementUnread(ctx context.Context, conversationID, u
 		Model(&model.ConversationMember{}).
 		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
 		UpdateColumn("unread_count", gorm.Expr("unread_count + 1")).Error
+}
+
+// IncrementAtMeCount 将指定成员的 @提醒计数 +1
+func (d *ConversationDAO) IncrementAtMeCount(ctx context.Context, conversationID, userID int64) error {
+	return d.db.WithContext(ctx).
+		Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
+		UpdateColumn("at_me_count", gorm.Expr("at_me_count + 1")).Error
+}
+
+// ClearAtMeCount 清零指定成员的 @提醒计数
+func (d *ConversationDAO) ClearAtMeCount(ctx context.Context, conversationID, userID int64) error {
+	return d.db.WithContext(ctx).
+		Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
+		Update("at_me_count", 0).Error
+}
+
+// GetMemberDNDMap 批量获取会话成员的免打扰状态（返回 userID → isDoNotDisturb 的映射）
+func (d *ConversationDAO) GetMemberDNDMap(ctx context.Context, conversationID int64) (map[int64]bool, error) {
+	type memberDND struct {
+		UserID         int64 `json:"user_id"`
+		IsDoNotDisturb bool  `json:"is_do_not_disturb"`
+	}
+	var members []memberDND
+	err := d.db.WithContext(ctx).
+		Model(&model.ConversationMember{}).
+		Select("user_id, is_do_not_disturb").
+		Where("conversation_id = ?", conversationID).
+		Scan(&members).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[int64]bool, len(members))
+	for _, m := range members {
+		result[m.UserID] = m.IsDoNotDisturb
+	}
+	return result, nil
 }
 
 // ClearUnread 清零指定成员的未读消息数

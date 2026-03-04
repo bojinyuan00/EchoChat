@@ -88,6 +88,55 @@
 			}
 		},
 		{
+			"path": "pages/chat/read-detail",
+			"style": {
+				"navigationBarTitleText": "已读详情"
+			}
+		},
+		{
+			"path": "pages/group/conversation",
+			"style": {
+				"navigationBarTitleText": "群聊",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/group/create",
+			"style": {
+				"navigationBarTitleText": "创建群聊"
+			}
+		},
+		{
+			"path": "pages/group/settings",
+			"style": {
+				"navigationBarTitleText": "群设置"
+			}
+		},
+		{
+			"path": "pages/group/members",
+			"style": {
+				"navigationBarTitleText": "群成员"
+			}
+		},
+		{
+			"path": "pages/group/invite",
+			"style": {
+				"navigationBarTitleText": "邀请入群"
+			}
+		},
+		{
+			"path": "pages/group/join-requests",
+			"style": {
+				"navigationBarTitleText": "入群申请"
+			}
+		},
+		{
+			"path": "pages/group/search",
+			"style": {
+				"navigationBarTitleText": "搜索群聊"
+			}
+		},
+		{
 			"path": "pages/meeting/index",
 			"style": {
 				"navigationBarTitleText": "会议"

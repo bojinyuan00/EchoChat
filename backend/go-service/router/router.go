@@ -9,6 +9,8 @@ import (
 	"github.com/echochat/backend/app/admin"
 	"github.com/echochat/backend/app/auth"
 	"github.com/echochat/backend/app/contact"
+	fileApp "github.com/echochat/backend/app/file"
+	groupApp "github.com/echochat/backend/app/group"
 	imApp "github.com/echochat/backend/app/im"
 	"github.com/echochat/backend/app/provider"
 	wsApp "github.com/echochat/backend/app/ws"
@@ -34,10 +36,12 @@ func Setup(engine *gin.Engine, app *provider.App) {
 
 	// --- 各模块路由注册 ---
 	auth.RegisterRoutes(engine, app.AuthController, app.AdminAuthController, jwtAuth)
-	admin.RegisterRoutes(engine, app.UserManageController, app.OnlineController, app.ContactManageController, jwtAuth)
+	admin.RegisterRoutes(engine, app.UserManageController, app.OnlineController, app.ContactManageController, app.GroupManageController, jwtAuth)
 	wsApp.RegisterRoutes(engine, app.WSHandler)
 	contact.RegisterRoutes(engine, app.ContactController, jwtAuth)
 	imApp.RegisterRoutes(engine, app.IMController, jwtAuth)
+	fileApp.RegisterRoutes(engine, app.FileController, jwtAuth)
+	groupApp.RegisterRoutes(engine, app.GroupController, jwtAuth)
 
 	// [未来] meeting.RegisterRoutes(engine, app.MeetingController, jwtAuth)
 	// [未来] notify.RegisterRoutes(engine, app.NotifyController, jwtAuth)

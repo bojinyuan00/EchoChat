@@ -16,6 +16,16 @@ type Config struct {
 	Redis    RedisConfig    `mapstructure:"redis"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	Log      LogConfig      `mapstructure:"log"`
+	Minio    MinioConfig    `mapstructure:"minio"`
+}
+
+// MinioConfig MinIO 对象存储配置
+type MinioConfig struct {
+	Endpoint  string `mapstructure:"endpoint"`   // MinIO 服务地址（host:port）
+	AccessKey string `mapstructure:"access_key"` // 访问密钥
+	SecretKey string `mapstructure:"secret_key"` // 密钥
+	Bucket    string `mapstructure:"bucket"`     // 存储桶名称
+	UseSSL    bool   `mapstructure:"use_ssl"`    // 是否使用 HTTPS
 }
 
 // ServerConfig HTTP 服务配置

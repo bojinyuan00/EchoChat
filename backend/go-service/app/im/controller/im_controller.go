@@ -180,6 +180,30 @@ func (ctl *IMController) GetTotalUnread(c *gin.Context) {
 	utils.ResponseOK(c, gin.H{"total_unread": count})
 }
 
+// GetMessageReadDetail 获取消息已读详情
+// GET /api/v1/im/messages/:id/reads
+func (ctl *IMController) GetMessageReadDetail(c *gin.Context) {
+	ctx := c.Request.Context()
+	userID, ok := middleware.GetCurrentUserID(c)
+	if !ok {
+		utils.ResponseUnauthorized(c, "无法获取当前用户信息")
+		return
+	}
+
+	messageID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.ResponseBadRequest(c, "消息 ID 格式错误")
+		return
+	}
+
+	result, err := ctl.imService.GetMessageReadDetail(ctx, userID, messageID)
+	if err != nil {
+		ctl.handleError(c, err, "获取已读详情失败")
+		return
+	}
+	utils.ResponseOK(c, result)
+}
+
 // handleError 统一业务错误映射
 // 已知业务错误 → 返回 Service 层定义的具体提示
 // 未知错误 → 返回 fallbackMsg（未传则默认"服务器内部错误"）
@@ -203,6 +227,12 @@ func (ctl *IMController) handleError(c *gin.Context, err error, fallbackMsg ...s
 		utils.ResponseForbidden(c, err.Error())
 	case service.ErrDuplicateMsg:
 		utils.ResponseBadRequest(c, err.Error())
+	case service.ErrGroupDissolved:
+		utils.ResponseBadRequest(c, err.Error())
+	case service.ErrGroupAllMuted:
+		utils.ResponseForbidden(c, err.Error())
+	case service.ErrUserMuted:
+		utils.ResponseForbidden(c, err.Error())
 	default:
 		msg := "服务器内部错误"
 		if len(fallbackMsg) > 0 && fallbackMsg[0] != "" {

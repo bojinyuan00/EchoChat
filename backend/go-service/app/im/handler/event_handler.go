@@ -34,6 +34,7 @@ func (h *EventHandler) registerEvents() {
 	h.hub.RegisterEvent("im.message.send", h.handleSendMessage)
 	h.hub.RegisterEvent("im.message.recall", h.handleRecallMessage)
 	h.hub.RegisterEvent("im.conversation.read", h.handleMarkRead)
+	h.hub.RegisterEvent("im.group.read", h.handleGroupRead)
 	h.hub.RegisterEvent("im.typing", h.handleTyping)
 }
 
@@ -103,6 +104,29 @@ func (h *EventHandler) handleMarkRead(client *ws.Client, msg *ws.Message) {
 
 	if err := h.imService.MarkRead(ctx, client.UserID, req.ConversationID); err != nil {
 		logs.Warn(ctx, funcName, "标记已读失败",
+			zap.Int64("user_id", client.UserID), zap.Error(err))
+		h.sendACK(client, msg, -1, err.Error(), nil)
+		return
+	}
+
+	h.sendACK(client, msg, 0, "ok", nil)
+}
+
+// handleGroupRead 处理群聊消息标记已读事件
+func (h *EventHandler) handleGroupRead(client *ws.Client, msg *ws.Message) {
+	funcName := "handler.event_handler.handleGroupRead"
+	ctx := context.Background()
+
+	var req dto.MarkGroupReadRequest
+	if err := json.Unmarshal(msg.Data, &req); err != nil {
+		logs.Warn(ctx, funcName, "解析群已读请求失败",
+			zap.Int64("user_id", client.UserID), zap.Error(err))
+		h.sendACK(client, msg, -1, "请求参数格式错误", nil)
+		return
+	}
+
+	if err := h.imService.MarkGroupMessagesRead(ctx, client.UserID, &req); err != nil {
+		logs.Warn(ctx, funcName, "群已读标记失败",
 			zap.Int64("user_id", client.UserID), zap.Error(err))
 		h.sendACK(client, msg, -1, err.Error(), nil)
 		return

@@ -56,6 +56,12 @@ const routes = [
         name: 'ContactManage',
         component: () => import('@/views/contact/list.vue'),
         meta: { title: '好友管理' }
+      },
+      {
+        path: 'group/list',
+        name: 'GroupManage',
+        component: () => import('@/views/group/list.vue'),
+        meta: { title: '群组管理' }
       }
     ]
   }

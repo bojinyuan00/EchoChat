@@ -15,6 +15,7 @@ func RegisterRoutes(
 	userCtrl *controller.UserManageController,
 	onlineCtrl *controller.OnlineController,
 	contactManageCtrl *controller.ContactManageController,
+	groupManageCtrl *controller.GroupManageController,
 	jwtAuth gin.HandlerFunc,
 ) {
 	// 管理端路由组：JWT 认证 + admin/super_admin 角色检查
@@ -38,5 +39,10 @@ func RegisterRoutes(
 		// 好友关系管理
 		adminGroup.GET("/contacts", contactManageCtrl.GetAllContacts)
 		adminGroup.DELETE("/contacts/:id", contactManageCtrl.DeleteContact)
+
+		// 群组管理
+		adminGroup.GET("/groups", groupManageCtrl.GetGroupList)
+		adminGroup.GET("/groups/:id", groupManageCtrl.GetGroupDetail)
+		adminGroup.DELETE("/groups/:id", groupManageCtrl.DissolveGroup)
 	}
 }
