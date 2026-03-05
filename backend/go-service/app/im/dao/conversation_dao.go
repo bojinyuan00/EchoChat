@@ -159,6 +159,29 @@ func (d *ConversationDAO) GetConversationMemberIDs(ctx context.Context, conversa
 	return ids, err
 }
 
+// GetMemberNicknameMap 批量获取会话成员的群内昵称
+// 返回 map[user_id]nickname，未设置昵称的不在 map 中
+func (d *ConversationDAO) GetMemberNicknameMap(ctx context.Context, conversationID int64) (map[int64]string, error) {
+	type row struct {
+		UserID   int64  `gorm:"column:user_id"`
+		Nickname string `gorm:"column:nickname"`
+	}
+	var rows []row
+	err := d.db.WithContext(ctx).
+		Model(&model.ConversationMember{}).
+		Select("user_id, nickname").
+		Where("conversation_id = ? AND nickname != ''", conversationID).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[int64]string, len(rows))
+	for _, r := range rows {
+		result[r.UserID] = r.Nickname
+	}
+	return result, nil
+}
+
 // UpdateMemberPinned 更新会话成员的置顶状态
 func (d *ConversationDAO) UpdateMemberPinned(ctx context.Context, conversationID, userID int64, isPinned bool) error {
 	funcName := "dao.conversation_dao.UpdateMemberPinned"
@@ -255,6 +278,14 @@ func (d *ConversationDAO) GetMemberDNDMap(ctx context.Context, conversationID in
 		result[m.UserID] = m.IsDoNotDisturb
 	}
 	return result, nil
+}
+
+// UpdateMemberDND 设置/取消指定成员的消息免打扰
+func (d *ConversationDAO) UpdateMemberDND(ctx context.Context, conversationID, userID int64, isDoNotDisturb bool) error {
+	return d.db.WithContext(ctx).
+		Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
+		Update("is_do_not_disturb", isDoNotDisturb).Error
 }
 
 // ClearUnread 清零指定成员的未读消息数

@@ -18,10 +18,11 @@ alwaysApply: true
 - **Phase 2a（WebSocket 实时通讯与联系人管理）**：✅ 全部完成（13 个 Task + 后期 Bug 修复 3 项）
 - **Phase 2b（即时通讯消息系统）**：✅ 全部完成（10 个 Task + 代码审查修复 7 项 + 用户测试修复 8 项），设计文档 `docs/plans/2026-03-03-phase2b-design.md`
 - 分支：`feature/phase2b-instant-messaging`
-- **Phase 2c（群聊与已读回执）**：✅ 全部完成（14 个 Task + 代码审查修复 14 项），设计文档 `docs/plans/2026-03-04-phase2c-design.md`
+- **Phase 2c（群聊与已读回执）**：✅ 全部完成（14 个 Task + 代码审查修复 14 项 + 浏览器测试修复 21 项），设计文档 `docs/plans/2026-03-04-phase2c-design.md`
 - 分支：`feature/phase2c-group-read-receipt`
 - 范围：群聊全功能（三级角色/禁言/@提醒/群公告/入群审批）+ 已读回执（单聊会话级 + 群聊消息级）+ MinIO 文件存储 + 管理端群组管理
 - 代码审查修复：Critical×5（角色类型/公告字段/at_user_ids/@导航/Wire 注册）+ Important×4 + Minor×2 + Suggestion×3
+- 浏览器测试修复：搜索 ILIKE 替换 to_tsvector、管理端群详情 UI 重设计、群搜索已加入状态、创建/邀请支持非好友搜索、全角色身份标识、全局错误信息路径修复（8文件18处）、自定义操作弹窗替代 uni.showActionSheet、已读详情页群昵称展示、免打扰 API 补全（DAO/Service/Controller/Router）、联系人 Tab 页 onShow 刷新
 - **跨模块通信模式**：接口注入标准（ws.FriendIDsGetter / im.FriendChecker / im.UserInfoGetter → contact.FriendshipDAO，im.OfflineMessagePusher → ws.Handler，contact.OnlineChecker → ws.OnlineService，im.GroupInfoGetter → group.GroupDAO，im.MessageReadRecorder → group.MessageReadDAO，group.UserInfoProvider → auth.UserDAO，group.MessageWriter → im.MessageDAO）
 
 ## 项目概述

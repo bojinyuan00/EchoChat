@@ -40,11 +40,12 @@
         <view class="user-avatar-wrap">
           <image v-if="user.user_avatar" class="user-avatar" :src="user.user_avatar" mode="aspectFill" />
           <view v-else class="user-avatar user-avatar-placeholder">
-            <text class="avatar-char">{{ (user.user_nickname || '?')[0] }}</text>
+            <text class="avatar-char">{{ (user.group_nickname || user.user_nickname || '?')[0] }}</text>
           </view>
         </view>
         <view class="user-info">
-          <text class="user-name">{{ user.user_nickname || '未知用户' }}</text>
+          <text class="user-name">{{ user.group_nickname || user.user_nickname || '未知用户' }}</text>
+          <text v-if="user.group_nickname" class="user-real-name">{{ user.user_nickname }}</text>
           <text v-if="user.read_at && activeTab === 'read'" class="user-time">{{ user.read_at }}</text>
         </view>
       </view>
@@ -87,7 +88,7 @@ export default {
         }
       } catch (e) {
         console.warn('[ReadDetail] 获取已读详情失败', e)
-        uni.showToast({ title: e?.data?.message || '获取已读详情失败', icon: 'none' })
+        uni.showToast({ title: e?.message || '获取已读详情失败', icon: 'none' })
       } finally {
         loading.value = false
       }
@@ -163,9 +164,10 @@ export default {
   background-color: #2563EB;
 }
 .avatar-char { color: #FFFFFF; font-size: 28rpx; font-weight: 600; }
-.user-info { flex: 1; }
-.user-name { font-size: 28rpx; color: #1E293B; }
-.user-time { display: block; font-size: 22rpx; color: #94A3B8; margin-top: 4rpx; }
+.user-info { flex: 1; display: flex; flex-direction: column; gap: 4rpx; }
+.user-name { font-size: 28rpx; color: #1E293B; font-weight: 500; }
+.user-real-name { font-size: 22rpx; color: #94A3B8; }
+.user-time { font-size: 22rpx; color: #94A3B8; }
 
 /* 空状态 */
 .empty-state { padding: 80rpx 0; text-align: center; }

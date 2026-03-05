@@ -147,9 +147,9 @@
               mode="aspectFill"
             />
             <view v-else class="avatar-img avatar-placeholder avatar-peer at-avatar">
-              <text class="avatar-char">{{ (member.nickname || member.username || '?')[0] }}</text>
+              <text class="avatar-char">{{ (member.nickname || member.user_nickname || '?')[0] }}</text>
             </view>
-            <text class="at-member-name">{{ member.nickname || member.username }}</text>
+            <text class="at-member-name">{{ member.nickname || member.user_nickname }}</text>
             <text v-if="member.role === GROUP_ROLE.OWNER" class="at-role-tag">群主</text>
             <text v-else-if="member.role === GROUP_ROLE.ADMIN" class="at-role-tag">管理</text>
           </view>
@@ -253,7 +253,7 @@ export default {
 
     const getMemberName = (userId) => {
       const member = memberMap.value[userId]
-      if (member) return member.nickname || member.username || '未知'
+      if (member) return member.nickname || member.user_nickname || '未知'
       return '未知成员'
     }
 
@@ -262,16 +262,17 @@ export default {
       return member ? member.avatar : ''
     }
 
-    /** 群聊已读标签：仅自己的消息显示 "X人已读" */
+    /** 群聊已读标签：自己发送的消息始终显示 "X人已读"（含 0 人） */
     const getReadLabel = (msg) => {
       if (msg.status === 2 || msg._sending || msg._failed || !msg.id) return ''
-      const count = chatStore.groupReadCountMap[msg.id]
-      return count > 0 ? `${count}人已读` : ''
+      if (msg.sender_id !== myId.value) return ''
+      const count = chatStore.groupReadCountMap[msg.id] || 0
+      return `${count}人已读`
     }
 
     // ==================== 生命周期 ====================
 
-    onLoad((query) => {
+    onLoad(async (query) => {
       conversationId.value = parseInt(query.conversationId) || 0
       groupId.value = parseInt(query.groupId) || 0
       groupName.value = decodeURIComponent(query.peerName || '')
@@ -283,6 +284,13 @@ export default {
       if (conversationId.value) {
         chatStore.setCurrentConversation(conversationId.value)
         loadInitialMessages()
+      }
+
+      if (!groupId.value && conversationId.value) {
+        const conv = chatStore.conversationList.find(c => c.id === conversationId.value)
+        if (conv && conv.group_id) {
+          groupId.value = conv.group_id
+        }
       }
 
       if (groupId.value) {
@@ -359,7 +367,7 @@ export default {
         inputText.value = inputText.value + '所有人 '
       } else {
         atUserIds.value.push(member.user_id)
-        const name = member.nickname || member.username || ''
+        const name = member.nickname || member.user_nickname || ''
         inputText.value = inputText.value + name + ' '
       }
     }

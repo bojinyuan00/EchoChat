@@ -32,17 +32,17 @@
       </scroll-view>
     </view>
 
-    <!-- 搜索好友 -->
+    <!-- 搜索成员 -->
     <view class="section">
       <view class="section-header">
-        <text class="section-title">选择好友</text>
+        <text class="section-title">选择成员</text>
       </view>
       <view class="search-bar">
         <uni-icons type="search" size="18" color="#94A3B8" />
         <input
           class="search-input"
           v-model="searchKeyword"
-          placeholder="搜索好友昵称"
+          placeholder="搜索好友或用户名"
           placeholder-style="color: #94A3B8"
         />
         <view v-if="searchKeyword" class="search-clear" @tap="searchKeyword = ''">
@@ -86,6 +86,39 @@
       <text class="empty-text">{{ searchKeyword ? '未找到匹配的好友' : '没有可邀请的好友' }}</text>
     </view>
 
+    <!-- 搜索到的非好友用户 -->
+    <view v-if="showSearchSection" class="section" style="margin-top: 16rpx;">
+      <view class="section-header">
+        <text class="section-title">搜索到的其他用户</text>
+      </view>
+      <view v-if="searching" class="loading-tip">
+        <text class="loading-tip-text">搜索中...</text>
+      </view>
+      <view v-else-if="nonFriendResults.length > 0" class="friend-list">
+        <view
+          v-for="user in nonFriendResults"
+          :key="user.id"
+          class="friend-item"
+          @tap="toggleSelect(user)"
+        >
+          <view class="checkbox" :class="{ 'checkbox--checked': isSelected(user.id) }">
+            <text v-if="isSelected(user.id)" class="checkbox-icon">✓</text>
+          </view>
+          <view class="avatar" :style="{ backgroundColor: getAvatarColor(user.nickname || user.username) }">
+            <text class="avatar-text">{{ getInitial(user.nickname || user.username) }}</text>
+          </view>
+          <view class="friend-info">
+            <text class="friend-name">{{ user.nickname || user.username }}</text>
+            <text class="friend-account">@{{ user.username }}</text>
+          </view>
+          <text class="non-friend-tag">非好友</text>
+        </view>
+      </view>
+      <view v-else class="empty-state">
+        <text class="empty-text">未找到其他匹配用户</text>
+      </view>
+    </view>
+
     <!-- 底部占位 -->
     <view class="bottom-spacer"></view>
 
@@ -105,10 +138,11 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useContactStore } from '@/store/contact'
 import { useGroupStore } from '@/store/group'
+import userApi from '@/api/user'
 import { getAvatarColor, getInitial } from '@/utils/avatar'
 
 export default {
@@ -119,9 +153,12 @@ export default {
 
     const groupId = ref(0)
     const searchKeyword = ref('')
-    const selectedIds = ref({})
+    const selectedMap = ref({})
     const loading = ref(true)
     const submitting = ref(false)
+    const searchedUsers = ref([])
+    const searching = ref(false)
+    let searchTimer = null
 
     /** 已在群内的成员 ID 集合 */
     const memberIdSet = computed(() => {
@@ -131,6 +168,9 @@ export default {
       }
       return set
     })
+
+    /** 好友 ID 集合 */
+    const friendIdSet = computed(() => new Set(contactStore.friendList.map(f => f.user_id)))
 
     /** 过滤掉已在群内的好友 + 搜索关键词过滤 */
     const availableFriends = computed(() => {
@@ -145,26 +185,61 @@ export default {
       })
     })
 
-    /** 已选中的好友列表 */
-    const selectedList = computed(() => {
-      return contactStore.friendList.filter(f => selectedIds.value[f.user_id])
+    /** 搜索到的非好友、非群成员用户 */
+    const nonFriendResults = computed(() => {
+      return searchedUsers.value.filter(u => !friendIdSet.value.has(u.id) && !memberIdSet.value.has(u.id))
     })
 
-    /** 判断好友是否已选中 */
+    /** 是否显示全站搜索区块 */
+    const showSearchSection = computed(() => {
+      return searchKeyword.value.trim().length > 0 && (nonFriendResults.value.length > 0 || searching.value)
+    })
+
+    /** 已选中的用户列表 */
+    const selectedList = computed(() => Object.values(selectedMap.value))
+
+    /** 判断用户是否已选中 */
     const isSelected = (userId) => {
-      return !!selectedIds.value[userId]
+      return !!selectedMap.value[userId]
     }
 
-    /** 切换好友选中状态 */
+    /** 切换用户选中状态 */
     const toggleSelect = (friend) => {
-      const newMap = { ...selectedIds.value }
-      if (newMap[friend.user_id]) {
-        delete newMap[friend.user_id]
+      const newMap = { ...selectedMap.value }
+      const uid = friend.user_id || friend.id
+      if (newMap[uid]) {
+        delete newMap[uid]
       } else {
-        newMap[friend.user_id] = true
+        newMap[uid] = {
+          user_id: uid,
+          nickname: friend.nickname || friend.username || '',
+          username: friend.username || '',
+          remark: friend.remark || '',
+          avatar: friend.avatar || ''
+        }
       }
-      selectedIds.value = newMap
+      selectedMap.value = newMap
     }
+
+    /** 搜索关键词变化时延迟搜索全站用户 */
+    watch(searchKeyword, (val) => {
+      if (searchTimer) clearTimeout(searchTimer)
+      const kw = val.trim()
+      if (kw.length < 2) {
+        searchedUsers.value = []
+        return
+      }
+      searchTimer = setTimeout(async () => {
+        searching.value = true
+        try {
+          const res = await userApi.searchUsers(kw, 1, 20)
+          searchedUsers.value = res.data?.list || []
+        } catch {
+          searchedUsers.value = []
+        }
+        searching.value = false
+      }, 400)
+    })
 
     /** 提交邀请 */
     const handleInvite = async () => {
@@ -172,7 +247,7 @@ export default {
 
       submitting.value = true
       try {
-        const userIds = selectedList.value.map(f => f.user_id)
+        const userIds = selectedList.value.map(f => f.user_id || f.id)
         await groupStore.inviteMembers(groupId.value, userIds)
 
         uni.showToast({ title: '邀请成功', icon: 'success' })
@@ -183,7 +258,7 @@ export default {
       } catch (e) {
         console.error('邀请入群失败', e)
         uni.showToast({
-          title: e?.data?.message || '邀请失败',
+          title: e?.message || '邀请失败',
           icon: 'none'
         })
       } finally {
@@ -212,6 +287,9 @@ export default {
       searchKeyword,
       selectedList,
       availableFriends,
+      nonFriendResults,
+      showSearchSection,
+      searching,
       loading,
       submitting,
       isSelected,
@@ -481,6 +559,25 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.non-friend-tag {
+  color: #D97706;
+  font-size: 22rpx;
+  background-color: #FFFBEB;
+  padding: 2rpx 12rpx;
+  border-radius: 8rpx;
+}
+
+.loading-tip {
+  padding: 40rpx 0;
+  display: flex;
+  justify-content: center;
+}
+
+.loading-tip-text {
+  font-size: 26rpx;
+  color: #94A3B8;
 }
 
 /* 空状态 */

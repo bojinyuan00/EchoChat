@@ -45,28 +45,30 @@
         <view
           v-else
           class="member-avatar member-avatar-placeholder"
-          :style="{ backgroundColor: getAvatarColor(member.nickname || member.username) }"
+          :style="{ backgroundColor: getAvatarColor(member.nickname || member.user_nickname) }"
         >
-          <text class="avatar-char">{{ getInitial(member.nickname || member.username) }}</text>
+          <text class="avatar-char">{{ getInitial(member.nickname || member.user_nickname) }}</text>
         </view>
 
         <view class="member-info">
           <view class="member-name-row">
-            <text class="member-name">{{ member.nickname || member.username }}</text>
+            <text class="member-name">{{ member.nickname || member.user_nickname }}</text>
             <text v-if="member.role === GROUP_ROLE.OWNER" class="role-tag role-tag-owner">🔑 群主</text>
             <text v-else-if="member.role === GROUP_ROLE.ADMIN" class="role-tag role-tag-admin">🛡 管理员</text>
+            <text v-else class="role-tag role-tag-member">👤 成员</text>
           </view>
           <view v-if="member.is_muted" class="muted-row">
             <text class="muted-tag">已禁言</text>
           </view>
         </view>
 
-        <uni-icons
+        <view
           v-if="canManage(member)"
-          type="more-filled"
-          size="18"
-          color="#94A3B8"
-        />
+          class="manage-btn"
+          @tap.stop="onMemberLongPress(member)"
+        >
+          <uni-icons type="more-filled" size="18" color="#94A3B8" />
+        </view>
       </view>
     </view>
 
@@ -78,6 +80,38 @@
     <view class="fab-btn" @tap="goToInvite">
       <uni-icons type="plusempty" size="24" color="#FFFFFF" />
     </view>
+
+    <!-- 自定义操作弹窗 -->
+    <view v-if="actionTarget" class="action-overlay" @tap="actionTarget = null">
+      <view class="action-sheet" @tap.stop>
+        <view class="action-sheet-header">
+          <view class="action-sheet-avatar" :style="{ backgroundColor: getAvatarColor(actionTarget.nickname || actionTarget.user_nickname) }">
+            <text class="action-sheet-avatar-text">{{ getInitial(actionTarget.nickname || actionTarget.user_nickname) }}</text>
+          </view>
+          <view class="action-sheet-info">
+            <text class="action-sheet-name">{{ actionTarget.nickname || actionTarget.user_nickname }}</text>
+            <text class="action-sheet-role">{{ GROUP_ROLE_LABEL[actionTarget.role] || '成员' }}</text>
+          </view>
+        </view>
+        <view class="action-sheet-divider"></view>
+        <view class="action-sheet-actions">
+          <view
+            v-for="action in actionList"
+            :key="action.label"
+            class="action-sheet-item"
+            :class="{ 'action-sheet-item--danger': action.danger }"
+            @tap="doAction(action.key)"
+          >
+            <text class="action-sheet-item-icon">{{ action.icon }}</text>
+            <text class="action-sheet-item-label">{{ action.label }}</text>
+          </view>
+        </view>
+        <view class="action-sheet-divider"></view>
+        <view class="action-sheet-cancel" @tap="actionTarget = null">
+          <text class="action-sheet-cancel-text">取消</text>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -87,7 +121,7 @@ import { ref, computed } from 'vue'
 import { useGroupStore } from '@/store/group'
 import { useUserStore } from '@/store/user'
 import { getAvatarColor, getInitial } from '@/utils/avatar'
-import { GROUP_ROLE } from '@/constants/group'
+import { GROUP_ROLE, GROUP_ROLE_LABEL } from '@/constants/group'
 
 export default {
   name: 'GroupMembers',
@@ -113,8 +147,8 @@ export default {
       if (!kw) return currentMembers.value
       return currentMembers.value.filter(m => {
         const nickname = (m.nickname || '').toLowerCase()
-        const username = (m.username || '').toLowerCase()
-        return nickname.includes(kw) || username.includes(kw)
+        const userNickname = (m.user_nickname || '').toLowerCase()
+        return nickname.includes(kw) || userNickname.includes(kw)
       })
     })
 
@@ -143,51 +177,54 @@ export default {
 
     // ==================== 管理操作 ====================
 
-    const onMemberLongPress = (member) => {
-      if (!canManage(member)) return
+    const actionTarget = ref(null)
 
-      const actions = []
+    /** 构建当前操作目标的可用操作列表 */
+    const actionList = computed(() => {
+      const member = actionTarget.value
+      if (!member) return []
 
+      const list = []
       if (myRole.value === GROUP_ROLE.OWNER) {
         if (member.role === GROUP_ROLE.ADMIN) {
-          actions.push('取消管理员')
+          list.push({ key: 'unsetAdmin', icon: '👤', label: '取消管理员' })
         } else {
-          actions.push('设为管理员')
+          list.push({ key: 'setAdmin', icon: '🛡', label: '设为管理员' })
         }
       }
-
       if (member.is_muted) {
-        actions.push('解除禁言')
+        list.push({ key: 'unmute', icon: '🔊', label: '解除禁言' })
       } else {
-        actions.push('禁言')
+        list.push({ key: 'mute', icon: '🔇', label: '禁言' })
       }
+      list.push({ key: 'kick', icon: '🚫', label: '踢出群聊', danger: true })
+      return list
+    })
 
-      actions.push('踢出群聊')
-
-      uni.showActionSheet({
-        itemList: actions,
-        success: (res) => {
-          const action = actions[res.tapIndex]
-          handleAction(action, member)
-        }
-      })
+    const onMemberLongPress = (member) => {
+      if (!canManage(member)) return
+      actionTarget.value = member
     }
 
-    const handleAction = (action, member) => {
-      switch (action) {
-        case '设为管理员':
+    const doAction = (key) => {
+      const member = actionTarget.value
+      if (!member) return
+      actionTarget.value = null
+
+      switch (key) {
+        case 'setAdmin':
           confirmSetRole(member, GROUP_ROLE.ADMIN)
           break
-        case '取消管理员':
+        case 'unsetAdmin':
           confirmSetRole(member, GROUP_ROLE.MEMBER)
           break
-        case '禁言':
+        case 'mute':
           confirmMute(member, true)
           break
-        case '解除禁言':
+        case 'unmute':
           confirmMute(member, false)
           break
-        case '踢出群聊':
+        case 'kick':
           confirmKick(member)
           break
       }
@@ -195,7 +232,7 @@ export default {
 
     const confirmSetRole = (member, role) => {
       const roleName = role === GROUP_ROLE.ADMIN ? '管理员' : '普通成员'
-      const name = member.nickname || member.username
+      const name = member.nickname || member.user_nickname
       uni.showModal({
         title: '确认操作',
         content: `确定将 ${name} 设为${roleName}吗？`,
@@ -205,7 +242,7 @@ export default {
               await groupStore.setMemberRole(groupId.value, member.user_id, role)
               uni.showToast({ title: '操作成功', icon: 'success' })
             } catch (e) {
-              uni.showToast({ title: e?.data?.message || '操作失败', icon: 'none' })
+              uni.showToast({ title: e?.message || '操作失败', icon: 'none' })
             }
           }
         }
@@ -213,7 +250,7 @@ export default {
     }
 
     const confirmMute = (member, isMuted) => {
-      const name = member.nickname || member.username
+      const name = member.nickname || member.user_nickname
       const tip = isMuted ? `确定禁言 ${name} 吗？` : `确定解除 ${name} 的禁言吗？`
       uni.showModal({
         title: '确认操作',
@@ -224,7 +261,7 @@ export default {
               await groupStore.muteMember(groupId.value, member.user_id, isMuted)
               uni.showToast({ title: '操作成功', icon: 'success' })
             } catch (e) {
-              uni.showToast({ title: e?.data?.message || '操作失败', icon: 'none' })
+              uni.showToast({ title: e?.message || '操作失败', icon: 'none' })
             }
           }
         }
@@ -232,7 +269,7 @@ export default {
     }
 
     const confirmKick = (member) => {
-      const name = member.nickname || member.username
+      const name = member.nickname || member.user_nickname
       uni.showModal({
         title: '踢出群聊',
         content: `确定将 ${name} 踢出群聊吗？`,
@@ -243,7 +280,7 @@ export default {
               await groupStore.kickMember(groupId.value, member.user_id)
               uni.showToast({ title: '已踢出', icon: 'success' })
             } catch (e) {
-              uni.showToast({ title: e?.data?.message || '操作失败', icon: 'none' })
+              uni.showToast({ title: e?.message || '操作失败', icon: 'none' })
             }
           }
         }
@@ -260,10 +297,14 @@ export default {
 
     return {
       GROUP_ROLE,
+      GROUP_ROLE_LABEL,
       searchKeyword,
       filteredMembers,
       canManage,
       onMemberLongPress,
+      actionTarget,
+      actionList,
+      doAction,
       goToInvite,
       getAvatarColor,
       getInitial
@@ -404,6 +445,11 @@ export default {
   background-color: rgba(37, 99, 235, 0.08);
 }
 
+.role-tag-member {
+  color: #64748B;
+  background-color: rgba(100, 116, 139, 0.08);
+}
+
 /* ===== 禁言标签 ===== */
 .muted-row {
   display: flex;
@@ -416,6 +462,23 @@ export default {
   background-color: rgba(239, 68, 68, 0.08);
   padding: 2rpx 12rpx;
   border-radius: 6rpx;
+}
+
+/* ===== 管理按钮 ===== */
+.manage-btn {
+  flex-shrink: 0;
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12rpx;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.manage-btn:active {
+  background-color: #F1F5F9;
 }
 
 /* ===== 空状态 ===== */
@@ -449,5 +512,140 @@ export default {
 
 .fab-btn:active {
   opacity: 0.85;
+}
+
+/* ===== 自定义操作弹窗 ===== */
+.action-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  animation: fadeIn 200ms ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.action-sheet {
+  width: 560rpx;
+  max-width: 90vw;
+  background-color: #FFFFFF;
+  border-radius: 24rpx;
+  overflow: hidden;
+  box-shadow: 0 16rpx 48rpx rgba(0, 0, 0, 0.15);
+  animation: slideUp 200ms ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(40rpx); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.action-sheet-header {
+  display: flex;
+  align-items: center;
+  padding: 28rpx 32rpx;
+  gap: 20rpx;
+}
+
+.action-sheet-avatar {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.action-sheet-avatar-text {
+  font-size: 28rpx;
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+.action-sheet-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.action-sheet-name {
+  font-size: 30rpx;
+  color: #1E293B;
+  font-weight: 600;
+}
+
+.action-sheet-role {
+  font-size: 24rpx;
+  color: #94A3B8;
+}
+
+.action-sheet-divider {
+  height: 1rpx;
+  background-color: #F1F5F9;
+  margin: 0 24rpx;
+}
+
+.action-sheet-actions {
+  padding: 8rpx 0;
+}
+
+.action-sheet-item {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  gap: 16rpx;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.action-sheet-item:active {
+  background-color: #F8FAFC;
+}
+
+.action-sheet-item-icon {
+  font-size: 32rpx;
+  width: 40rpx;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.action-sheet-item-label {
+  font-size: 30rpx;
+  color: #334155;
+  font-weight: 500;
+}
+
+.action-sheet-item--danger .action-sheet-item-label {
+  color: #EF4444;
+}
+
+.action-sheet-cancel {
+  padding: 24rpx 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.action-sheet-cancel:active {
+  background-color: #F8FAFC;
+}
+
+.action-sheet-cancel-text {
+  font-size: 30rpx;
+  color: #94A3B8;
+  font-weight: 500;
 }
 </style>

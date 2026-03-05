@@ -3,7 +3,7 @@
 > 通用规范（认证方式、响应格式、错误码）见 [README.md](../README.md)
 > 消息的实时收发（发送/撤回/标记已读/正在输入）通过 WebSocket 完成，见 [websocket.md](../websocket.md)
 > 本文档中的接口用于会话管理和消息历史查询等非实时操作。
-> **最后更新：** 2026-03-03（代码审查修复后同步）
+> **最后更新：** 2026-03-04（Fix T19 已读详情群昵称 + Fix T20 免打扰 API 补全）
 
 ---
 
@@ -14,10 +14,12 @@
 | GET | /api/v1/im/conversations | 需认证 | 获取会话列表 |
 | GET | /api/v1/im/messages | 需认证 | 获取历史消息（游标分页） |
 | PUT | /api/v1/im/conversations/:id/pin | 需认证 | 置顶/取消置顶 |
+| PUT | /api/v1/im/conversations/:id/dnd | 需认证 | 设置/取消消息免打扰 |
 | DELETE | /api/v1/im/conversations/:id | 需认证 | 删除会话（软删除） |
 | DELETE | /api/v1/im/conversations/:id/messages | 需认证 | 清空聊天记录（个人视图） |
 | GET | /api/v1/im/messages/search | 需认证 | 全局消息搜索 |
 | GET | /api/v1/im/unread | 需认证 | 获取全局未读消息总数 |
+| GET | /api/v1/im/messages/:id/reads | 需认证 | 获取消息已读详情 |
 
 ---
 
@@ -112,6 +114,22 @@
 
 ---
 
+## 3.5 设置/取消消息免打扰
+
+`PUT /api/v1/im/conversations/:id/dnd`
+
+**权限：** 需认证，且为该会话成员
+
+**请求参数：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| is_do_not_disturb | bool | 是 | true=开启免打扰, false=关闭 |
+
+**说明：** 免打扰模式下，新消息仍计入会话 unread_count，但不递增 Redis 全局未读数，前端会话列表中以灰色数字展示未读数。
+
+---
+
 ## 4. 删除会话
 
 `DELETE /api/v1/im/conversations/:id`
@@ -192,3 +210,50 @@
     }
 }
 ```
+
+---
+
+## 8. 获取消息已读详情
+
+`GET /api/v1/im/messages/:id/reads`
+
+**权限：** 需认证，且为该会话成员
+
+**说明：** 返回指定消息的已读/未读用户列表。群聊场景下，已设群昵称的用户会额外返回 `group_nickname` 字段。
+
+**成功响应：**
+
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": {
+        "read_list": [
+            {
+                "user_id": 4,
+                "user_nickname": "张三",
+                "user_avatar": "https://...",
+                "group_nickname": "群昵称A",
+                "read_at": ""
+            }
+        ],
+        "unread_list": [
+            {
+                "user_id": 5,
+                "user_nickname": "李四",
+                "user_avatar": "https://..."
+            }
+        ],
+        "read_count": 1,
+        "total_count": 3
+    }
+}
+```
+
+**字段说明：**
+
+| 字段 | 说明 |
+|------|------|
+| group_nickname | 群内昵称，仅群聊有效且已设置时返回（omitempty） |
+| read_at | 已读时间（当前暂为空，预留字段） |
+| total_count | 群成员总数（不含消息发送者本人） |

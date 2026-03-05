@@ -14,6 +14,7 @@ func RegisterRoutes(r *gin.Engine, ctrl *controller.IMController, jwtAuth gin.Ha
 		// 会话管理
 		authed.GET("/conversations", ctrl.GetConversations)
 		authed.PUT("/conversations/:id/pin", ctrl.PinConversation)
+		authed.PUT("/conversations/:id/dnd", ctrl.SetDoNotDisturb)
 		authed.DELETE("/conversations/:id", ctrl.DeleteConversation)
 		authed.DELETE("/conversations/:id/messages", ctrl.ClearHistory)
 

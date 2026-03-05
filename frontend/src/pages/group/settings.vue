@@ -58,11 +58,11 @@
             <view
               v-else
               class="member-preview-avatar member-preview-avatar-placeholder"
-              :style="{ backgroundColor: getAvatarColor(member.nickname || member.username) }"
+              :style="{ backgroundColor: getAvatarColor(member.nickname || member.user_nickname) }"
             >
-              <text class="member-preview-char">{{ getInitial(member.nickname || member.username) }}</text>
+              <text class="member-preview-char">{{ getInitial(member.nickname || member.user_nickname) }}</text>
             </view>
-            <text class="member-preview-name">{{ member.nickname || member.username }}</text>
+            <text class="member-preview-name">{{ member.nickname || member.user_nickname }}</text>
           </view>
         </view>
       </scroll-view>
@@ -192,7 +192,7 @@ export default {
               groupName.value = res.content.trim()
               uni.showToast({ title: '修改成功', icon: 'success' })
             } catch (e) {
-              uni.showToast({ title: e?.data?.message || '修改失败', icon: 'none' })
+              uni.showToast({ title: e?.message || '修改失败', icon: 'none' })
             }
           }
         }
@@ -214,7 +214,7 @@ export default {
               await groupStore.updateGroup(groupId.value, { notice: res.content || '' })
               uni.showToast({ title: '修改成功', icon: 'success' })
             } catch (e) {
-              uni.showToast({ title: e?.data?.message || '修改失败', icon: 'none' })
+              uni.showToast({ title: e?.message || '修改失败', icon: 'none' })
             }
           }
         }
@@ -243,7 +243,7 @@ export default {
               groupStore.fetchMembers(groupId.value)
               uni.showToast({ title: '修改成功', icon: 'success' })
             } catch (e) {
-              uni.showToast({ title: e?.data?.message || '修改失败', icon: 'none' })
+              uni.showToast({ title: e?.message || '修改失败', icon: 'none' })
             }
           }
         }
@@ -279,7 +279,7 @@ export default {
                 uni.switchTab({ url: '/pages/chat/index' })
               }, 500)
             } catch (e) {
-              uni.showToast({ title: e?.data?.message || '解散失败', icon: 'none' })
+              uni.showToast({ title: e?.message || '解散失败', icon: 'none' })
             }
           }
         }
@@ -302,7 +302,7 @@ export default {
                 uni.switchTab({ url: '/pages/chat/index' })
               }, 500)
             } catch (e) {
-              uni.showToast({ title: e?.data?.message || '退出失败', icon: 'none' })
+              uni.showToast({ title: e?.message || '退出失败', icon: 'none' })
             }
           }
         }

@@ -136,7 +136,7 @@ export default {
     const loadingMore = ref(false)
 
     const messages = computed(() => chatStore.currentMessages)
-    const hasMore = computed(() => chatStore.hasMoreMap[conversationId.value] !== false)
+    const hasMore = computed(() => conversationId.value > 0 && chatStore.hasMoreMap[conversationId.value] !== false)
     const isTyping = computed(() => chatStore.typingMap[conversationId.value] || false)
     const selfAvatar = computed(() => userStore.userInfo?.avatar || '')
     const selfName = computed(() => userStore.userInfo?.nickname || userStore.userInfo?.username || '我')

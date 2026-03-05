@@ -155,6 +155,7 @@ export const useChatStore = defineStore('chat', () => {
 
   /** 加载历史消息 */
   const loadHistoryMessages = async (conversationId) => {
+    if (!conversationId) return
     const messages = messagesMap.value[conversationId] || []
     const beforeId = messages.length > 0 ? messages[0].id : 0
 

@@ -52,14 +52,14 @@
     <!-- 搜索好友 -->
     <view class="section">
       <view class="section-header">
-        <text class="section-title">选择好友</text>
+        <text class="section-title">选择成员</text>
       </view>
       <view class="search-bar">
         <uni-icons type="search" size="18" color="#94A3B8" />
         <input
           class="search-input"
           v-model="searchKeyword"
-          placeholder="搜索好友昵称"
+          placeholder="搜索好友或用户名"
           placeholder-style="color: #94A3B8"
         />
         <view v-if="searchKeyword" class="search-clear" @tap="searchKeyword = ''">
@@ -99,8 +99,40 @@
       </view>
     </view>
 
-    <view v-else class="empty-state">
+    <view v-else-if="!showSearchSection" class="empty-state">
       <text class="empty-text">{{ searchKeyword ? '未找到匹配的好友' : '暂无好友' }}</text>
+    </view>
+
+    <!-- 非好友搜索结果 -->
+    <view v-if="showSearchSection" class="section">
+      <view class="section-header">
+        <text class="section-title">搜索到的其他用户</text>
+      </view>
+      <view v-if="searching" class="loading-tip">
+        <text class="loading-tip-text">搜索中...</text>
+      </view>
+      <view v-else-if="nonFriendResults.length > 0" class="friend-list">
+        <view
+          v-for="user in nonFriendResults"
+          :key="user.id"
+          class="friend-item"
+          @tap="toggleSelect({ user_id: user.id, nickname: user.nickname, username: user.username, avatar: user.avatar })"
+        >
+          <view class="checkbox" :class="{ 'checkbox--checked': isSelected(user.id) }">
+            <text v-if="isSelected(user.id)" class="checkbox-icon">✓</text>
+          </view>
+          <view class="avatar" :style="{ backgroundColor: getAvatarColor(user.nickname || user.username) }">
+            <text class="avatar-text">{{ getInitial(user.nickname || user.username) }}</text>
+          </view>
+          <view class="friend-info">
+            <text class="friend-name">{{ user.nickname || user.username }}</text>
+            <text class="friend-account non-friend-tag">非好友</text>
+          </view>
+        </view>
+      </view>
+      <view v-else class="empty-state">
+        <text class="empty-text">未找到其他匹配用户</text>
+      </view>
     </view>
 
     <!-- 底部占位 -->
@@ -122,10 +154,11 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useContactStore } from '@/store/contact'
 import { useGroupStore } from '@/store/group'
+import userApi from '@/api/user'
 import { getAvatarColor, getInitial } from '@/utils/avatar'
 
 export default {
@@ -136,14 +169,18 @@ export default {
 
     const groupName = ref('')
     const searchKeyword = ref('')
-    const selectedIds = ref({})
+    const selectedMap = ref({})
     const loading = ref(true)
     const submitting = ref(false)
+    const searchedUsers = ref([])
+    const searching = ref(false)
+    let searchTimer = null
 
-    /** 已选中的好友列表 */
-    const selectedList = computed(() => {
-      return contactStore.friendList.filter(f => selectedIds.value[f.user_id])
-    })
+    /** 已选中的用户列表（好友 + 搜索出的非好友） */
+    const selectedList = computed(() => Object.values(selectedMap.value))
+
+    /** 好友 ID 集合 */
+    const friendIdSet = computed(() => new Set(contactStore.friendList.map(f => f.user_id)))
 
     /** 搜索过滤后的好友列表 */
     const filteredFriends = computed(() => {
@@ -157,26 +194,63 @@ export default {
       })
     })
 
-    /** 是否满足创建条件：群名非空 + 至少选2人 */
-    const canCreate = computed(() => {
-      return groupName.value.trim().length > 0 && selectedList.value.length >= 2
+    /** 搜索到的非好友用户（已在好友列表中的去重） */
+    const nonFriendResults = computed(() => {
+      return searchedUsers.value.filter(u => !friendIdSet.value.has(u.id))
     })
 
-    /** 判断好友是否已选中 */
+    /** 是否显示全站搜索区块 */
+    const showSearchSection = computed(() => {
+      return searchKeyword.value.trim().length > 0 && (nonFriendResults.value.length > 0 || searching.value)
+    })
+
+    /** 是否满足创建条件 */
+    const canCreate = computed(() => {
+      return groupName.value.trim().length > 0 && selectedList.value.length >= 1
+    })
+
+    /** 判断用户是否已选中 */
     const isSelected = (userId) => {
-      return !!selectedIds.value[userId]
+      return !!selectedMap.value[userId]
     }
 
     /** 切换好友选中状态 */
     const toggleSelect = (friend) => {
-      const newMap = { ...selectedIds.value }
-      if (newMap[friend.user_id]) {
-        delete newMap[friend.user_id]
+      const newMap = { ...selectedMap.value }
+      const uid = friend.user_id || friend.id
+      if (newMap[uid]) {
+        delete newMap[uid]
       } else {
-        newMap[friend.user_id] = true
+        newMap[uid] = {
+          user_id: uid,
+          nickname: friend.nickname || friend.username || '',
+          username: friend.username || '',
+          remark: friend.remark || '',
+          avatar: friend.avatar || ''
+        }
       }
-      selectedIds.value = newMap
+      selectedMap.value = newMap
     }
+
+    /** 搜索关键词变化时延迟搜索全站用户 */
+    watch(searchKeyword, (val) => {
+      if (searchTimer) clearTimeout(searchTimer)
+      const kw = val.trim()
+      if (kw.length < 2) {
+        searchedUsers.value = []
+        return
+      }
+      searchTimer = setTimeout(async () => {
+        searching.value = true
+        try {
+          const res = await userApi.searchUsers(kw, 1, 20)
+          searchedUsers.value = res.data?.list || []
+        } catch {
+          searchedUsers.value = []
+        }
+        searching.value = false
+      }, 400)
+    })
 
     /** 提交创建群聊 */
     const handleCreate = async () => {
@@ -184,7 +258,7 @@ export default {
 
       submitting.value = true
       try {
-        const memberIds = selectedList.value.map(f => f.user_id)
+        const memberIds = selectedList.value.map(f => f.user_id || f.id)
         const result = await groupStore.createGroup(groupName.value.trim(), memberIds)
 
         uni.showToast({ title: '群聊创建成功', icon: 'success' })
@@ -192,7 +266,7 @@ export default {
         setTimeout(() => {
           if (result && result.conversation_id) {
             uni.redirectTo({
-              url: `/pages/group/conversation?conversationId=${result.conversation_id}&groupId=${result.group_id || 0}&peerName=${encodeURIComponent(groupName.value.trim())}`
+              url: `/pages/group/conversation?conversationId=${result.conversation_id}&groupId=${result.id || 0}&peerName=${encodeURIComponent(groupName.value.trim())}`
             })
           } else {
             uni.navigateBack()
@@ -201,7 +275,7 @@ export default {
       } catch (e) {
         console.error('创建群聊失败', e)
         uni.showToast({
-          title: e?.data?.message || '创建群聊失败',
+          title: e?.message || '创建群聊失败',
           icon: 'none'
         })
       } finally {
@@ -223,6 +297,9 @@ export default {
       searchKeyword,
       selectedList,
       filteredFriends,
+      nonFriendResults,
+      showSearchSection,
+      searching,
       canCreate,
       loading,
       submitting,
@@ -516,6 +593,25 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.non-friend-tag {
+  color: #D97706;
+  font-size: 22rpx;
+  background-color: #FFFBEB;
+  padding: 2rpx 12rpx;
+  border-radius: 8rpx;
+}
+
+.loading-tip {
+  padding: 40rpx 0;
+  display: flex;
+  justify-content: center;
+}
+
+.loading-tip-text {
+  font-size: 26rpx;
+  color: #94A3B8;
 }
 
 /* 空状态 */

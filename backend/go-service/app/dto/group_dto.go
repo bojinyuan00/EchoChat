@@ -136,10 +136,11 @@ type MessageReadCountDTO struct {
 
 // MessageReadDetailDTO 消息已读详情传输对象
 type MessageReadDetailDTO struct {
-	UserID       int64  `json:"user_id"`       // 已读用户 ID
-	UserNickname string `json:"user_nickname"` // 用户昵称
-	UserAvatar   string `json:"user_avatar"`   // 用户头像
-	ReadAt       string `json:"read_at"`       // 已读时间
+	UserID        int64  `json:"user_id"`                  // 已读用户 ID
+	UserNickname  string `json:"user_nickname"`            // 用户真实昵称
+	UserAvatar    string `json:"user_avatar"`              // 用户头像
+	GroupNickname string `json:"group_nickname,omitempty"` // 群内昵称（仅群聊有效，未设置时为空）
+	ReadAt        string `json:"read_at"`                  // 已读时间
 }
 
 // GetReadDetailRequest 获取已读详情请求

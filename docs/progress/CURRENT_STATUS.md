@@ -1,7 +1,7 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-03-04（Phase 2c 代码审查修复完成）
-> **当前阶段**：Phase 2c 代码审查修复完成，待最终验证
+> **最后更新**：2026-03-04（Phase 2c 浏览器测试 + UI/UX 优化 + Tab 切换刷新修复完成）
+> **当前阶段**：Phase 2c 全部完成（含 Playwright 浏览器测试 + 21 项用户反馈修复）
 > **当前分支**：`feature/phase2c-group-read-receipt`
 > **实施计划**：`docs/plans/2026-03-04-phase2c-implementation.plan.md`
 > **设计文档**：`docs/plans/2026-03-04-phase2c-design.md`
@@ -212,20 +212,42 @@ EchoChat/
 
 ## 七、开发测试指南
 
-### 启动命令
+### 服务管理命令
+
+> 建议开 4 个终端窗口，分别运行各服务。终止方式统一为 `Ctrl + C` 或 `kill` 命令。
+
+#### 基础设施（Docker Compose）
 
 ```bash
-# 1. 启动 PostgreSQL + Redis
-cd deploy && docker compose -f docker-compose.dev.yml up -d postgres redis
+# 一键启动全部基础设施（PostgreSQL + Redis + MinIO）
+cd deploy && docker compose -f docker-compose.dev.yml up -d postgres redis minio
 
-# 2. 启动 Go 后端（http://localhost:8085）
-cd backend/go-service && go run cmd/server/main.go
+# 查看容器状态
+cd deploy && docker compose -f docker-compose.dev.yml ps
 
-# 3. 启动管理端（http://localhost:3100）
-cd admin && npm run dev
+# 一键停止全部基础设施
+cd deploy && docker compose -f docker-compose.dev.yml stop
+```
 
-# 4. 启动前台 H5（http://localhost:5173+）
-cd frontend && npm run dev:h5
+| 服务 | 地址 | 单独启动 | 单独停止 |
+|------|------|----------|----------|
+| PostgreSQL | localhost:5432 | `docker compose -f docker-compose.dev.yml up -d postgres` | `docker compose -f docker-compose.dev.yml stop postgres` |
+| Redis | localhost:6379 | `docker compose -f docker-compose.dev.yml up -d redis` | `docker compose -f docker-compose.dev.yml stop redis` |
+| MinIO API | localhost:9000 | `docker compose -f docker-compose.dev.yml up -d minio` | `docker compose -f docker-compose.dev.yml stop minio` |
+| MinIO 控制台 | localhost:9001 | （同上） | （同上） |
+
+#### 应用服务
+
+| 服务 | 地址 | 启动命令 | 终止命令 |
+|------|------|----------|----------|
+| Go 后端 | http://localhost:8085 | `cd backend/go-service && go run cmd/server/main.go` | `Ctrl+C` 或 `kill $(lsof -ti :8085)` |
+| 前台用户端 (H5) | http://localhost:5173 | `cd frontend && npm run dev:h5` | `Ctrl+C` 或 `kill $(lsof -ti :5173)` |
+| 后台管理端 | http://localhost:3100 | `cd admin && npm run dev` | `Ctrl+C` 或 `kill $(lsof -ti :3100)` |
+
+#### Go 后端快速重启（一行命令）
+
+```bash
+kill $(lsof -ti :8085) 2>/dev/null; sleep 2; cd backend/go-service && go run cmd/server/main.go
 ```
 
 ### 测试账号
@@ -249,7 +271,7 @@ cd frontend && npm run dev:h5
 
 ## 八、Phase 2c — 群聊与已读回执
 
-> **状态：** 实施中
+> **状态：** ✅ 已完成
 > **设计文档：** `docs/plans/2026-03-04-phase2c-design.md`
 > **实施计划：** `docs/plans/2026-03-04-phase2c-implementation.plan.md`
 > **分支：** `feature/phase2c-group-read-receipt`
@@ -284,6 +306,33 @@ cd frontend && npm run dev:h5
 | Task 12 | 群聊辅助功能（入群审批 + 搜索群聊） | ✅ 完成 |
 | Task 13 | 管理端群组管理 + 文档更新 | ✅ 完成 |
 | 代码审查修复 | 14 项修复（Critical×5 + Important×4 + Minor×2 + Suggestion×3） | ✅ 完成 |
+| Playwright 测试 + 用户反馈修复 | 浏览器端到端测试 + 21 项修复（搜索/UI/交互/功能增强） | ✅ 完成 |
+
+### 用户测试修复详情（Phase 2c）
+
+| # | 修复内容 |
+|---|----------|
+| Fix T1 | create.vue 创建群后跳转使用 `result.id`（原 `result.group_id` 字段不存在） |
+| Fix T2 | conversation/settings/members/join-requests 用 `user_nickname` 替代 `username`（对齐 DTO） |
+| Fix T3 | 管理端群组详情弹窗 UI 全面重设计（卡片+头像+分区布局+成员mini头像） |
+| Fix T4 | 群搜索结果已在群内的显示「已加入」标签，不再显示「申请加入」按钮 |
+| Fix T5 | group_dao.go `SearchGroups` 改用 ILIKE 模糊匹配（原 to_tsvector 不支持混合词搜索） |
+| Fix T6 | conversation.vue 增加 groupId=0 时从 chatStore 回退查找 group_id |
+| Fix T7 | create.vue 最低选择人数从 2 改为 1（支持 2 人群聊） |
+| Fix T8 | create.vue 支持搜索非好友用户并加入群聊（全站用户搜索 + 非好友标签） |
+| Fix T9 | invite.vue 支持搜索非好友用户并邀请入群（同 create.vue 改造） |
+| Fix T10 | admin/list.vue 成员表用 `username` 替代 `user_nickname`（对齐 admin DTO） |
+| Fix T11 | 群聊已读回执优化：无人已读时显示「0人已读」（含点击跳转已读详情功能） |
+| Fix T12 | 新好友聊天页 conversationId=0 时「加载更多」点击报错（hasMore 增加 ID 校验） |
+| Fix T13 | 联系人 TabBar 添加好友申请未读数 badge（与消息 Tab 一致的交互体验） |
+| Fix T14 | App.vue 启动时预加载好友申请数，确保 badge 立即可见 |
+| Fix T15 | 单聊已读回执：后端 MarkRead 缺失 `im.message.read.ack` 推送（补全对方已读通知链路） |
+| Fix T16 | 群成员列表页为所有角色添加身份标识（群主/管理员/成员） |
+| Fix T17 | 全局修复 `e?.data?.message` → `e?.message`（8 个页面 18 处，确保后端错误信息正确展示） |
+| Fix T18 | members.vue 管理操作弹窗改为自定义组件（头像+角色+图标操作列表），替代 uni.showActionSheet；三个点按钮从 @longpress 改为 @tap |
+| Fix T19 | 已读详情页展示群内昵称：后端 DTO 新增 group_nickname 字段 + DAO 批量查询群昵称 + 前端主显群昵称/副显真实昵称 |
+| Fix T20 | 消息免打扰 API 补全：后端缺失 DAO/Service/Controller/Router 完整链路（PUT /api/v1/im/conversations/:id/dnd） |
+| Fix T21 | 联系人 Tab 页切换回来后数据不刷新：onMounted → 增加 onShow 生命周期钩子自动重新获取好友列表和待处理申请数 |
 
 ### 代码审查修复详情（Phase 2c）
 
@@ -317,13 +366,13 @@ cd frontend && npm run dev:h5
 | 页面 | 路径 | 功能 |
 |------|------|------|
 | 群聊对话页 | `pages/group/conversation.vue` | 群消息收发 + @选择器 + 已读计数 |
-| 创建群聊页 | `pages/group/create.vue` | 好友多选 + 群名称输入 |
+| 创建群聊页 | `pages/group/create.vue` | 好友/非好友多选 + 全站用户搜索 + 群名称输入 |
 | 群设置页 | `pages/group/settings.vue` | 群信息修改 + 成员概览 + 退出/解散 |
-| 群成员页 | `pages/group/members.vue` | 成员列表 + 角色管理 + 禁言操作 |
-| 邀请入群页 | `pages/group/invite.vue` | 好友多选 + 排除已在群内成员 |
+| 群成员页 | `pages/group/members.vue` | 成员列表 + 全角色标识（群主/管理员/成员）+ 自定义操作弹窗 + 角色管理 + 禁言操作 |
+| 邀请入群页 | `pages/group/invite.vue` | 好友/非好友多选 + 全站用户搜索 + 排除已在群内成员 |
 | 入群审批页 | `pages/group/join-requests.vue` | 申请列表 + 通过/拒绝操作 |
-| 搜索群聊页 | `pages/group/search.vue` | 关键词搜索 + 申请加入 |
-| 已读详情页 | `pages/chat/read-detail.vue` | 已读/未读成员列表（群聊消息级） |
+| 搜索群聊页 | `pages/group/search.vue` | 关键词搜索 + 申请加入 + 已加入状态显示 |
+| 已读详情页 | `pages/chat/read-detail.vue` | 已读/未读成员列表（群聊消息级）+ 群昵称优先展示 + 真实昵称副行 |
 | 会话列表改造 | `pages/chat/index.vue` | Tab 切换（全部/单聊/群聊）+ @标记 + 免打扰标识 |
 
 #### 管理端新增

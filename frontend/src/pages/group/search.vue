@@ -72,7 +72,11 @@
               <text v-if="group.description" class="group-desc">{{ group.description }}</text>
             </view>
 
+            <view v-if="isInGroup(group.id)" class="action-btn action-btn--joined">
+              <text class="action-btn-text action-btn-text--joined">已加入</text>
+            </view>
             <view
+              v-else
               class="action-btn action-btn--apply"
               :class="{ 'action-btn--disabled': appliedMap[group.id] }"
               @tap="showApplyDialog(group)"
@@ -110,12 +114,28 @@
 import { onLoad } from '@dcloudio/uni-app'
 import { ref, computed, reactive } from 'vue'
 import { useGroupStore } from '@/store/group'
+import { useChatStore } from '@/store/chat'
 import { getAvatarColor, getInitial } from '@/utils/avatar'
 
 export default {
   name: 'GroupSearch',
   setup() {
     const groupStore = useGroupStore()
+    const chatStore = useChatStore()
+
+    /** 当前用户已加入的群 ID 集合 */
+    const myGroupIds = computed(() => {
+      const ids = new Set()
+      chatStore.conversationList.forEach(conv => {
+        if (conv.type === 2 && conv.group_id) {
+          ids.add(conv.group_id)
+        }
+      })
+      return ids
+    })
+
+    /** 判断是否已在该群内 */
+    const isInGroup = (groupId) => myGroupIds.value.has(groupId)
 
     const keyword = ref('')
     const searched = ref(false)
@@ -138,6 +158,9 @@ export default {
     onLoad(() => {
       groupStore.searchResults = []
       groupStore.searchTotal = 0
+      if (chatStore.conversationList.length === 0) {
+        chatStore.fetchConversations()
+      }
     })
 
     // ==================== 搜索逻辑 ====================
@@ -158,7 +181,7 @@ export default {
         await groupStore.searchGroups(kw, 1, pageSize)
       } catch (e) {
         console.error('搜索群聊失败', e)
-        uni.showToast({ title: e?.data?.message || '搜索失败', icon: 'none' })
+        uni.showToast({ title: e?.message || '搜索失败', icon: 'none' })
       }
 
       searchLoading.value = false
@@ -200,7 +223,7 @@ export default {
               uni.showToast({ title: '申请已发送', icon: 'success' })
             } catch (e) {
               console.error('发送入群申请失败', e)
-              uni.showToast({ title: e?.data?.message || '申请失败', icon: 'none' })
+              uni.showToast({ title: e?.message || '申请失败', icon: 'none' })
             }
           }
         }
@@ -216,6 +239,7 @@ export default {
       resultList,
       noMore,
       appliedMap,
+      isInGroup,
       doSearch,
       loadMore,
       showApplyDialog,
@@ -419,6 +443,18 @@ export default {
 
 .action-btn--disabled .action-btn-text--apply {
   color: #94A3B8;
+}
+
+.action-btn--joined {
+  border-color: #059669;
+  background-color: #ECFDF5;
+  pointer-events: none;
+}
+
+.action-btn-text--joined {
+  color: #059669;
+  font-size: 24rpx;
+  font-weight: 500;
 }
 
 /* ===== 加载更多 ===== */

@@ -8,7 +8,7 @@
   功能：
   - 底部导航栏，4 个 Tab：消息 / 联系人 / 会议 / 我的
   - 选中态使用 filled 图标 + Primary 色，未选中态使用轮廓图标 + Muted 色
-  - 消息 Tab 支持未读消息 badge
+  - 消息 Tab 支持未读消息 badge，联系人 Tab 支持好友申请未读 badge
   - 使用 switchTab 跳转
 -->
 <template>
@@ -43,9 +43,11 @@
  * 功能：
  * - 跳转使用 uni.switchTab，确保与 pages.json tabBar 配置的页面一致
  * - 消息 Tab（index=0）显示全局未读消息 badge
+ * - 联系人 Tab（index=1）显示待处理好友申请 badge
  * - 选中态使用 filled 图标变体以增强视觉区分
  */
 import { useChatStore } from '@/store/chat'
+import { useContactStore } from '@/store/contact'
 
 export default {
   name: 'CustomTabBar',
@@ -90,6 +92,10 @@ export default {
       if (index === 0) {
         const chatStore = useChatStore()
         return chatStore.totalUnread
+      }
+      if (index === 1) {
+        const contactStore = useContactStore()
+        return contactStore.pendingCount
       }
       return 0
     }

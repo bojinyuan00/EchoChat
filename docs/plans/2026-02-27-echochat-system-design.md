@@ -854,7 +854,7 @@ pages/
 │   ├── conversation.vue         # 聊天对话页                        ✅ Phase 2b
 │   ├── settings.vue             # 聊天设置页                        ✅ Phase 2b
 │   ├── search.vue               # 消息搜索页                        ✅ Phase 2b
-│   └── group-create.vue         # 创建群聊                          📋 Phase 2c
+│   └── group-create.vue         # 创建群聊（含全站用户搜索）         ✅ Phase 2c
 ├── contact/
 │   ├── index.vue                # 联系人列表（含搜索/在线状态）     ✅ Phase 2a
 │   ├── search.vue               # 搜索添加好友 + 好友推荐          ✅ Phase 2a
@@ -989,16 +989,17 @@ services:
 - 前台 4 个页面 + chat Store + API 封装
 - 设计文档：`docs/plans/2026-03-03-phase2b-design.md`
 
-#### Phase 2c：群聊与已读回执 🔜 设计完成，待实施
+#### Phase 2c：群聊与已读回执 ✅ 全部完成
 - 群聊管理（三级角色：建群/加入/退出/解散/角色管理/禁言/全体禁言/群公告/入群审批）
 - 群消息收发（复用 im.message.* + @某人/@所有人 + 管理员撤回无时限 + 系统消息）
 - 已读回执（单聊会话级 last_read_msg_id + 群聊消息级 im_message_reads + 实时推送）
 - MinIO 文件存储服务（Docker + 通用上传 API）
 - 管理端群聊管理（群列表/详情/解散/移除成员）
 - 前端 9 个新页面 + 群聊 Store + 会话列表 Tab 改造
+- 创建群聊/邀请入群支持全站搜索非好友用户
 - 新增 3 张数据库表（im_groups / im_group_join_requests / im_message_reads）
 - 设计文档：`docs/plans/2026-03-04-phase2c-design.md`
-- 实施计划：`docs/plans/2026-03-04-phase2c-implementation.plan.md`（14 个 Task）
+- 实施计划：`docs/plans/2026-03-04-phase2c-implementation.plan.md`（14 个 Task + 10 项测试修复）
 
 #### Phase 2d：消息类型扩展 📋 待规划
 - 消息类型扩展（图片/语音/文件消息）

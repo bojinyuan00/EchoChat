@@ -157,7 +157,7 @@ const showAddDialog = (user) => {
           console.error('发送好友申请失败', e)
           addingMap[user.id] = false
           uni.showToast({
-            title: e?.data?.message || '发送申请失败',
+            title: e?.message || '发送申请失败',
             icon: 'none'
           })
         }

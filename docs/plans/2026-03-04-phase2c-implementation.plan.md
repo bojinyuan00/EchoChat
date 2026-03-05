@@ -1,9 +1,9 @@
 # Phase 2c 实施计划：群聊与已读回执
 
-> **状态：** ✅ 已完成（含代码审查修复 14 项）
+> **状态：** ✅ 已完成（含代码审查修复 14 项 + 浏览器测试修复 21 项）
 > **设计文档：** `docs/plans/2026-03-04-phase2c-design.md`
 > **分支：** `feature/phase2c-group-read-receipt`
-> **预计 Task 数：** 14 个（全部完成）
+> **预计 Task 数：** 14 个（全部完成）+ Playwright 端到端测试
 > **最后更新：** 2026-03-04
 
 ---
@@ -625,3 +625,33 @@ Task 0 + Task 12 ── Task 13 (管理端+文档+审查)
 5. **权限层级**：群主(2) > 管理员(1) > 成员(0)，操作时必须校验层级
 6. **Wire 依赖**：Phase 2b 中 Wire 有过手动 patch 历史，注意检查 wire_gen.go 一致性
 7. **依赖管理**：当前 Go 版本 1.23.12，添加新依赖必须选择兼容版本
+
+---
+
+## Playwright 浏览器测试修复记录
+
+> 在代码审查修复完成后，使用 Playwright MCP 进行端到端浏览器测试，共发现并修复 21 项问题。
+
+| # | 类型 | 修复内容 | 涉及文件 |
+|---|------|----------|----------|
+| T1 | Bug | create.vue 创建群后跳转使用 `result.id`（原 `result.group_id` 不存在） | `frontend/src/pages/group/create.vue` |
+| T2 | Bug | 群聊页面成员显示使用 `user_nickname` 替代 `username`（对齐 GroupMemberDTO） | `conversation/settings/members/join-requests.vue` |
+| T3 | UI | 管理端群详情弹窗重新设计（卡片头像+分区布局+动态配色） | `admin/src/views/group/list.vue` |
+| T4 | UX | 群搜索结果已加入的群显示「已加入」标签，不显示「申请加入」 | `frontend/src/pages/group/search.vue` |
+| T5 | Bug | `SearchGroups` 从 `to_tsvector` 改为 `ILIKE`（修复混合中英文搜索） | `backend/go-service/app/group/dao/group_dao.go` |
+| T6 | Bug | conversation.vue 增加 groupId=0 时从 chatStore 回退查找 | `frontend/src/pages/group/conversation.vue` |
+| T7 | UX | 创建群最低人数从 2 改为 1（支持 2 人群聊） | `frontend/src/pages/group/create.vue` |
+| T8 | 功能 | 创建群聊支持搜索非好友用户（全站搜索 + 非好友标签 + selectedMap） | `frontend/src/pages/group/create.vue` |
+| T9 | 功能 | 邀请入群支持搜索非好友用户（同 create.vue 改造模式） | `frontend/src/pages/group/invite.vue` |
+| T10 | Bug | 管理端成员表用 `username` 替代 `user_nickname`（对齐 admin DTO） | `admin/src/views/group/list.vue` |
+| T11 | UX | 群聊已读回执：无人已读时显示「0人已读」而非隐藏标签 | `frontend/src/pages/group/conversation.vue` |
+| T12 | Bug | 新好友聊天页 conversationId=0 时「加载更多」点击 400 报错 | `frontend/src/pages/chat/conversation.vue` + `frontend/src/store/chat.js` |
+| T13 | UX | 联系人 TabBar 添加好友申请未读数 badge（与消息 Tab 一致） | `frontend/src/components/CustomTabBar.vue` |
+| T14 | 功能 | App.vue 启动时预加载好友申请数，确保 badge 立即可见 | `frontend/src/App.vue` |
+| T15 | Bug | 单聊已读回执：后端 MarkRead 缺失 `im.message.read.ack` 推送 | `backend/go-service/app/im/service/im_service.go` |
+| T16 | UX | 群成员列表为所有角色添加身份标识（🔑群主/🛡管理员/👤成员） | `frontend/src/pages/group/members.vue` |
+| T17 | Bug | 全局修复 `e?.data?.message` → `e?.message`（8 文件 18 处） | `create/search/read-detail/members/join-requests/settings/request.vue` |
+| T18 | UI/UX | 群成员管理操作弹窗改为自定义组件 + 三个点按钮从 @longpress 改为 @tap | `frontend/src/pages/group/members.vue` |
+| T19 | 功能 | 已读详情页展示群昵称：DTO 新增 group_nickname + DAO 批量查询 + 前端主显群昵称/副显真实昵称 | `group_dto.go` + `conversation_dao.go` + `im_service.go` + `read-detail.vue` |
+| T20 | Bug | 消息免打扰后端 API 补全：DAO UpdateMemberDND + Service SetDoNotDisturb + Controller + Router 注册 | `conversation_dao.go` + `im_service.go` + `im_controller.go` + `router.go` |
+| T21 | Bug | 联系人 Tab 页切换回来数据不刷新：新增 onShow 生命周期钩子自动重新获取好友列表和待处理申请数 | `pages/contact/index.vue` |

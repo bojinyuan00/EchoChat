@@ -44,13 +44,13 @@
             <view
               v-else
               class="request-avatar request-avatar-placeholder"
-              :style="{ backgroundColor: getAvatarColor(req.nickname || req.username) }"
+              :style="{ backgroundColor: getAvatarColor(req.user_nickname || req.nickname) }"
             >
-              <text class="avatar-char">{{ getInitial(req.nickname || req.username) }}</text>
+              <text class="avatar-char">{{ getInitial(req.user_nickname || req.nickname) }}</text>
             </view>
 
             <view class="request-info">
-              <text class="request-name">{{ req.nickname || req.username }}</text>
+              <text class="request-name">{{ req.user_nickname || req.nickname }}</text>
               <text class="request-msg" v-if="req.message">{{ req.message }}</text>
               <text class="request-msg" v-else>申请加入群聊</text>
               <text class="request-time">{{ formatTime(req.created_at) }}</text>
@@ -96,13 +96,13 @@
             <view
               v-else
               class="request-avatar request-avatar-placeholder"
-              :style="{ backgroundColor: getAvatarColor(req.nickname || req.username) }"
+              :style="{ backgroundColor: getAvatarColor(req.user_nickname || req.nickname) }"
             >
-              <text class="avatar-char">{{ getInitial(req.nickname || req.username) }}</text>
+              <text class="avatar-char">{{ getInitial(req.user_nickname || req.nickname) }}</text>
             </view>
 
             <view class="request-info">
-              <text class="request-name">{{ req.nickname || req.username }}</text>
+              <text class="request-name">{{ req.user_nickname || req.nickname }}</text>
               <text class="request-msg" v-if="req.message">{{ req.message }}</text>
               <text class="request-msg" v-else>申请加入群聊</text>
               <text class="request-time">{{ formatTime(req.created_at) }}</text>
@@ -207,7 +207,7 @@ export default {
         await groupStore.fetchJoinRequests(groupId.value)
       } catch (e) {
         console.error('获取入群申请失败', e)
-        uni.showToast({ title: e?.data?.message || '获取申请列表失败', icon: 'none' })
+        uni.showToast({ title: e?.message || '获取申请列表失败', icon: 'none' })
       }
       loading.value = false
     }
@@ -224,7 +224,7 @@ export default {
         uni.showToast({ title: '已通过', icon: 'success' })
       } catch (e) {
         console.error('审批通过失败', e)
-        uni.showToast({ title: e?.data?.message || '操作失败', icon: 'none' })
+        uni.showToast({ title: e?.message || '操作失败', icon: 'none' })
       } finally {
         processingMap[req.id] = false
       }
@@ -240,7 +240,7 @@ export default {
         uni.showToast({ title: '已拒绝', icon: 'none' })
       } catch (e) {
         console.error('审批拒绝失败', e)
-        uni.showToast({ title: e?.data?.message || '操作失败', icon: 'none' })
+        uni.showToast({ title: e?.message || '操作失败', icon: 'none' })
       } finally {
         processingMap[req.id] = false
       }

@@ -525,7 +525,7 @@ func (s *IMService) GetHistoryMessages(ctx context.Context, userID int64, req *d
 	return &dto.HistoryMessageResponse{List: list, HasMore: hasMore}, nil
 }
 
-// MarkRead 标记会话已读（清零未读 + 更新 Redis 总未读数）
+// MarkRead 标记会话已读（清零未读 + 更新 Redis 总未读数 + 推送已读 ACK 给对方）
 func (s *IMService) MarkRead(ctx context.Context, userID int64, conversationID int64) error {
 	funcName := "service.im_service.MarkRead"
 	logs.Info(ctx, funcName, "标记已读",
@@ -536,22 +536,35 @@ func (s *IMService) MarkRead(ctx context.Context, userID int64, conversationID i
 		return ErrNotMember
 	}
 
-	if member.UnreadCount == 0 {
-		return nil
-	}
-
 	latestMsgID, err := s.msgDAO.GetLatestMessageID(ctx, conversationID)
 	if err != nil {
 		logs.Error(ctx, funcName, "获取最新消息 ID 失败", zap.Error(err))
 		return err
 	}
 
-	if err := s.convDAO.ClearUnread(ctx, conversationID, userID, latestMsgID); err != nil {
-		logs.Error(ctx, funcName, "清零未读失败", zap.Error(err))
-		return err
+	if member.UnreadCount > 0 {
+		if err := s.convDAO.ClearUnread(ctx, conversationID, userID, latestMsgID); err != nil {
+			logs.Error(ctx, funcName, "清零未读失败", zap.Error(err))
+			return err
+		}
+		s.decrementTotalUnread(ctx, userID, member.UnreadCount)
 	}
 
-	s.decrementTotalUnread(ctx, userID, member.UnreadCount)
+	memberIDs, err := s.convDAO.GetConversationMemberIDs(ctx, conversationID)
+	if err != nil {
+		logs.Error(ctx, funcName, "获取会话成员失败", zap.Error(err))
+		return nil
+	}
+	for _, peerID := range memberIDs {
+		if peerID != userID {
+			s.pushToUser(ctx, peerID, "im.message.read.ack", map[string]interface{}{
+				"conversation_id":   conversationID,
+				"reader_id":         userID,
+				"last_read_msg_id":  latestMsgID,
+			})
+		}
+	}
+
 	return nil
 }
 
@@ -658,6 +671,12 @@ func (s *IMService) GetMessageReadDetail(ctx context.Context, userID int64, mess
 		}
 	}
 
+	nicknameMap, nErr := s.convDAO.GetMemberNicknameMap(ctx, msg.ConversationID)
+	if nErr != nil {
+		logs.Error(ctx, funcName, "获取成员群昵称失败", zap.Error(nErr))
+		nicknameMap = make(map[int64]string)
+	}
+
 	var readList, unreadList []dto.MessageReadDetailDTO
 	for _, uid := range allUserIDs {
 		item := dto.MessageReadDetailDTO{
@@ -666,6 +685,9 @@ func (s *IMService) GetMessageReadDetail(ctx context.Context, userID int64, mess
 		if brief, ok := userMap[uid]; ok {
 			item.UserNickname = brief.Nickname
 			item.UserAvatar = brief.Avatar
+		}
+		if gn, ok := nicknameMap[uid]; ok {
+			item.GroupNickname = gn
 		}
 		if readUserIDs[uid] {
 			readList = append(readList, item)
@@ -680,6 +702,20 @@ func (s *IMService) GetMessageReadDetail(ctx context.Context, userID int64, mess
 		ReadCount:  len(readList),
 		TotalCount: len(allUserIDs),
 	}, nil
+}
+
+// SetDoNotDisturb 设置/取消会话消息免打扰
+func (s *IMService) SetDoNotDisturb(ctx context.Context, userID int64, conversationID int64, isDoNotDisturb bool) error {
+	funcName := "service.im_service.SetDoNotDisturb"
+	logs.Info(ctx, funcName, "更新免打扰状态",
+		zap.Int64("user_id", userID), zap.Int64("conversation_id", conversationID), zap.Bool("is_do_not_disturb", isDoNotDisturb))
+
+	member, err := s.convDAO.GetMember(ctx, conversationID, userID)
+	if err != nil || member == nil {
+		return ErrNotMember
+	}
+
+	return s.convDAO.UpdateMemberDND(ctx, conversationID, userID, isDoNotDisturb)
 }
 
 // PinConversation 置顶/取消置顶会话

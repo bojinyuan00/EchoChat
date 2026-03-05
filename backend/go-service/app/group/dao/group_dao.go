@@ -328,8 +328,8 @@ func (d *GroupDAO) SearchGroups(ctx context.Context, keyword string, offset, lim
 	var total int64
 	query := d.db.WithContext(ctx).
 		Model(&model.Group{}).
-		Where("status = ? AND is_searchable = true AND to_tsvector('simple', name) @@ plainto_tsquery('simple', ?)",
-			constants.GroupStatusNormal, keyword)
+		Where("status = ? AND is_searchable = true AND name ILIKE ?",
+			constants.GroupStatusNormal, "%"+keyword+"%")
 
 	if err := query.Count(&total).Error; err != nil {
 		logs.Error(ctx, funcName, "搜索计数失败", zap.Error(err))

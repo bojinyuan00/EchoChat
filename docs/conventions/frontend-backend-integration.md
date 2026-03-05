@@ -2,7 +2,7 @@
 
 > **适用范围**：EchoChat 项目全端（Go 后端 + admin 管理端 + frontend 用户端）
 > **创建日期**：2026-03-02
-> **最后更新**：2026-03-04（Phase 2c 全部完成：群聊模块 + MinIO 文件存储 + 已读回执 + 代码审查修复 14 项）
+> **最后更新**：2026-03-04（Phase 2c 全部完成：群聊模块 + MinIO 文件存储 + 已读回执 + 代码审查修复 14 项 + 浏览器测试修复 21 项）
 
 ---
 
@@ -127,6 +127,8 @@ HTTP 响应错误：
 
 **401 场景区分的关键**：通过正则 `/\/auth\/(login|register)$/` 匹配请求 URL。登录/注册请求不清 Token 不跳转。
 
+**reject 对象结构（重要）**：`request.js` 的 `reject(data)` 传出的是 `{ code, message, ... }` 对象（即后端响应体本身），不是包装的 `{ data: { message } }`。因此在页面 catch 中获取错误信息时，必须使用 `e?.message` 而非 `e?.data?.message`。
+
 ### 3.4 错误处理检查清单
 
 新增 API 接口时，必须确认以下各项：
@@ -136,6 +138,7 @@ HTTP 响应错误：
 - [ ] 后端不使用 `_` 忽略 error，至少 log warning
 - [ ] 前端调用方的 catch 不自行覆盖 message（交给拦截器统一处理）
 - [ ] 前端页面级 catch 只做状态清理（如 loading = false），不重复弹提示
+- [ ] 前端 catch 中使用 `e?.message`（非 `e?.data?.message`）获取错误信息
 
 ---
 

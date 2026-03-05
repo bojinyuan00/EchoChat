@@ -63,6 +63,35 @@ func (ctl *IMController) GetHistoryMessages(c *gin.Context) {
 	utils.ResponseOK(c, result)
 }
 
+// SetDoNotDisturb 设置/取消会话消息免打扰
+// PUT /api/v1/im/conversations/:id/dnd
+func (ctl *IMController) SetDoNotDisturb(c *gin.Context) {
+	ctx := c.Request.Context()
+	userID, ok := middleware.GetCurrentUserID(c)
+	if !ok {
+		utils.ResponseUnauthorized(c, "无法获取当前用户信息")
+		return
+	}
+
+	convID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.ResponseBadRequest(c, "会话 ID 格式错误")
+		return
+	}
+
+	var req dto.SetDoNotDisturbRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ResponseBadRequest(c, "请求参数错误: "+err.Error())
+		return
+	}
+
+	if err := ctl.imService.SetDoNotDisturb(ctx, userID, convID, req.IsDoNotDisturb); err != nil {
+		ctl.handleError(c, err, "设置免打扰失败")
+		return
+	}
+	utils.ResponseOK(c, nil)
+}
+
 // PinConversation 置顶/取消置顶会话
 // PUT /api/v1/im/conversations/:id/pin
 func (ctl *IMController) PinConversation(c *gin.Context) {

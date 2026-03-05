@@ -40,6 +40,7 @@ export default {
       chatStore.initWsListeners()
       contactStore.initWsListeners()
       groupStore.initWsListeners()
+      contactStore.fetchPendingRequests().catch(() => {})
     }
   }
 }

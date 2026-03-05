@@ -113,6 +113,7 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import { useContactStore } from '@/store/contact'
 import { useWebSocketStore } from '@/store/websocket'
 import { useUserStore } from '@/store/user'
@@ -134,20 +135,31 @@ const filteredFriends = computed(() => {
   )
 })
 
+const refreshData = async () => {
+  if (!userStore.isLoggedIn) return
+  try {
+    await Promise.all([
+      contactStore.fetchFriends(),
+      contactStore.fetchPendingRequests()
+    ])
+  } catch (e) {
+    console.error('获取联系人数据失败', e)
+  }
+}
+
 onMounted(async () => {
   if (userStore.isLoggedIn) {
     wsStore.connect()
     contactStore.initWsListeners()
-    try {
-      await Promise.all([
-        contactStore.fetchFriends(),
-        contactStore.fetchPendingRequests()
-      ])
-    } catch (e) {
-      console.error('获取联系人数据失败', e)
-    }
+    await refreshData()
   }
   loading.value = false
+})
+
+onShow(() => {
+  if (!loading.value) {
+    refreshData()
+  }
 })
 
 const goToSearch = () => uni.navigateTo({ url: '/pages/contact/search' })
