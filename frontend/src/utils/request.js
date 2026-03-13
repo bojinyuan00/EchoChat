@@ -13,8 +13,9 @@
 import { getToken, removeToken } from './storage'
 
 // 基础 URL 配置，根据环境自动切换
+// 开发环境使用 window.location.hostname 动态获取主机名，支持局域网 IP 访问
 const BASE_URL = process.env.NODE_ENV === 'development'
-  ? 'http://localhost:8085'
+  ? `http://${window.location.hostname}:8085`
   : '' // 生产环境由 Nginx 反向代理，使用相对路径
 
 // 请求超时时间（毫秒）

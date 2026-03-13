@@ -5,4 +5,7 @@ export default defineConfig({
   plugins: [
     uni(),
   ],
+  server: {
+    host: '0.0.0.0',
+  },
 })
