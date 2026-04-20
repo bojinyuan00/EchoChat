@@ -1,55 +1,85 @@
 /**
- * 文件上传模块 API
+ * 文件上传 API 封装
+ * 提供通用上传、图片上传（含缩略图）、语音上传接口
  *
- * 对应后端路由：POST /api/v1/upload
- * 使用 uni.uploadFile 上传文件到 MinIO
+ * BASE_URL 复用 @/utils/request 中的统一配置，保证与业务接口一致
+ * （开发环境：http://{hostname}:8085；生产环境：相对路径由 Nginx 反代）
  */
 
+import { useUserStore } from '@/store/user'
 import { BASE_URL } from '@/utils/request'
-import { getToken } from '@/utils/storage'
 
 /**
- * 上传文件
- * @param {string} filePath - 本地文件路径（如从 uni.chooseImage 获取）
- * @returns {Promise<Object>} 返回 { url: '...' }
+ * 通用文件上传（最大 50MB）
+ * @param {string} filePath 本地文件临时路径
+ * @param {string} [fileName] 文件名
+ * @returns {Promise<{ url, file_name, size }>}
  */
-const uploadFile = (filePath) => {
+export function uploadFile(filePath, fileName) {
+  return _doUpload('/api/v1/upload', filePath, fileName)
+}
+
+/**
+ * 图片上传（自动生成缩略图，最大 20MB）
+ * @param {string} filePath 本地图片临时路径
+ * @param {string} [fileName] 文件名
+ * @returns {Promise<{ url, thumbnail_url, file_name, size, width, height, mime_type }>}
+ */
+export function uploadImage(filePath, fileName) {
+  return _doUpload('/api/v1/upload/image', filePath, fileName)
+}
+
+/**
+ * 语音上传（最大 5MB）
+ * @param {string} filePath 本地语音文件临时路径
+ * @param {number} duration 语音时长（秒）
+ * @param {string} [fileName] 文件名
+ * @returns {Promise<{ url, file_name, size, duration, mime_type }>}
+ */
+export function uploadVoice(filePath, duration, fileName) {
+  return _doUpload('/api/v1/upload/voice', filePath, fileName, { duration: String(duration) })
+}
+
+/**
+ * 内部上传方法
+ */
+function _doUpload(apiPath, filePath, fileName, extraFormData = {}) {
+  const userStore = useUserStore()
+  const token = userStore.token
+
   return new Promise((resolve, reject) => {
-    const token = getToken()
     uni.uploadFile({
-      url: `${BASE_URL}/api/v1/upload`,
+      url: `${BASE_URL}${apiPath}`,
       filePath,
       name: 'file',
+      formData: {
+        ...extraFormData,
+        ...(fileName ? { file_name: fileName } : {})
+      },
       header: {
         Authorization: token ? `Bearer ${token}` : ''
       },
       success: (res) => {
-        if (res.statusCode === 200) {
-          try {
-            const data = JSON.parse(res.data)
-            if (data.code === 0) {
-              resolve(data)
-            } else {
-              uni.showToast({ title: data.message || '上传失败', icon: 'none' })
-              reject(data)
-            }
-          } catch {
-            uni.showToast({ title: '响应解析失败', icon: 'none' })
-            reject({ code: -1, message: '响应解析失败' })
+        try {
+          const result = typeof res.data === 'string' ? JSON.parse(res.data) : res.data
+          if (result.code === 0) {
+            resolve(result.data)
+          } else {
+            reject(new Error(result.message || '上传失败'))
           }
-        } else {
-          uni.showToast({ title: '上传失败', icon: 'none' })
-          reject({ code: res.statusCode, message: '上传失败' })
+        } catch (e) {
+          reject(new Error('解析上传结果失败'))
         }
       },
       fail: (err) => {
-        uni.showToast({ title: '网络异常', icon: 'none' })
-        reject({ code: -1, message: err.errMsg || '网络异常' })
+        reject(new Error(err.errMsg || '网络错误'))
       }
     })
   })
 }
 
 export default {
-  uploadFile
+  uploadFile,
+  uploadImage,
+  uploadVoice
 }

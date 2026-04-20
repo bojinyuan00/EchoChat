@@ -29,6 +29,7 @@
 | [admin/online.md](admin/online.md) | 在线监控 | ✅ Phase 2a | 在线用户列表、在线用户计数 |
 | [admin/contact.md](admin/contact.md) | 好友关系管理 | ✅ Phase 2a | 好友关系列表（分页）、管理员解除好友关系 |
 | [admin/group.md](admin/group.md) | 群聊管理 | ✅ Phase 2c | 群列表/详情、管理员解散群聊 |
+| [admin/message.md](admin/message.md) | 消息管理 | ✅ Phase 2d | 消息列表/详情/撤回/删除、消息统计（5 个 API） |
 | [admin/meeting.md](admin/meeting.md) | 会议管理 | 📋 后续 | 会议列表/详情、强制结束、会议统计 |
 | [admin/system.md](admin/system.md) | 系统管理 | 📋 待定 | 仪表盘数据、操作日志、系统配置 |
 
@@ -206,6 +207,7 @@ docs/api/
 │   ├── online.md          # 在线监控                     ✅ Phase 2a
 │   ├── contact.md         # 好友关系管理                  ✅ Phase 2a
 │   ├── group.md           # 群聊管理（3 个 API）          ✅ Phase 2c
+│   ├── message.md         # 消息管理（5 个 API）          ✅ Phase 2d
 │   ├── meeting.md         # 会议管理                     📋 后续
 │   └── system.md          # 系统管理                     📋 待定
 └── websocket.md           # WebSocket 全量事件协议       ✅ Phase 2a/2b/2c

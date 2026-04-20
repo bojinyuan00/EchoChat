@@ -1,0 +1,22 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: E
+      - heading "EchoChat 管理后台" [level=1] [ref=e7]
+      - paragraph [ref=e8]: 管理员专用，请使用管理员账号登录
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: "*账号"
+        - generic [ref=e14]:
+          - img [ref=e17]
+          - textbox "*账号" [ref=e19]:
+            - /placeholder: 请输入管理员账号
+      - generic [ref=e20]:
+        - generic [ref=e21]: "*密码"
+        - generic [ref=e24]:
+          - img [ref=e27]
+          - textbox "*密码" [ref=e30]:
+            - /placeholder: 请输入密码
+      - button "登 录" [ref=e33] [cursor=pointer]:
+        - generic [ref=e34]: 登 录
+  - paragraph [ref=e36]: EchoChat © 2026 · 实时音视频通讯平台

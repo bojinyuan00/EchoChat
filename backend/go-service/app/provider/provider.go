@@ -35,6 +35,7 @@ type App struct {
 	OnlineController        *adminController.OnlineController           // 管理端在线监控控制器
 	ContactManageController *adminController.ContactManageController    // 管理端好友关系管理控制器
 	GroupManageController   *adminController.GroupManageController      // 管理端群组管理控制器
+	MessageManageController *adminController.MessageManageController    // 管理端消息管理控制器
 	WSHandler             *wsApp.Handler                              // WebSocket 连接处理器
 	Hub                   *ws.Hub                                     // WebSocket Hub 连接管理
 	PubSub                *ws.PubSub                                  // Redis Pub/Sub 消息路由
@@ -60,6 +61,7 @@ func NewApp(
 	onlineCtrl *adminController.OnlineController,
 	contactManageCtrl *adminController.ContactManageController,
 	groupManageCtrl *adminController.GroupManageController,
+	msgManageCtrl *adminController.MessageManageController,
 	wsHandler *wsApp.Handler,
 	hub *ws.Hub,
 	pubsub *ws.PubSub,
@@ -86,6 +88,7 @@ func NewApp(
 		OnlineController:        onlineCtrl,
 		ContactManageController: contactManageCtrl,
 		GroupManageController:   groupManageCtrl,
+		MessageManageController: msgManageCtrl,
 		WSHandler:               wsHandler,
 		Hub:                     hub,
 		PubSub:                  pubsub,

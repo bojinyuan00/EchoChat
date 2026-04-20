@@ -16,6 +16,7 @@ func RegisterRoutes(
 	onlineCtrl *controller.OnlineController,
 	contactManageCtrl *controller.ContactManageController,
 	groupManageCtrl *controller.GroupManageController,
+	msgManageCtrl *controller.MessageManageController,
 	jwtAuth gin.HandlerFunc,
 ) {
 	// 管理端路由组：JWT 认证 + admin/super_admin 角色检查
@@ -44,5 +45,12 @@ func RegisterRoutes(
 		adminGroup.GET("/groups", groupManageCtrl.GetGroupList)
 		adminGroup.GET("/groups/:id", groupManageCtrl.GetGroupDetail)
 		adminGroup.DELETE("/groups/:id", groupManageCtrl.DissolveGroup)
+
+		// 消息管理
+		adminGroup.GET("/messages/stats", msgManageCtrl.GetMessageStats)
+		adminGroup.GET("/messages", msgManageCtrl.GetMessageList)
+		adminGroup.GET("/messages/:id", msgManageCtrl.GetMessageDetail)
+		adminGroup.DELETE("/messages/:id", msgManageCtrl.DeleteMessage)
+		adminGroup.PUT("/messages/:id/recall", msgManageCtrl.RecallMessage)
 	}
 }

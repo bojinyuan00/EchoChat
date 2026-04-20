@@ -1,0 +1,127 @@
+- generic [ref=e162]:
+  - complementary [ref=e163]:
+    - generic [ref=e164]:
+      - generic [ref=e165]: E
+      - generic [ref=e166]: EchoChat
+    - menubar [ref=e167]:
+      - menuitem "仪表盘" [ref=e168] [cursor=pointer]:
+        - img [ref=e170]
+        - text: 仪表盘
+      - menuitem "用户管理" [ref=e172]:
+        - generic [ref=e173] [cursor=pointer]:
+          - img [ref=e175]
+          - generic [ref=e177]: 用户管理
+          - img [ref=e179]
+      - menuitem "联系人管理" [ref=e181]:
+        - generic [ref=e182] [cursor=pointer]:
+          - img [ref=e184]
+          - generic [ref=e187]: 联系人管理
+          - img [ref=e189]
+      - menuitem "群组管理" [ref=e191]:
+        - generic [ref=e192] [cursor=pointer]:
+          - img [ref=e194]
+          - generic [ref=e197]: 群组管理
+          - img [ref=e199]
+      - menuitem "消息管理" [expanded] [ref=e201]:
+        - generic [ref=e202] [cursor=pointer]:
+          - img [ref=e204]
+          - generic [ref=e206]: 消息管理
+          - img [ref=e208]
+        - menu:
+          - menuitem "消息列表" [ref=e282] [cursor=pointer]
+          - menuitem "消息统计" [ref=e283] [cursor=pointer]
+      - menuitem "在线监控" [ref=e210] [cursor=pointer]:
+        - img [ref=e212]
+        - text: 在线监控
+  - generic [ref=e214]:
+    - generic [ref=e215]:
+      - img [ref=e218] [cursor=pointer]
+      - button "管 admin_test" [ref=e222] [cursor=pointer]:
+        - generic [ref=e223]: 管
+        - generic [ref=e224]: admin_test
+        - img [ref=e226]
+    - main [ref=e228]:
+      - generic [ref=e284]:
+        - heading "消息管理" [level=2] [ref=e286]
+        - generic [ref=e289]:
+          - generic [ref=e290]:
+            - generic [ref=e291]: 关键词
+            - generic [ref=e294]:
+              - img [ref=e297]
+              - textbox "关键词" [ref=e299]:
+                - /placeholder: 搜索消息内容
+          - generic [ref=e300]:
+            - generic [ref=e301]: 类型
+            - generic [ref=e304] [cursor=pointer]:
+              - generic:
+                - combobox "类型" [ref=e306]
+                - generic [ref=e307]: 全部
+              - img [ref=e310]
+          - generic [ref=e312]:
+            - generic [ref=e313]: 状态
+            - generic [ref=e316] [cursor=pointer]:
+              - generic:
+                - combobox "状态" [ref=e318]
+                - generic [ref=e319]: 全部
+              - img [ref=e322]
+          - generic [ref=e324]:
+            - generic [ref=e325]: 发送者ID
+            - spinbutton "发送者ID" [ref=e329]
+          - generic [ref=e330]:
+            - generic [ref=e331]: 时间范围
+            - generic [ref=e333]:
+              - img [ref=e335]
+              - combobox "时间范围" [ref=e337]
+              - generic [ref=e338]: 至
+              - combobox "结束日期" [ref=e339]
+          - generic [ref=e341]:
+            - button "搜索" [ref=e342] [cursor=pointer]:
+              - generic [ref=e343]: 搜索
+            - button "重置" [ref=e344] [cursor=pointer]:
+              - generic [ref=e345]: 重置
+        - generic [ref=e347]:
+          - generic [ref=e348]:
+            - generic [ref=e349]:
+              - table [ref=e351]:
+                - rowgroup [ref=e361]:
+                  - row "ID 发送者 类型 内容 状态 会话ID 发送时间 操作" [ref=e362]:
+                    - columnheader "ID" [ref=e363]:
+                      - generic [ref=e364]: ID
+                    - columnheader "发送者" [ref=e365]:
+                      - generic [ref=e366]: 发送者
+                    - columnheader "类型" [ref=e367]:
+                      - generic [ref=e368]: 类型
+                    - columnheader "内容" [ref=e369]:
+                      - generic [ref=e370]: 内容
+                    - columnheader "状态" [ref=e371]:
+                      - generic [ref=e372]: 状态
+                    - columnheader "会话ID" [ref=e373]:
+                      - generic [ref=e374]: 会话ID
+                    - columnheader "发送时间" [ref=e375]:
+                      - generic [ref=e376]: 发送时间
+                    - columnheader "操作" [ref=e377]:
+                      - generic [ref=e378]: 操作
+              - generic [ref=e382]:
+                - table:
+                  - rowgroup
+                - generic [ref=e384]: 暂无数据
+            - img [ref=e388]
+          - generic [ref=e391]:
+            - generic [ref=e392]: 共 0 条
+            - generic [ref=e395] [cursor=pointer]:
+              - generic:
+                - combobox [ref=e397]
+                - generic [ref=e398]: 20条/页
+              - img [ref=e401]
+            - button "上一页" [disabled] [ref=e403]:
+              - generic:
+                - img
+            - list [ref=e404]:
+              - listitem "第 1 页" [ref=e405]: "1"
+            - button "下一页" [disabled] [ref=e406]:
+              - generic:
+                - img
+            - generic [ref=e407]:
+              - generic [ref=e408]: 前往
+              - spinbutton "页" [ref=e411]: "1"
+              - generic [ref=e412]: 页

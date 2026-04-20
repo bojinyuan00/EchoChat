@@ -68,11 +68,14 @@
               <text class="sender-name">{{ getMemberName(msg.sender_id) }}</text>
               <view
                 class="bubble bubble-other"
-                :class="{ 'bubble-recalled': msg.status === 2 }"
+                :class="{ 'bubble-recalled': msg.status === 2, 'bubble-media': msg.type === 2 }"
                 @longpress="onMsgLongPress(msg)"
               >
-                <text v-if="msg.status === 2" class="recalled-text">消息已撤回</text>
-                <text v-else class="msg-text">{{ msg.content }}</text>
+                <MsgText v-if="msg.type === 1" :msg="msg" :isSelf="false" />
+                <MsgImage v-else-if="msg.type === 2" :msg="msg" :isSelf="false" />
+                <MsgVoice v-else-if="msg.type === 3" :msg="msg" :isSelf="false" />
+                <MsgFile v-else-if="msg.type === 5" :msg="msg" :isSelf="false" />
+                <MsgText v-else :msg="msg" :isSelf="false" />
               </view>
             </view>
           </template>
@@ -89,11 +92,14 @@
                 </view>
                 <view
                   class="bubble bubble-self"
-                  :class="{ 'bubble-recalled': msg.status === 2 }"
+                  :class="{ 'bubble-recalled': msg.status === 2, 'bubble-media': msg.type === 2 }"
                   @longpress="onMsgLongPress(msg)"
                 >
-                  <text v-if="msg.status === 2" class="recalled-text">消息已撤回</text>
-                  <text v-else class="msg-text msg-text-self">{{ msg.content }}</text>
+                  <MsgText v-if="msg.type === 1" :msg="msg" :isSelf="true" />
+                  <MsgImage v-else-if="msg.type === 2" :msg="msg" :isSelf="true" />
+                  <MsgVoice v-else-if="msg.type === 3" :msg="msg" :isSelf="true" />
+                  <MsgFile v-else-if="msg.type === 5" :msg="msg" :isSelf="true" />
+                  <MsgText v-else :msg="msg" :isSelf="true" />
                 </view>
                 <view class="avatar-wrap">
                   <image v-if="selfAvatar" class="avatar-img" :src="selfAvatar" mode="aspectFill" />
@@ -162,22 +168,38 @@
       <text class="muted-tip">{{ isAllMuted ? '当前群聊已开启全体禁言' : '你已被禁言，无法发送消息' }}</text>
     </view>
     <view v-else class="input-bar">
-      <view class="input-wrap">
-        <input
-          class="msg-input"
-          v-model="inputText"
-          placeholder="输入消息..."
-          placeholder-style="color: #94A3B8"
-          confirm-type="send"
-          @confirm="onSend"
-          @input="onInputChange"
-          :adjust-position="true"
-        />
+      <view class="voice-toggle-btn" @tap="toggleVoiceMode">
+        <uni-icons :type="voiceMode ? 'compose' : 'mic'" :size="22" color="#64748B" />
       </view>
-      <view class="send-btn" :class="{ 'send-btn-active': inputText.trim() }" @tap="onSend">
+      <template v-if="voiceMode">
+        <VoiceRecorder @recorded="onVoiceRecorded" />
+      </template>
+      <template v-else>
+        <view class="input-wrap">
+          <input
+            class="msg-input"
+            v-model="inputText"
+            placeholder="输入消息..."
+            placeholder-style="color: #94A3B8"
+            confirm-type="send"
+            @confirm="onSend"
+            @input="onInputChange"
+            :adjust-position="true"
+          />
+        </view>
+      </template>
+      <view v-if="!voiceMode && inputText.trim()" class="send-btn send-btn-active" @tap="onSend">
         <uni-icons type="paperplane" size="22" color="#FFFFFF" />
       </view>
+      <view v-else class="more-btn" @tap="toggleMorePanel">
+        <uni-icons type="plusempty" :size="22" color="#64748B" />
+      </view>
     </view>
+    <MorePanel
+      :visible="showMorePanel"
+      @choose-image="onChooseImage"
+      @choose-file="onChooseFile"
+    />
   </view>
 </template>
 
@@ -188,9 +210,17 @@ import { useChatStore } from '@/store/chat'
 import { useGroupStore } from '@/store/group'
 import { useUserStore } from '@/store/user'
 import { GROUP_ROLE } from '@/constants/group'
+import { uploadImage, uploadFile, uploadVoice } from '@/api/file'
+import MsgText from '@/components/msg/MsgText.vue'
+import MsgImage from '@/components/msg/MsgImage.vue'
+import MsgVoice from '@/components/msg/MsgVoice.vue'
+import MsgFile from '@/components/msg/MsgFile.vue'
+import MorePanel from '@/components/chat/MorePanel.vue'
+import VoiceRecorder from '@/components/chat/VoiceRecorder.vue'
 
 export default {
   name: 'GroupConversation',
+  components: { MsgText, MsgImage, MsgVoice, MsgFile, MorePanel, VoiceRecorder },
   setup() {
     const chatStore = useChatStore()
     const groupStore = useGroupStore()
@@ -205,6 +235,8 @@ export default {
     const loadingMore = ref(false)
     const showAtPicker = ref(false)
     const atUserIds = ref([])
+    const voiceMode = ref(false)
+    const showMorePanel = ref(false)
 
     const messages = computed(() => chatStore.currentMessages)
     const hasMore = computed(() => chatStore.hasMoreMap[conversationId.value] !== false)
@@ -446,6 +478,136 @@ export default {
       })
     }
 
+    // ==================== 富媒体消息 ====================
+
+    const toggleVoiceMode = () => {
+      voiceMode.value = !voiceMode.value
+      showMorePanel.value = false
+    }
+
+    const toggleMorePanel = () => {
+      showMorePanel.value = !showMorePanel.value
+      voiceMode.value = false
+    }
+
+    const onChooseImage = async () => {
+      showMorePanel.value = false
+      uni.chooseImage({
+        count: 9,
+        sizeType: ['compressed'],
+        sourceType: ['album', 'camera'],
+        success: async (res) => {
+          const images = []
+          for (const path of res.tempFilePaths) {
+            try {
+              uni.showLoading({ title: '上传中...' })
+              const result = await uploadImage(path)
+              images.push({
+                url: result.url,
+                thumbnail_url: result.thumbnail_url,
+                width: result.width,
+                height: result.height,
+                size: result.size,
+                file_name: result.file_name
+              })
+            } catch (e) {
+              uni.showToast({ title: e?.message || '图片上传失败', icon: 'none' })
+            } finally {
+              uni.hideLoading()
+            }
+          }
+          if (images.length > 0) {
+            chatStore.sendImageMessage({ conversationId: conversationId.value, images })
+            scrollToBottom()
+          }
+        }
+      })
+    }
+
+    const onChooseFile = async () => {
+      showMorePanel.value = false
+      // #ifdef H5
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.onchange = async (e) => {
+        const file = e.target.files[0]
+        if (!file) return
+        if (file.size > 50 * 1024 * 1024) {
+          uni.showToast({ title: '文件大小不能超过 50MB', icon: 'none' })
+          return
+        }
+        try {
+          uni.showLoading({ title: '上传中...' })
+          const result = await uploadFile(URL.createObjectURL(file), file.name)
+          chatStore.sendFileMessage({
+            conversationId: conversationId.value,
+            file: {
+              url: result.url,
+              // 优先使用前端原始文件名（H5 下 blob URL 会丢失原名）
+              file_name: file.name || result.file_name,
+              size: result.size,
+              mime_type: file.type || 'application/octet-stream',
+              ext: '.' + (file.name.split('.').pop() || '')
+            }
+          })
+          scrollToBottom()
+        } catch (e) {
+          uni.showToast({ title: e?.message || '文件上传失败', icon: 'none' })
+        } finally {
+          uni.hideLoading()
+        }
+      }
+      input.click()
+      // #endif
+      // #ifndef H5
+      uni.chooseFile({
+        count: 1,
+        success: async (res) => {
+          const file = res.tempFiles[0]
+          if (file.size > 50 * 1024 * 1024) {
+            uni.showToast({ title: '文件大小不能超过 50MB', icon: 'none' })
+            return
+          }
+          try {
+            uni.showLoading({ title: '上传中...' })
+            const result = await uploadFile(file.path, file.name)
+            chatStore.sendFileMessage({
+              conversationId: conversationId.value,
+              file: {
+                url: result.url,
+                file_name: file.name || result.file_name,
+                size: result.size,
+                mime_type: file.type || 'application/octet-stream',
+                ext: '.' + (file.name.split('.').pop() || '')
+              }
+            })
+            scrollToBottom()
+          } catch (e) {
+            uni.showToast({ title: e?.message || '文件上传失败', icon: 'none' })
+          } finally {
+            uni.hideLoading()
+          }
+        }
+      })
+      // #endif
+    }
+
+    const onVoiceRecorded = async ({ tempFilePath, duration }) => {
+      try {
+        uni.showLoading({ title: '发送中...' })
+        const result = await uploadVoice(tempFilePath, duration)
+        chatStore.sendVoiceMessage({
+          conversationId: conversationId.value,
+          voice: { url: result.url, duration: result.duration || duration, size: result.size, file_name: result.file_name }
+        })
+        scrollToBottom()
+      } catch (e) {
+        uni.showToast({ title: e?.message || '语音发送失败', icon: 'none' })
+      } finally {
+        uni.hideLoading()
+      }
+    }
+
     // ==================== 监听新消息到达后标记已读 ====================
 
     watch(
@@ -464,7 +626,10 @@ export default {
       isSelf, getMemberName, getMemberAvatar, getReadLabel,
       onSend, onInputChange, onSelectAtMember,
       onLoadMore, onMsgLongPress, onResend,
-      goBack, goToSettings, goToReadDetail
+      goBack, goToSettings, goToReadDetail,
+      voiceMode, showMorePanel,
+      toggleVoiceMode, toggleMorePanel,
+      onChooseImage, onChooseFile, onVoiceRecorded,
     }
   }
 }
@@ -740,5 +905,32 @@ export default {
   font-size: 26rpx;
   color: #94A3B8;
   text-align: center;
+}
+
+/* ===== 语音/更多 ===== */
+.voice-toggle-btn {
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 12rpx;
+  border-radius: 50%;
+  background-color: #F1F5F9;
+}
+.voice-toggle-btn:active { background-color: #E2E8F0; }
+.more-btn {
+  min-width: 72rpx;
+  min-height: 72rpx;
+  margin-left: 16rpx;
+  border-radius: 50%;
+  background-color: #F1F5F9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.more-btn:active { background-color: #E2E8F0; }
+.bubble-media {
+  max-width: 420rpx;
 }
 </style>

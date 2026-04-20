@@ -83,19 +83,68 @@ EchoChat/
 - PostgreSQL 17（通过 Docker 自动启动）
 - Redis 7（通过 Docker 自动启动）
 
-### 方式一：Docker Compose 一键启动（推荐）
+### 方式一：一键脚本（推荐）
+
+项目在 `scripts/` 目录遵循「**首次初始化 / 日常启停**」职责分离模式，参考 Rails / Django / Next.js 社区通用做法：
+
+| 脚本 | 用途 | 使用频率 |
+|---|---|---|
+| `scripts/dev-setup.sh` | **首次环境初始化**：检查 Docker、拉起 Postgres/Redis/MinIO、重试式健康检查 | 仅首次 clone 或重建卷时 |
+| `scripts/start.sh` | **日常启动**：秒级拉起全部服务（容器 + 应用层） | 每天多次 |
+| `scripts/stop.sh` | **日常停止**：优雅终止应用层，默认保留容器 | 每天多次 |
+| `scripts/status.sh` | **状态查看**：端口 / PID / 容器一览 | 排障随时 |
+
+#### 首次使用（仅一次）
+
+```bash
+# 首次 clone 后执行一次，完成 Docker 中间件初始化 + 健康检查
+./scripts/dev-setup.sh
+```
+
+#### 日常启停
+
+```bash
+# 启动全部服务
+./scripts/start.sh
+
+# 查看服务状态（端口/PID/容器）
+./scripts/status.sh
+
+# 停止应用层（保留 Docker 中间件）
+./scripts/stop.sh
+
+# 停止全部（含 Docker 中间件）
+./scripts/stop.sh --all
+
+# 只启停单项（可选 docker|backend|frontend|admin）
+./scripts/start.sh backend
+./scripts/stop.sh frontend
+```
+
+后台进程的 PID 与日志默认写入 `.run/`（已加入 gitignore），排障时可直接查看 `.run/logs/*.log`。
+
+启动后各服务地址：
+
+| 服务 | 端口 | 说明 |
+|---|---|---|
+| 前台用户端 (H5) | 5173 | `http://localhost:5173` |
+| 后台管理端 | 3100 | `http://localhost:3100` |
+| Go 后端 API | 8085 | `http://localhost:8085`（`/health` 健康检查） |
+| PostgreSQL | 5432 | Docker 容器 `echochat-postgres` |
+| Redis | 6379 | Docker 容器 `echochat-redis` |
+| MinIO API | 9000 | 对象存储，S3 兼容 |
+| MinIO Console | 9001 | `http://localhost:9001`（echochat / echochat123456） |
+
+### 方式二：Docker Compose 全量启动
 
 ```bash
 cd deploy
 docker compose -f docker-compose.dev.yml up -d
 ```
 
-启动后服务地址：
-- Go 后端 API：`http://localhost:8085`
-- PostgreSQL：`localhost:5432`
-- Redis：`localhost:6379`
+> 注意：此方式下 Go 后端、前台、管理端需按下方「方式三」各自启动，或在 compose 中启用 `go-service` 服务。
 
-### 方式二：分步手动启动（开发调试）
+### 方式三：分步手动启动（开发调试）
 
 **1. 启动基础设施（数据库 + 缓存）**
 

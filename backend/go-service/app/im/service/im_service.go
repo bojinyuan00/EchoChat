@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -82,13 +83,19 @@ func (s *IMService) SendMessage(ctx context.Context, senderID int64, req *dto.Se
 		zap.Int64("conversation_id", req.ConversationID),
 		zap.Int64("target_user_id", req.TargetUserID))
 
-	if req.Content == "" {
-		return nil, ErrEmptyContent
-	}
 	if req.Type == 0 {
 		req.Type = constants.MessageTypeText
 	}
-	if req.Type != constants.MessageTypeText {
+	switch req.Type {
+	case constants.MessageTypeText:
+		if req.Content == "" {
+			return nil, ErrEmptyContent
+		}
+	case constants.MessageTypeImage, constants.MessageTypeVoice, constants.MessageTypeFile:
+		if req.Extra == "" {
+			return nil, ErrEmptyContent
+		}
+	default:
 		return nil, ErrInvalidMsgType
 	}
 
@@ -171,12 +178,16 @@ func (s *IMService) writeAndPushPrivateMessage(ctx context.Context, senderID, co
 		Status:         constants.MessageStatusNormal,
 		ClientMsgID:    req.ClientMsgID,
 	}
+	if req.Extra != "" {
+		msg.Extra = &req.Extra
+	}
 	if err := s.msgDAO.Create(ctx, msg); err != nil {
 		return nil, err
 	}
 
 	now := time.Now()
-	if err := s.convDAO.UpdateLastMessage(ctx, convID, msg.ID, truncateContent(req.Content, 100), senderID, now); err != nil {
+	preview := generateLastMsgPreview(req.Type, req.Content, msg.Extra)
+	if err := s.convDAO.UpdateLastMessage(ctx, convID, msg.ID, preview, senderID, now); err != nil {
 		logs.Error(ctx, funcName, "更新最后消息失败", zap.Error(err))
 	}
 
@@ -244,6 +255,9 @@ func (s *IMService) sendGroupMessage(ctx context.Context, senderID int64, req *d
 		Status:         constants.MessageStatusNormal,
 		ClientMsgID:    req.ClientMsgID,
 	}
+	if req.Extra != "" {
+		msg.Extra = &req.Extra
+	}
 	if len(req.AtUserIDs) > 0 {
 		msg.AtUserIDs = req.AtUserIDs
 	}
@@ -252,7 +266,8 @@ func (s *IMService) sendGroupMessage(ctx context.Context, senderID int64, req *d
 	}
 
 	now := time.Now()
-	if err := s.convDAO.UpdateLastMessage(ctx, convID, msg.ID, truncateContent(req.Content, 100), senderID, now); err != nil {
+	preview := generateLastMsgPreview(req.Type, req.Content, msg.Extra)
+	if err := s.convDAO.UpdateLastMessage(ctx, convID, msg.ID, preview, senderID, now); err != nil {
 		logs.Error(ctx, funcName, "更新最后消息失败", zap.Error(err))
 	}
 
@@ -944,6 +959,7 @@ func (s *IMService) toMessageDTO(m *model.Message) *dto.MessageDTO {
 		SenderID:       m.SenderID,
 		Type:           m.Type,
 		Content:        m.Content,
+		Extra:          m.Extra,
 		Status:         m.Status,
 		ClientMsgID:    m.ClientMsgID,
 		CreatedAt:      m.CreatedAt.Format("2006-01-02 15:04:05"),
@@ -965,6 +981,9 @@ func (s *IMService) buildMessagePushData(ctx context.Context, msg *model.Message
 		"client_msg_id":   msg.ClientMsgID,
 		"created_at":      msg.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
+	if msg.Extra != nil && *msg.Extra != "" {
+		pushData["extra"] = *msg.Extra
+	}
 	if senderUsers, sErr := s.userInfoGetter.GetUsersByIDs(ctx, []int64{senderID}); sErr == nil && len(senderUsers) > 0 {
 		pushData["sender_name"] = senderUsers[0].Nickname
 		pushData["sender_avatar"] = senderUsers[0].Avatar
@@ -976,6 +995,60 @@ func (s *IMService) buildMessagePushData(ctx context.Context, msg *model.Message
 type userBrief struct {
 	Nickname string
 	Avatar   string
+}
+
+// generateLastMsgPreview 根据消息类型生成会话列表预览文案
+func generateLastMsgPreview(msgType int, content string, extra *string) string {
+	switch msgType {
+	case constants.MessageTypeImage:
+		count := 1
+		if extra != nil && *extra != "" {
+			var parsed struct {
+				Images []json.RawMessage `json:"images"`
+			}
+			if json.Unmarshal([]byte(*extra), &parsed) == nil && len(parsed.Images) > 1 {
+				count = len(parsed.Images)
+			}
+		}
+		if count > 1 {
+			return fmt.Sprintf("[图片x%d]", count)
+		}
+		return "[图片]"
+	case constants.MessageTypeVoice:
+		duration := 0
+		if extra != nil && *extra != "" {
+			var parsed struct {
+				Voice struct {
+					Duration int `json:"duration"`
+				} `json:"voice"`
+			}
+			if json.Unmarshal([]byte(*extra), &parsed) == nil {
+				duration = parsed.Voice.Duration
+			}
+		}
+		if duration > 0 {
+			return fmt.Sprintf("[语音 %d\"]", duration)
+		}
+		return "[语音]"
+	case constants.MessageTypeFile:
+		fileName := ""
+		if extra != nil && *extra != "" {
+			var parsed struct {
+				File struct {
+					FileName string `json:"file_name"`
+				} `json:"file"`
+			}
+			if json.Unmarshal([]byte(*extra), &parsed) == nil {
+				fileName = parsed.File.FileName
+			}
+		}
+		if fileName != "" {
+			return fmt.Sprintf("[文件] %s", fileName)
+		}
+		return "[文件]"
+	default:
+		return truncateContent(content, 100)
+	}
 }
 
 // truncateContent 截断消息内容用于预览

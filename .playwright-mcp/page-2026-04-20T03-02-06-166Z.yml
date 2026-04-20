@@ -1,0 +1,706 @@
+- generic [ref=e47]:
+  - complementary [ref=e48]:
+    - generic [ref=e49]:
+      - generic [ref=e50]: E
+      - generic [ref=e51]: EchoChat
+    - menubar [ref=e52]:
+      - menuitem "仪表盘" [ref=e53] [cursor=pointer]:
+        - img [ref=e55]
+        - text: 仪表盘
+      - menuitem "用户管理" [ref=e57]:
+        - generic [ref=e58] [cursor=pointer]:
+          - img [ref=e60]
+          - generic [ref=e62]: 用户管理
+          - img [ref=e64]
+      - menuitem "联系人管理" [ref=e66]:
+        - generic [ref=e67] [cursor=pointer]:
+          - img [ref=e69]
+          - generic [ref=e72]: 联系人管理
+          - img [ref=e74]
+      - menuitem "群组管理" [ref=e76]:
+        - generic [ref=e77] [cursor=pointer]:
+          - img [ref=e79]
+          - generic [ref=e82]: 群组管理
+          - img [ref=e84]
+      - menuitem "消息管理" [expanded] [ref=e86]:
+        - generic [ref=e87] [cursor=pointer]:
+          - img [ref=e89]
+          - generic [ref=e91]: 消息管理
+          - img [ref=e93]
+        - menu [ref=e167]:
+          - menuitem "消息列表" [ref=e168] [cursor=pointer]
+          - menuitem "消息统计" [ref=e169] [cursor=pointer]
+      - menuitem "在线监控" [ref=e95] [cursor=pointer]:
+        - img [ref=e97]
+        - text: 在线监控
+  - generic [ref=e99]:
+    - generic [ref=e100]:
+      - img [ref=e103] [cursor=pointer]
+      - button "管 admin_test" [ref=e107] [cursor=pointer]:
+        - generic [ref=e108]: 管
+        - generic [ref=e109]: admin_test
+        - img [ref=e111]
+    - main [ref=e113]:
+      - generic [ref=e170]:
+        - heading "消息管理" [level=2] [ref=e172]
+        - generic [ref=e175]:
+          - generic [ref=e176]:
+            - generic [ref=e177]: 关键词
+            - generic [ref=e180]:
+              - img [ref=e183]
+              - textbox "关键词" [ref=e185]:
+                - /placeholder: 搜索消息内容
+          - generic [ref=e186]:
+            - generic [ref=e187]: 类型
+            - generic [ref=e190] [cursor=pointer]:
+              - generic:
+                - combobox "类型" [ref=e192]
+                - generic [ref=e193]: 全部
+              - img [ref=e196]
+          - generic [ref=e198]:
+            - generic [ref=e199]: 状态
+            - generic [ref=e202] [cursor=pointer]:
+              - generic:
+                - combobox "状态" [ref=e204]
+                - generic [ref=e205]: 全部
+              - img [ref=e208]
+          - generic [ref=e210]:
+            - generic [ref=e211]: 发送者ID
+            - spinbutton "发送者ID" [ref=e215]
+          - generic [ref=e216]:
+            - generic [ref=e217]: 时间范围
+            - generic [ref=e219]:
+              - img [ref=e221]
+              - combobox "时间范围" [ref=e223]
+              - generic [ref=e224]: 至
+              - combobox "结束日期" [ref=e225]
+          - generic [ref=e227]:
+            - button "搜索" [ref=e228] [cursor=pointer]:
+              - generic [ref=e229]: 搜索
+            - button "重置" [ref=e230] [cursor=pointer]:
+              - generic [ref=e231]: 重置
+        - generic [ref=e233]:
+          - generic [ref=e235]:
+            - table [ref=e237]:
+              - rowgroup [ref=e247]:
+                - row "ID 发送者 类型 内容 状态 会话ID 发送时间 操作" [ref=e248]:
+                  - columnheader "ID" [ref=e249]:
+                    - generic [ref=e250]: ID
+                  - columnheader "发送者" [ref=e251]:
+                    - generic [ref=e252]: 发送者
+                  - columnheader "类型" [ref=e253]:
+                    - generic [ref=e254]: 类型
+                  - columnheader "内容" [ref=e255]:
+                    - generic [ref=e256]: 内容
+                  - columnheader "状态" [ref=e257]:
+                    - generic [ref=e258]: 状态
+                  - columnheader "会话ID" [ref=e259]:
+                    - generic [ref=e260]: 会话ID
+                  - columnheader "发送时间" [ref=e261]:
+                    - generic [ref=e262]: 发送时间
+                  - columnheader "操作" [ref=e263]:
+                    - generic [ref=e264]: 操作
+            - table [ref=e269]:
+              - rowgroup [ref=e279]:
+                - 'row "150 新 新昵称 ID: 4 文件 [文件] 正常 9 2026-04-20 11:00:42 详情 撤回 删除" [ref=e280]':
+                  - cell "150" [ref=e281]:
+                    - generic [ref=e282]: "150"
+                  - 'cell "新 新昵称 ID: 4" [ref=e283]':
+                    - generic [ref=e285]:
+                      - generic [ref=e287]: 新
+                      - generic [ref=e288]:
+                        - generic [ref=e289]: 新昵称
+                        - generic [ref=e290]: "ID: 4"
+                  - cell "文件" [ref=e291]:
+                    - generic [ref=e294]: 文件
+                  - cell "[文件]" [ref=e295]:
+                    - generic [ref=e297]: "[文件]"
+                  - cell "正常" [ref=e298]:
+                    - generic [ref=e301]: 正常
+                  - cell "9" [ref=e302]:
+                    - generic [ref=e303]: "9"
+                  - cell "2026-04-20 11:00:42" [ref=e304]:
+                    - generic [ref=e305]: 2026-04-20 11:00:42
+                  - cell "详情 撤回 删除" [ref=e306]:
+                    - generic [ref=e307]:
+                      - button "详情" [ref=e308] [cursor=pointer]:
+                        - generic [ref=e309]: 详情
+                      - button "撤回" [ref=e310] [cursor=pointer]:
+                        - generic [ref=e311]: 撤回
+                      - button "删除" [ref=e312] [cursor=pointer]:
+                        - generic [ref=e313]: 删除
+                - 'row "149 新 新昵称 ID: 4 文件 [文件] 正常 9 2026-04-20 10:59:09 详情 撤回 删除" [ref=e314]':
+                  - cell "149" [ref=e315]:
+                    - generic [ref=e316]: "149"
+                  - 'cell "新 新昵称 ID: 4" [ref=e317]':
+                    - generic [ref=e319]:
+                      - generic [ref=e321]: 新
+                      - generic [ref=e322]:
+                        - generic [ref=e323]: 新昵称
+                        - generic [ref=e324]: "ID: 4"
+                  - cell "文件" [ref=e325]:
+                    - generic [ref=e328]: 文件
+                  - cell "[文件]" [ref=e329]:
+                    - generic [ref=e331]: "[文件]"
+                  - cell "正常" [ref=e332]:
+                    - generic [ref=e335]: 正常
+                  - cell "9" [ref=e336]:
+                    - generic [ref=e337]: "9"
+                  - cell "2026-04-20 10:59:09" [ref=e338]:
+                    - generic [ref=e339]: 2026-04-20 10:59:09
+                  - cell "详情 撤回 删除" [ref=e340]:
+                    - generic [ref=e341]:
+                      - button "详情" [ref=e342] [cursor=pointer]:
+                        - generic [ref=e343]: 详情
+                      - button "撤回" [ref=e344] [cursor=pointer]:
+                        - generic [ref=e345]: 撤回
+                      - button "删除" [ref=e346] [cursor=pointer]:
+                        - generic [ref=e347]: 删除
+                - 'row "148 新 新昵称 ID: 4 图片 [图片] 正常 9 2026-04-20 10:57:27 详情 撤回 删除" [ref=e348]':
+                  - cell "148" [ref=e349]:
+                    - generic [ref=e350]: "148"
+                  - 'cell "新 新昵称 ID: 4" [ref=e351]':
+                    - generic [ref=e353]:
+                      - generic [ref=e355]: 新
+                      - generic [ref=e356]:
+                        - generic [ref=e357]: 新昵称
+                        - generic [ref=e358]: "ID: 4"
+                  - cell "图片" [ref=e359]:
+                    - generic [ref=e362]: 图片
+                  - cell "[图片]" [ref=e363]:
+                    - generic [ref=e365]: "[图片]"
+                  - cell "正常" [ref=e366]:
+                    - generic [ref=e369]: 正常
+                  - cell "9" [ref=e370]:
+                    - generic [ref=e371]: "9"
+                  - cell "2026-04-20 10:57:27" [ref=e372]:
+                    - generic [ref=e373]: 2026-04-20 10:57:27
+                  - cell "详情 撤回 删除" [ref=e374]:
+                    - generic [ref=e375]:
+                      - button "详情" [ref=e376] [cursor=pointer]:
+                        - generic [ref=e377]: 详情
+                      - button "撤回" [ref=e378] [cursor=pointer]:
+                        - generic [ref=e379]: 撤回
+                      - button "删除" [ref=e380] [cursor=pointer]:
+                        - generic [ref=e381]: 删除
+                - 'row "147 新 新昵称 ID: 4 图片 [图片] 正常 9 2026-04-20 10:53:18 详情 撤回 删除" [ref=e382]':
+                  - cell "147" [ref=e383]:
+                    - generic [ref=e384]: "147"
+                  - 'cell "新 新昵称 ID: 4" [ref=e385]':
+                    - generic [ref=e387]:
+                      - generic [ref=e389]: 新
+                      - generic [ref=e390]:
+                        - generic [ref=e391]: 新昵称
+                        - generic [ref=e392]: "ID: 4"
+                  - cell "图片" [ref=e393]:
+                    - generic [ref=e396]: 图片
+                  - cell "[图片]" [ref=e397]:
+                    - generic [ref=e399]: "[图片]"
+                  - cell "正常" [ref=e400]:
+                    - generic [ref=e403]: 正常
+                  - cell "9" [ref=e404]:
+                    - generic [ref=e405]: "9"
+                  - cell "2026-04-20 10:53:18" [ref=e406]:
+                    - generic [ref=e407]: 2026-04-20 10:53:18
+                  - cell "详情 撤回 删除" [ref=e408]:
+                    - generic [ref=e409]:
+                      - button "详情" [ref=e410] [cursor=pointer]:
+                        - generic [ref=e411]: 详情
+                      - button "撤回" [ref=e412] [cursor=pointer]:
+                        - generic [ref=e413]: 撤回
+                      - button "删除" [ref=e414] [cursor=pointer]:
+                        - generic [ref=e415]: 删除
+                - 'row "146 新 新昵称 ID: 4 图片 [图片] 正常 9 2026-04-20 10:49:56 详情 撤回 删除" [ref=e416]':
+                  - cell "146" [ref=e417]:
+                    - generic [ref=e418]: "146"
+                  - 'cell "新 新昵称 ID: 4" [ref=e419]':
+                    - generic [ref=e421]:
+                      - generic [ref=e423]: 新
+                      - generic [ref=e424]:
+                        - generic [ref=e425]: 新昵称
+                        - generic [ref=e426]: "ID: 4"
+                  - cell "图片" [ref=e427]:
+                    - generic [ref=e430]: 图片
+                  - cell "[图片]" [ref=e431]:
+                    - generic [ref=e433]: "[图片]"
+                  - cell "正常" [ref=e434]:
+                    - generic [ref=e437]: 正常
+                  - cell "9" [ref=e438]:
+                    - generic [ref=e439]: "9"
+                  - cell "2026-04-20 10:49:56" [ref=e440]:
+                    - generic [ref=e441]: 2026-04-20 10:49:56
+                  - cell "详情 撤回 删除" [ref=e442]:
+                    - generic [ref=e443]:
+                      - button "详情" [ref=e444] [cursor=pointer]:
+                        - generic [ref=e445]: 详情
+                      - button "撤回" [ref=e446] [cursor=pointer]:
+                        - generic [ref=e447]: 撤回
+                      - button "删除" [ref=e448] [cursor=pointer]:
+                        - generic [ref=e449]: 删除
+                - 'row "145 卜 卜锦元 ID: 7 文本 1111 正常 6 2026-04-17 14:10:04 详情 撤回 删除" [ref=e450]':
+                  - cell "145" [ref=e451]:
+                    - generic [ref=e452]: "145"
+                  - 'cell "卜 卜锦元 ID: 7" [ref=e453]':
+                    - generic [ref=e455]:
+                      - generic [ref=e457]: 卜
+                      - generic [ref=e458]:
+                        - generic [ref=e459]: 卜锦元
+                        - generic [ref=e460]: "ID: 7"
+                  - cell "文本" [ref=e461]:
+                    - generic [ref=e464]: 文本
+                  - cell "1111" [ref=e465]:
+                    - generic [ref=e467]: "1111"
+                  - cell "正常" [ref=e468]:
+                    - generic [ref=e471]: 正常
+                  - cell "6" [ref=e472]:
+                    - generic [ref=e473]: "6"
+                  - cell "2026-04-17 14:10:04" [ref=e474]:
+                    - generic [ref=e475]: 2026-04-17 14:10:04
+                  - cell "详情 撤回 删除" [ref=e476]:
+                    - generic [ref=e477]:
+                      - button "详情" [ref=e478] [cursor=pointer]:
+                        - generic [ref=e479]: 详情
+                      - button "撤回" [ref=e480] [cursor=pointer]:
+                        - generic [ref=e481]: 撤回
+                      - button "删除" [ref=e482] [cursor=pointer]:
+                        - generic [ref=e483]: 删除
+                - 'row "144 卜 卜锦元 ID: 7 文本 1112122 正常 6 2026-04-17 14:09:48 详情 撤回 删除" [ref=e484]':
+                  - cell "144" [ref=e485]:
+                    - generic [ref=e486]: "144"
+                  - 'cell "卜 卜锦元 ID: 7" [ref=e487]':
+                    - generic [ref=e489]:
+                      - generic [ref=e491]: 卜
+                      - generic [ref=e492]:
+                        - generic [ref=e493]: 卜锦元
+                        - generic [ref=e494]: "ID: 7"
+                  - cell "文本" [ref=e495]:
+                    - generic [ref=e498]: 文本
+                  - cell "1112122" [ref=e499]:
+                    - generic [ref=e501]: "1112122"
+                  - cell "正常" [ref=e502]:
+                    - generic [ref=e505]: 正常
+                  - cell "6" [ref=e506]:
+                    - generic [ref=e507]: "6"
+                  - cell "2026-04-17 14:09:48" [ref=e508]:
+                    - generic [ref=e509]: 2026-04-17 14:09:48
+                  - cell "详情 撤回 删除" [ref=e510]:
+                    - generic [ref=e511]:
+                      - button "详情" [ref=e512] [cursor=pointer]:
+                        - generic [ref=e513]: 详情
+                      - button "撤回" [ref=e514] [cursor=pointer]:
+                        - generic [ref=e515]: 撤回
+                      - button "删除" [ref=e516] [cursor=pointer]:
+                        - generic [ref=e517]: 删除
+                - 'row "143 卜 卜锦元 ID: 7 文本 1111 正常 6 2026-04-17 14:09:36 详情 撤回 删除" [ref=e518]':
+                  - cell "143" [ref=e519]:
+                    - generic [ref=e520]: "143"
+                  - 'cell "卜 卜锦元 ID: 7" [ref=e521]':
+                    - generic [ref=e523]:
+                      - generic [ref=e525]: 卜
+                      - generic [ref=e526]:
+                        - generic [ref=e527]: 卜锦元
+                        - generic [ref=e528]: "ID: 7"
+                  - cell "文本" [ref=e529]:
+                    - generic [ref=e532]: 文本
+                  - cell "1111" [ref=e533]:
+                    - generic [ref=e535]: "1111"
+                  - cell "正常" [ref=e536]:
+                    - generic [ref=e539]: 正常
+                  - cell "6" [ref=e540]:
+                    - generic [ref=e541]: "6"
+                  - cell "2026-04-17 14:09:36" [ref=e542]:
+                    - generic [ref=e543]: 2026-04-17 14:09:36
+                  - cell "详情 撤回 删除" [ref=e544]:
+                    - generic [ref=e545]:
+                      - button "详情" [ref=e546] [cursor=pointer]:
+                        - generic [ref=e547]: 详情
+                      - button "撤回" [ref=e548] [cursor=pointer]:
+                        - generic [ref=e549]: 撤回
+                      - button "删除" [ref=e550] [cursor=pointer]:
+                        - generic [ref=e551]: 删除
+                - 'row "142 段 段凌云 ID: 13 文本 111111111223 正常 6 2026-04-17 14:09:20 详情 撤回 删除" [ref=e552]':
+                  - cell "142" [ref=e553]:
+                    - generic [ref=e554]: "142"
+                  - 'cell "段 段凌云 ID: 13" [ref=e555]':
+                    - generic [ref=e557]:
+                      - generic [ref=e559]: 段
+                      - generic [ref=e560]:
+                        - generic [ref=e561]: 段凌云
+                        - generic [ref=e562]: "ID: 13"
+                  - cell "文本" [ref=e563]:
+                    - generic [ref=e566]: 文本
+                  - cell "111111111223" [ref=e567]:
+                    - generic [ref=e569]: "111111111223"
+                  - cell "正常" [ref=e570]:
+                    - generic [ref=e573]: 正常
+                  - cell "6" [ref=e574]:
+                    - generic [ref=e575]: "6"
+                  - cell "2026-04-17 14:09:20" [ref=e576]:
+                    - generic [ref=e577]: 2026-04-17 14:09:20
+                  - cell "详情 撤回 删除" [ref=e578]:
+                    - generic [ref=e579]:
+                      - button "详情" [ref=e580] [cursor=pointer]:
+                        - generic [ref=e581]: 详情
+                      - button "撤回" [ref=e582] [cursor=pointer]:
+                        - generic [ref=e583]: 撤回
+                      - button "删除" [ref=e584] [cursor=pointer]:
+                        - generic [ref=e585]: 删除
+                - 'row "141 周 周和智 ID: 15 文本 换届大会打卡还贷款 正常 8 2026-03-12 15:04:56 详情 撤回 删除" [ref=e586]':
+                  - cell "141" [ref=e587]:
+                    - generic [ref=e588]: "141"
+                  - 'cell "周 周和智 ID: 15" [ref=e589]':
+                    - generic [ref=e591]:
+                      - generic [ref=e593]: 周
+                      - generic [ref=e594]:
+                        - generic [ref=e595]: 周和智
+                        - generic [ref=e596]: "ID: 15"
+                  - cell "文本" [ref=e597]:
+                    - generic [ref=e600]: 文本
+                  - cell "换届大会打卡还贷款" [ref=e601]:
+                    - generic [ref=e603]: 换届大会打卡还贷款
+                  - cell "正常" [ref=e604]:
+                    - generic [ref=e607]: 正常
+                  - cell "8" [ref=e608]:
+                    - generic [ref=e609]: "8"
+                  - cell "2026-03-12 15:04:56" [ref=e610]:
+                    - generic [ref=e611]: 2026-03-12 15:04:56
+                  - cell "详情 撤回 删除" [ref=e612]:
+                    - generic [ref=e613]:
+                      - button "详情" [ref=e614] [cursor=pointer]:
+                        - generic [ref=e615]: 详情
+                      - button "撤回" [ref=e616] [cursor=pointer]:
+                        - generic [ref=e617]: 撤回
+                      - button "删除" [ref=e618] [cursor=pointer]:
+                        - generic [ref=e619]: 删除
+                - 'row "140 卜 卜锦元 ID: 7 文本 你能看到吗 正常 8 2026-03-12 15:04:54 详情 撤回 删除" [ref=e620]':
+                  - cell "140" [ref=e621]:
+                    - generic [ref=e622]: "140"
+                  - 'cell "卜 卜锦元 ID: 7" [ref=e623]':
+                    - generic [ref=e625]:
+                      - generic [ref=e627]: 卜
+                      - generic [ref=e628]:
+                        - generic [ref=e629]: 卜锦元
+                        - generic [ref=e630]: "ID: 7"
+                  - cell "文本" [ref=e631]:
+                    - generic [ref=e634]: 文本
+                  - cell "你能看到吗" [ref=e635]:
+                    - generic [ref=e637]: 你能看到吗
+                  - cell "正常" [ref=e638]:
+                    - generic [ref=e641]: 正常
+                  - cell "8" [ref=e642]:
+                    - generic [ref=e643]: "8"
+                  - cell "2026-03-12 15:04:54" [ref=e644]:
+                    - generic [ref=e645]: 2026-03-12 15:04:54
+                  - cell "详情 撤回 删除" [ref=e646]:
+                    - generic [ref=e647]:
+                      - button "详情" [ref=e648] [cursor=pointer]:
+                        - generic [ref=e649]: 详情
+                      - button "撤回" [ref=e650] [cursor=pointer]:
+                        - generic [ref=e651]: 撤回
+                      - button "删除" [ref=e652] [cursor=pointer]:
+                        - generic [ref=e653]: 删除
+                - 'row "139 卜 卜锦元 ID: 7 文本 @周和智 1111 正常 8 2026-03-12 15:04:43 详情 撤回 删除" [ref=e654]':
+                  - cell "139" [ref=e655]:
+                    - generic [ref=e656]: "139"
+                  - 'cell "卜 卜锦元 ID: 7" [ref=e657]':
+                    - generic [ref=e659]:
+                      - generic [ref=e661]: 卜
+                      - generic [ref=e662]:
+                        - generic [ref=e663]: 卜锦元
+                        - generic [ref=e664]: "ID: 7"
+                  - cell "文本" [ref=e665]:
+                    - generic [ref=e668]: 文本
+                  - cell "@周和智 1111" [ref=e669]:
+                    - generic [ref=e671]: "@周和智 1111"
+                  - cell "正常" [ref=e672]:
+                    - generic [ref=e675]: 正常
+                  - cell "8" [ref=e676]:
+                    - generic [ref=e677]: "8"
+                  - cell "2026-03-12 15:04:43" [ref=e678]:
+                    - generic [ref=e679]: 2026-03-12 15:04:43
+                  - cell "详情 撤回 删除" [ref=e680]:
+                    - generic [ref=e681]:
+                      - button "详情" [ref=e682] [cursor=pointer]:
+                        - generic [ref=e683]: 详情
+                      - button "撤回" [ref=e684] [cursor=pointer]:
+                        - generic [ref=e685]: 撤回
+                      - button "删除" [ref=e686] [cursor=pointer]:
+                        - generic [ref=e687]: 删除
+                - 'row "138 ? - ID: 0 系统消息 卜锦元 邀请 周和智 加入了群聊 正常 8 2026-03-12 15:04:20 详情 撤回 删除" [ref=e688]':
+                  - cell "138" [ref=e689]:
+                    - generic [ref=e690]: "138"
+                  - 'cell "? - ID: 0" [ref=e691]':
+                    - generic [ref=e693]:
+                      - generic [ref=e695]: "?"
+                      - generic [ref=e696]:
+                        - generic [ref=e697]: "-"
+                        - generic [ref=e698]: "ID: 0"
+                  - cell "系统消息" [ref=e699]:
+                    - generic [ref=e702]: 系统消息
+                  - cell "卜锦元 邀请 周和智 加入了群聊" [ref=e703]:
+                    - generic [ref=e705]: 卜锦元 邀请 周和智 加入了群聊
+                  - cell "正常" [ref=e706]:
+                    - generic [ref=e709]: 正常
+                  - cell "8" [ref=e710]:
+                    - generic [ref=e711]: "8"
+                  - cell "2026-03-12 15:04:20" [ref=e712]:
+                    - generic [ref=e713]: 2026-03-12 15:04:20
+                  - cell "详情 撤回 删除" [ref=e714]:
+                    - generic [ref=e715]:
+                      - button "详情" [ref=e716] [cursor=pointer]:
+                        - generic [ref=e717]: 详情
+                      - button "撤回" [ref=e718] [cursor=pointer]:
+                        - generic [ref=e719]: 撤回
+                      - button "删除" [ref=e720] [cursor=pointer]:
+                        - generic [ref=e721]: 删除
+                - 'row "137 卜 卜锦元 ID: 7 文本 ewqeqwe 正常 10 2026-03-12 15:03:56 详情 撤回 删除" [ref=e722]':
+                  - cell "137" [ref=e723]:
+                    - generic [ref=e724]: "137"
+                  - 'cell "卜 卜锦元 ID: 7" [ref=e725]':
+                    - generic [ref=e727]:
+                      - generic [ref=e729]: 卜
+                      - generic [ref=e730]:
+                        - generic [ref=e731]: 卜锦元
+                        - generic [ref=e732]: "ID: 7"
+                  - cell "文本" [ref=e733]:
+                    - generic [ref=e736]: 文本
+                  - cell "ewqeqwe" [ref=e737]:
+                    - generic [ref=e739]: ewqeqwe
+                  - cell "正常" [ref=e740]:
+                    - generic [ref=e743]: 正常
+                  - cell "10" [ref=e744]:
+                    - generic [ref=e745]: "10"
+                  - cell "2026-03-12 15:03:56" [ref=e746]:
+                    - generic [ref=e747]: 2026-03-12 15:03:56
+                  - cell "详情 撤回 删除" [ref=e748]:
+                    - generic [ref=e749]:
+                      - button "详情" [ref=e750] [cursor=pointer]:
+                        - generic [ref=e751]: 详情
+                      - button "撤回" [ref=e752] [cursor=pointer]:
+                        - generic [ref=e753]: 撤回
+                      - button "删除" [ref=e754] [cursor=pointer]:
+                        - generic [ref=e755]: 删除
+                - 'row "136 卜 卜锦元 ID: 7 文本 23213123 正常 10 2026-03-12 15:03:53 详情 撤回 删除" [ref=e756]':
+                  - cell "136" [ref=e757]:
+                    - generic [ref=e758]: "136"
+                  - 'cell "卜 卜锦元 ID: 7" [ref=e759]':
+                    - generic [ref=e761]:
+                      - generic [ref=e763]: 卜
+                      - generic [ref=e764]:
+                        - generic [ref=e765]: 卜锦元
+                        - generic [ref=e766]: "ID: 7"
+                  - cell "文本" [ref=e767]:
+                    - generic [ref=e770]: 文本
+                  - cell "23213123" [ref=e771]:
+                    - generic [ref=e773]: "23213123"
+                  - cell "正常" [ref=e774]:
+                    - generic [ref=e777]: 正常
+                  - cell "10" [ref=e778]:
+                    - generic [ref=e779]: "10"
+                  - cell "2026-03-12 15:03:53" [ref=e780]:
+                    - generic [ref=e781]: 2026-03-12 15:03:53
+                  - cell "详情 撤回 删除" [ref=e782]:
+                    - generic [ref=e783]:
+                      - button "详情" [ref=e784] [cursor=pointer]:
+                        - generic [ref=e785]: 详情
+                      - button "撤回" [ref=e786] [cursor=pointer]:
+                        - generic [ref=e787]: 撤回
+                      - button "删除" [ref=e788] [cursor=pointer]:
+                        - generic [ref=e789]: 删除
+                - 'row "135 周 周和智 ID: 15 文本 打打看迦拉克隆离开 正常 10 2026-03-12 15:03:39 详情 撤回 删除" [ref=e790]':
+                  - cell "135" [ref=e791]:
+                    - generic [ref=e792]: "135"
+                  - 'cell "周 周和智 ID: 15" [ref=e793]':
+                    - generic [ref=e795]:
+                      - generic [ref=e797]: 周
+                      - generic [ref=e798]:
+                        - generic [ref=e799]: 周和智
+                        - generic [ref=e800]: "ID: 15"
+                  - cell "文本" [ref=e801]:
+                    - generic [ref=e804]: 文本
+                  - cell "打打看迦拉克隆离开" [ref=e805]:
+                    - generic [ref=e807]: 打打看迦拉克隆离开
+                  - cell "正常" [ref=e808]:
+                    - generic [ref=e811]: 正常
+                  - cell "10" [ref=e812]:
+                    - generic [ref=e813]: "10"
+                  - cell "2026-03-12 15:03:39" [ref=e814]:
+                    - generic [ref=e815]: 2026-03-12 15:03:39
+                  - cell "详情 撤回 删除" [ref=e816]:
+                    - generic [ref=e817]:
+                      - button "详情" [ref=e818] [cursor=pointer]:
+                        - generic [ref=e819]: 详情
+                      - button "撤回" [ref=e820] [cursor=pointer]:
+                        - generic [ref=e821]: 撤回
+                      - button "删除" [ref=e822] [cursor=pointer]:
+                        - generic [ref=e823]: 删除
+                - 'row "134 周 周和智 ID: 15 文本 啦啦啦啦 正常 10 2026-03-12 15:03:30 详情 撤回 删除" [ref=e824]':
+                  - cell "134" [ref=e825]:
+                    - generic [ref=e826]: "134"
+                  - 'cell "周 周和智 ID: 15" [ref=e827]':
+                    - generic [ref=e829]:
+                      - generic [ref=e831]: 周
+                      - generic [ref=e832]:
+                        - generic [ref=e833]: 周和智
+                        - generic [ref=e834]: "ID: 15"
+                  - cell "文本" [ref=e835]:
+                    - generic [ref=e838]: 文本
+                  - cell "啦啦啦啦" [ref=e839]:
+                    - generic [ref=e841]: 啦啦啦啦
+                  - cell "正常" [ref=e842]:
+                    - generic [ref=e845]: 正常
+                  - cell "10" [ref=e846]:
+                    - generic [ref=e847]: "10"
+                  - cell "2026-03-12 15:03:30" [ref=e848]:
+                    - generic [ref=e849]: 2026-03-12 15:03:30
+                  - cell "详情 撤回 删除" [ref=e850]:
+                    - generic [ref=e851]:
+                      - button "详情" [ref=e852] [cursor=pointer]:
+                        - generic [ref=e853]: 详情
+                      - button "撤回" [ref=e854] [cursor=pointer]:
+                        - generic [ref=e855]: 撤回
+                      - button "删除" [ref=e856] [cursor=pointer]:
+                        - generic [ref=e857]: 删除
+                - 'row "133 周 周和智 ID: 15 文本 哈喽 正常 10 2026-03-12 15:03:17 详情 撤回 删除" [ref=e858]':
+                  - cell "133" [ref=e859]:
+                    - generic [ref=e860]: "133"
+                  - 'cell "周 周和智 ID: 15" [ref=e861]':
+                    - generic [ref=e863]:
+                      - generic [ref=e865]: 周
+                      - generic [ref=e866]:
+                        - generic [ref=e867]: 周和智
+                        - generic [ref=e868]: "ID: 15"
+                  - cell "文本" [ref=e869]:
+                    - generic [ref=e872]: 文本
+                  - cell "哈喽" [ref=e873]:
+                    - generic [ref=e875]: 哈喽
+                  - cell "正常" [ref=e876]:
+                    - generic [ref=e879]: 正常
+                  - cell "10" [ref=e880]:
+                    - generic [ref=e881]: "10"
+                  - cell "2026-03-12 15:03:17" [ref=e882]:
+                    - generic [ref=e883]: 2026-03-12 15:03:17
+                  - cell "详情 撤回 删除" [ref=e884]:
+                    - generic [ref=e885]:
+                      - button "详情" [ref=e886] [cursor=pointer]:
+                        - generic [ref=e887]: 详情
+                      - button "撤回" [ref=e888] [cursor=pointer]:
+                        - generic [ref=e889]: 撤回
+                      - button "删除" [ref=e890] [cursor=pointer]:
+                        - generic [ref=e891]: 删除
+                - 'row "132 卜 卜锦元 ID: 7 文本 niahha a 正常 10 2026-03-12 15:03:08 详情 撤回 删除" [ref=e892]':
+                  - cell "132" [ref=e893]:
+                    - generic [ref=e894]: "132"
+                  - 'cell "卜 卜锦元 ID: 7" [ref=e895]':
+                    - generic [ref=e897]:
+                      - generic [ref=e899]: 卜
+                      - generic [ref=e900]:
+                        - generic [ref=e901]: 卜锦元
+                        - generic [ref=e902]: "ID: 7"
+                  - cell "文本" [ref=e903]:
+                    - generic [ref=e906]: 文本
+                  - cell "niahha a" [ref=e907]:
+                    - generic [ref=e909]: niahha a
+                  - cell "正常" [ref=e910]:
+                    - generic [ref=e913]: 正常
+                  - cell "10" [ref=e914]:
+                    - generic [ref=e915]: "10"
+                  - cell "2026-03-12 15:03:08" [ref=e916]:
+                    - generic [ref=e917]: 2026-03-12 15:03:08
+                  - cell "详情 撤回 删除" [ref=e918]:
+                    - generic [ref=e919]:
+                      - button "详情" [ref=e920] [cursor=pointer]:
+                        - generic [ref=e921]: 详情
+                      - button "撤回" [ref=e922] [cursor=pointer]:
+                        - generic [ref=e923]: 撤回
+                      - button "删除" [ref=e924] [cursor=pointer]:
+                        - generic [ref=e925]: 删除
+                - 'row "131 新 新昵称 ID: 4 文本 哈哈哈，测试 正常 8 2026-03-04 18:37:53 详情 撤回 删除" [ref=e926]':
+                  - cell "131" [ref=e927]:
+                    - generic [ref=e928]: "131"
+                  - 'cell "新 新昵称 ID: 4" [ref=e929]':
+                    - generic [ref=e931]:
+                      - generic [ref=e933]: 新
+                      - generic [ref=e934]:
+                        - generic [ref=e935]: 新昵称
+                        - generic [ref=e936]: "ID: 4"
+                  - cell "文本" [ref=e937]:
+                    - generic [ref=e940]: 文本
+                  - cell "哈哈哈，测试" [ref=e941]:
+                    - generic [ref=e943]: 哈哈哈，测试
+                  - cell "正常" [ref=e944]:
+                    - generic [ref=e947]: 正常
+                  - cell "8" [ref=e948]:
+                    - generic [ref=e949]: "8"
+                  - cell "2026-03-04 18:37:53" [ref=e950]:
+                    - generic [ref=e951]: 2026-03-04 18:37:53
+                  - cell "详情 撤回 删除" [ref=e952]:
+                    - generic [ref=e953]:
+                      - button "详情" [ref=e954] [cursor=pointer]:
+                        - generic [ref=e955]: 详情
+                      - button "撤回" [ref=e956] [cursor=pointer]:
+                        - generic [ref=e957]: 撤回
+                      - button "删除" [ref=e958] [cursor=pointer]:
+                        - generic [ref=e959]: 删除
+          - generic [ref=e962]:
+            - generic [ref=e963]: 共 146 条
+            - generic [ref=e966] [cursor=pointer]:
+              - generic:
+                - combobox [ref=e968]
+                - generic [ref=e969]: 20条/页
+              - img [ref=e972]
+            - button "上一页" [disabled] [ref=e974]:
+              - generic:
+                - img
+            - list [ref=e975]:
+              - listitem "第 1 页" [ref=e976]: "1"
+              - listitem "第 2 页" [ref=e977] [cursor=pointer]: "2"
+              - listitem "第 3 页" [ref=e978] [cursor=pointer]: "3"
+              - listitem "第 4 页" [ref=e979] [cursor=pointer]: "4"
+              - listitem "第 5 页" [ref=e980] [cursor=pointer]: "5"
+              - listitem "第 6 页" [ref=e981] [cursor=pointer]: "6"
+              - listitem "向后 5 页" [ref=e982] [cursor=pointer]:
+                - img
+              - listitem "第 8 页" [ref=e983] [cursor=pointer]: "8"
+            - button "下一页" [ref=e984] [cursor=pointer]:
+              - generic:
+                - img
+            - generic [ref=e985]:
+              - generic [ref=e986]: 前往
+              - spinbutton "页" [ref=e989]: "1"
+              - generic [ref=e990]: 页
+        - dialog "消息详情" [ref=e992]:
+          - generic [ref=e993]:
+            - generic [ref=e994]:
+              - heading "消息详情" [level=2] [ref=e995]
+              - button "关闭此对话框" [ref=e996] [cursor=pointer]:
+                - img [ref=e998]
+            - generic [ref=e1001]:
+              - generic [ref=e1002]:
+                - generic [ref=e1004]: 新
+                - generic [ref=e1005]:
+                  - generic [ref=e1006]:
+                    - generic [ref=e1007]: 新昵称
+                    - generic [ref=e1009]: 正常
+                  - generic [ref=e1010]:
+                    - generic [ref=e1011]: "ID: 148"
+                    - separator [ref=e1012]
+                    - generic [ref=e1013]: "发送者ID: 4"
+                    - separator [ref=e1014]
+                    - generic [ref=e1015]: "会话ID: 9"
+              - generic [ref=e1016]:
+                - generic [ref=e1017]:
+                  - generic [ref=e1018]: 消息类型
+                  - generic [ref=e1021]: 图片
+                - generic [ref=e1022]:
+                  - generic [ref=e1023]: 发送时间
+                  - generic [ref=e1024]: 2026-04-20 10:57:27
+              - generic [ref=e1025]:
+                - generic [ref=e1026]: 消息内容
+                - img [ref=e1029] [cursor=pointer]
+              - generic [ref=e1032]:
+                - button "Extra 原始数据" [expanded] [active] [ref=e1033] [cursor=pointer]:
+                  - generic [ref=e1034]: Extra 原始数据
+                  - img [ref=e1036]
+                - region "Extra 原始数据" [ref=e1038]:
+                  - generic [ref=e1040]: "{ \"images\": [ { \"url\": \"http://localhost:9000/echochat/uploads/2026/04/20/e1b275b2-d77c-44b4-87ac-b11ae61c3858.jpg\", \"size\": 989411, \"width\": 768, \"height\": 768, \"file_name\": \"test-image.jpg\", \"thumbnail_url\": \"http://localhost:9000/echochat/uploads/2026/04/20/e1b275b2-d77c-44b4-87ac-b11ae61c3858_thumb.jpg\" } ] }"

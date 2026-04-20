@@ -12,7 +12,10 @@ import (
 )
 
 // NewMinioClient 初始化 MinIO 客户端并确保存储桶存在
-// 启动时自动创建配置中指定的 bucket（如不存在）
+// 启动时：
+//  1. 创建配置中指定的 bucket（如不存在）
+//  2. 为 bucket 设置 public-read 策略，使前端可通过 URL 直接访问已上传的图片、语音、文件等资源
+//     （写入操作仍需 AccessKey/SecretKey 凭据，不影响安全性）
 func NewMinioClient(cfg *config.MinioConfig) (*minio.Client, error) {
 	client, err := minio.New(cfg.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
@@ -34,5 +37,27 @@ func NewMinioClient(cfg *config.MinioConfig) (*minio.Client, error) {
 		}
 	}
 
+	if err := ensureBucketPublicRead(ctx, client, cfg.Bucket); err != nil {
+		return nil, fmt.Errorf("设置存储桶 %s 公开读策略失败: %w", cfg.Bucket, err)
+	}
+
 	return client, nil
+}
+
+// ensureBucketPublicRead 设置 bucket 的匿名公开读策略
+// 允许匿名用户通过 HTTP GET 访问 bucket 内的对象（s3:GetObject）
+// 其他操作（上传、删除等）仍然需要 AccessKey/SecretKey 凭据
+func ensureBucketPublicRead(ctx context.Context, client *minio.Client, bucket string) error {
+	policy := fmt.Sprintf(`{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {"AWS": ["*"]},
+      "Action": ["s3:GetObject"],
+      "Resource": ["arn:aws:s3:::%s/*"]
+    }
+  ]
+}`, bucket)
+	return client.SetBucketPolicy(ctx, bucket, policy)
 }

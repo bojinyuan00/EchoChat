@@ -14,6 +14,9 @@ Thumbs.db
 *.swo
 *~
 
+# --- Local runtime ---
+.run/
+
 # --- Go ---
 backend/go-service/tmp/
 *.exe

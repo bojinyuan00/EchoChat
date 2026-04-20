@@ -62,6 +62,18 @@ const routes = [
         name: 'GroupManage',
         component: () => import('@/views/group/list.vue'),
         meta: { title: '群组管理' }
+      },
+      {
+        path: 'message/list',
+        name: 'MessageList',
+        component: () => import('@/views/message/list.vue'),
+        meta: { title: '消息列表' }
+      },
+      {
+        path: 'message/stats',
+        name: 'MessageStats',
+        component: () => import('@/views/message/stats.vue'),
+        meta: { title: '消息统计' }
       }
     ]
   }

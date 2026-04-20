@@ -93,6 +93,11 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	groupManageService := service2.NewGroupManageService(gormDB, groupDAO)
 	groupManageController := controller2.NewGroupManageController(groupManageService)
 
-	app := NewApp(cfg, gormDB, client, minioClient, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, groupManageController, handler, hub, pubSub, onlineService, contactController, imController, imEventHandler, offlinePusher, fileController, groupController)
+	// Admin 消息管理初始化
+	messageManageDAO := dao2.NewMessageManageDAO(gormDB)
+	messageManageService := service2.NewMessageManageService(messageManageDAO, userDAO, conversationDAO, pubSub)
+	messageManageController := controller2.NewMessageManageController(messageManageService)
+
+	app := NewApp(cfg, gormDB, client, minioClient, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, groupManageController, messageManageController, handler, hub, pubSub, onlineService, contactController, imController, imEventHandler, offlinePusher, fileController, groupController)
 	return app, nil
 }

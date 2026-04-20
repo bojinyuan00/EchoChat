@@ -3,7 +3,7 @@
 > 通用规范（认证方式、响应格式、错误码）见 [README.md](../README.md)
 > 消息的实时收发（发送/撤回/标记已读/正在输入）通过 WebSocket 完成，见 [websocket.md](../websocket.md)
 > 本文档中的接口用于会话管理和消息历史查询等非实时操作。
-> **最后更新：** 2026-03-04（Fix T19 已读详情群昵称 + Fix T20 免打扰 API 补全）
+> **最后更新：** 2026-03-03（Phase 2d 文件上传 API 新增）
 
 ---
 
@@ -20,6 +20,9 @@
 | GET | /api/v1/im/messages/search | 需认证 | 全局消息搜索 |
 | GET | /api/v1/im/unread | 需认证 | 获取全局未读消息总数 |
 | GET | /api/v1/im/messages/:id/reads | 需认证 | 获取消息已读详情 |
+| POST | /api/v1/upload/image | 需认证 | 图片上传（含缩略图生成）[Phase 2d] |
+| POST | /api/v1/upload/voice | 需认证 | 语音上传（含时长校验）[Phase 2d] |
+| POST | /api/v1/upload | 需认证 | 通用文件上传（最大 50MB）[Phase 2d] |
 
 ---
 

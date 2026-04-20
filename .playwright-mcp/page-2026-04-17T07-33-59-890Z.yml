@@ -1,0 +1,69 @@
+- generic [ref=e162]:
+  - complementary [ref=e163]:
+    - generic [ref=e164]:
+      - generic [ref=e165]: E
+      - generic [ref=e166]: EchoChat
+    - menubar [ref=e167]:
+      - menuitem "仪表盘" [ref=e168] [cursor=pointer]:
+        - img [ref=e170]
+        - text: 仪表盘
+      - menuitem "用户管理" [ref=e172]:
+        - generic [ref=e173] [cursor=pointer]:
+          - img [ref=e175]
+          - generic [ref=e177]: 用户管理
+          - img [ref=e179]
+      - menuitem "联系人管理" [ref=e181]:
+        - generic [ref=e182] [cursor=pointer]:
+          - img [ref=e184]
+          - generic [ref=e187]: 联系人管理
+          - img [ref=e189]
+      - menuitem "群组管理" [ref=e191]:
+        - generic [ref=e192] [cursor=pointer]:
+          - img [ref=e194]
+          - generic [ref=e197]: 群组管理
+          - img [ref=e199]
+      - menuitem "消息管理" [expanded] [ref=e201]:
+        - generic [ref=e202] [cursor=pointer]:
+          - img [ref=e204]
+          - generic [ref=e206]: 消息管理
+          - img [ref=e208]
+        - menu [ref=e413]:
+          - menuitem "消息列表" [ref=e282] [cursor=pointer]
+          - menuitem "消息统计" [ref=e283] [cursor=pointer]
+      - menuitem "在线监控" [ref=e210] [cursor=pointer]:
+        - img [ref=e212]
+        - text: 在线监控
+  - generic [ref=e214]:
+    - generic [ref=e215]:
+      - img [ref=e218] [cursor=pointer]
+      - button "管 admin_test" [ref=e222] [cursor=pointer]:
+        - generic [ref=e223]: 管
+        - generic [ref=e224]: admin_test
+        - img [ref=e226]
+    - main [ref=e228]:
+      - generic [ref=e3460]:
+        - generic [ref=e3461]:
+          - heading "消息统计" [level=2] [ref=e3462]
+          - radiogroup "radio-group" [ref=e3464]:
+            - generic [ref=e3465]:
+              - radio "近 7 天" [ref=e3466]
+              - generic [ref=e3467] [cursor=pointer]: 近 7 天
+            - generic [ref=e3468]:
+              - radio "近 30 天" [checked] [active] [ref=e3469]
+              - generic [ref=e3470] [cursor=pointer]: 近 30 天
+        - generic [ref=e3471]:
+          - generic [ref=e3472]:
+            - img [ref=e3475]
+            - generic [ref=e3478]:
+              - generic [ref=e3479]: 消息总数
+              - generic [ref=e3480]: "141"
+          - generic [ref=e3481]:
+            - img [ref=e3484]
+            - generic [ref=e3486]:
+              - generic [ref=e3487]: 今日消息
+              - generic [ref=e3488]: "4"
+        - generic [ref=e3489]:
+          - generic [ref=e3491]: 消息趋势
+          - generic [ref=e3495]: 类型分布
+          - generic [ref=e3499]: 活跃用户 Top 10
+          - generic [ref=e3503]: 活跃群组 Top 10

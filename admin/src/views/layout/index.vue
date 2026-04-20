@@ -56,6 +56,15 @@
           <el-menu-item index="/group/list">群组列表</el-menu-item>
         </el-sub-menu>
 
+        <el-sub-menu index="message-manage">
+          <template #title>
+            <el-icon><ChatRound /></el-icon>
+            <span>消息管理</span>
+          </template>
+          <el-menu-item index="/message/list">消息列表</el-menu-item>
+          <el-menu-item index="/message/stats">消息统计</el-menu-item>
+        </el-sub-menu>
+
         <el-menu-item index="/monitor/online">
           <el-icon><Monitor /></el-icon>
           <template #title>在线监控</template>

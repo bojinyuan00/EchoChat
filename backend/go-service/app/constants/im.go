@@ -15,10 +15,10 @@ var ConversationTypeMap = map[int]string{
 // 消息类型
 const (
 	MessageTypeText   = 1  // 文本消息
-	MessageTypeImage  = 2  // 图片消息（预留）
-	MessageTypeVoice  = 3  // 语音消息（预留）
+	MessageTypeImage  = 2  // 图片消息
+	MessageTypeVoice  = 3  // 语音消息
 	MessageTypeVideo  = 4  // 视频消息（预留）
-	MessageTypeFile   = 5  // 文件消息（预留）
+	MessageTypeFile   = 5  // 文件消息
 	MessageTypeSystem = 10 // 系统消息（群聊操作通知）
 )
 

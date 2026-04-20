@@ -85,13 +85,13 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * 发送消息
-   * @param {Object} params - { conversationId, targetUserId, content, type }
+   * 发送消息（统一入口，支持文本 + 富媒体）
+   * @param {Object} params - { conversationId, targetUserId, content, type, extra, at_user_ids }
    * @returns {string} clientMsgId
    */
   const sendMessage = (params) => {
     const clientMsgId = _generateClientMsgId()
-    const { conversationId, targetUserId, content, type = 1, at_user_ids } = params
+    const { conversationId, targetUserId, content = '', type = 1, extra = '', at_user_ids } = params
     const userStore = useUserStore()
 
     const tempMsg = {
@@ -100,6 +100,7 @@ export const useChatStore = defineStore('chat', () => {
       sender_id: Number(userStore.userInfo?.id) || 0,
       type,
       content,
+      extra: extra || undefined,
       status: 1,
       client_msg_id: clientMsgId,
       created_at: new Date().toISOString().replace('T', ' ').substring(0, 19),
@@ -116,6 +117,7 @@ export const useChatStore = defineStore('chat', () => {
       target_user_id: targetUserId || 0,
       type,
       content,
+      extra,
       client_msg_id: clientMsgId
     }
     if (at_user_ids && at_user_ids.length > 0) {
@@ -131,6 +133,57 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     return clientMsgId
+  }
+
+  /**
+   * 发送图片消息
+   * @param {Object} params - { conversationId, targetUserId, images }
+   * images: [{ url, thumbnail_url, width, height, size, file_name }]
+   */
+  const sendImageMessage = (params) => {
+    const { conversationId, targetUserId, images } = params
+    const extra = JSON.stringify({ images })
+    return sendMessage({
+      conversationId,
+      targetUserId,
+      content: '',
+      type: 2,
+      extra
+    })
+  }
+
+  /**
+   * 发送语音消息
+   * @param {Object} params - { conversationId, targetUserId, voice }
+   * voice: { url, duration, size, file_name }
+   */
+  const sendVoiceMessage = (params) => {
+    const { conversationId, targetUserId, voice } = params
+    const extra = JSON.stringify({ voice })
+    return sendMessage({
+      conversationId,
+      targetUserId,
+      content: '',
+      type: 3,
+      extra
+    })
+  }
+
+  /**
+   * 发送文件消息
+   * @param {Object} params - { conversationId, targetUserId, file }
+   * file: { url, file_name, size, mime_type, ext }
+   */
+  const sendFileMessage = (params) => {
+    const { conversationId, targetUserId, file } = params
+    const extra = JSON.stringify({ file })
+    return sendMessage({
+      conversationId,
+      targetUserId,
+      content: '',
+      type: 5,
+      extra
+    })
   }
 
   /** 撤回消息 */
@@ -236,6 +289,7 @@ export const useChatStore = defineStore('chat', () => {
       sender_id: data.sender_id,
       type: data.type,
       content: data.content,
+      extra: data.extra || undefined,
       status: 1,
       client_msg_id: data.client_msg_id || '',
       created_at: data.created_at
@@ -243,7 +297,8 @@ export const useChatStore = defineStore('chat', () => {
 
     const existingConv = conversationList.value.find(c => c.id === data.conversation_id)
     if (existingConv) {
-      _updateConversationPreview(data.conversation_id, data.content, data.created_at, data.sender_id)
+      const preview = _getMessagePreview(data.type, data.content, data.extra)
+      _updateConversationPreview(data.conversation_id, preview, data.created_at, data.sender_id)
     } else {
       fetchConversations()
     }
@@ -390,6 +445,38 @@ export const useChatStore = defineStore('chat', () => {
     totalUnread.value = conversationList.value.reduce((sum, c) => sum + (c.unread_count || 0), 0)
   }
 
+  /** 根据消息类型生成会话预览文案 */
+  const _getMessagePreview = (type, content, extra) => {
+    switch (type) {
+      case 2: {
+        let count = 1
+        try {
+          const parsed = typeof extra === 'string' ? JSON.parse(extra) : extra
+          if (parsed?.images?.length > 1) count = parsed.images.length
+        } catch {}
+        return count > 1 ? `[图片x${count}]` : '[图片]'
+      }
+      case 3: {
+        let dur = 0
+        try {
+          const parsed = typeof extra === 'string' ? JSON.parse(extra) : extra
+          dur = parsed?.voice?.duration || 0
+        } catch {}
+        return dur > 0 ? `[语音 ${dur}"]` : '[语音]'
+      }
+      case 5: {
+        let name = ''
+        try {
+          const parsed = typeof extra === 'string' ? JSON.parse(extra) : extra
+          name = parsed?.file?.file_name || ''
+        } catch {}
+        return name ? `[文件] ${name}` : '[文件]'
+      }
+      default:
+        return content || ''
+    }
+  }
+
   /** 生成客户端消息唯一 ID */
   const _generateClientMsgId = () => {
     return `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`
@@ -410,6 +497,9 @@ export const useChatStore = defineStore('chat', () => {
     fetchConversations,
     fetchTotalUnread,
     sendMessage,
+    sendImageMessage,
+    sendVoiceMessage,
+    sendFileMessage,
     recallMessage,
     markRead,
     markGroupRead,

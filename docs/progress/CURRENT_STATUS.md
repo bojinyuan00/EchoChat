@@ -1,10 +1,49 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-03-04（Phase 2c 浏览器测试 + UI/UX 优化 + Tab 切换刷新修复完成）
-> **当前阶段**：Phase 2c 全部完成（含 Playwright 浏览器测试 + 21 项用户反馈修复）
-> **当前分支**：`feature/phase2c-group-read-receipt`
-> **实施计划**：`docs/plans/2026-03-04-phase2c-implementation.plan.md`
-> **设计文档**：`docs/plans/2026-03-04-phase2c-design.md`
+> **最后更新**：2026-04-20（Phase 2d 富媒体消息缺陷修复，Playwright 全流程验证通过）
+> **当前阶段**：Phase 2d 全部完成 + Bug 修复 4 项（图片上传端口/MinIO 策略/MsgImage 布局/文件名保留）
+> **当前分支**：`feature/phase2d-message-types`
+> **实施计划**：`docs/plans/2026-03-04-phase2d-implementation.plan.md`
+> **设计文档**：`docs/plans/2026-03-04-phase2d-design.md`
+> **本次修复报告**：`test-report-phase2d-bugfix.md`
+
+---
+
+## 🔧 2026-04-20 Bug 修复清单
+
+| # | 根因 | 修复 | 文件 |
+|---|---|---|---|
+| B1 | 文件上传 BASE_URL 硬编码为 `:8080`（与实际 `:8085` 不符）导致 `ERR_CONNECTION_REFUSED` | 改为复用 `@/utils/request` 中的统一 BASE_URL | `frontend/src/api/file.js` |
+| B2 | MinIO bucket 默认 private，图片 URL 匿名访问返回 403 | 启动时自动设置 bucket public-read 策略（仅 `s3:GetObject`） | `backend/go-service/pkg/storage/minio.go` |
+| B3 | MsgImage flex 布局塌陷，`<uni-image>` 宽度为 0 | `.grid-single/2col/3col` 增加显式宽高和 `display:block` | `frontend/src/components/msg/MsgImage.vue` |
+| B4 | H5 下 `URL.createObjectURL(file)` 丢失文件名，显示为 `file-1776xxx` | 前端发送消息时优先使用用户选择的 `file.name` | `frontend/src/pages/{chat,group}/conversation.vue` |
+
+**验证结果**：Playwright MCP 全流程通过（图片/文件上传、缩略图渲染、大图预览、管理端消息详情）。详见 `test-report-phase2d-bugfix.md`。
+
+---
+
+## 🛠️ 2026-04-20 工程化脚本改造（开发者体验）
+
+引入社区通用的 **setup / start 职责分离** 模式（参考 Rails `bin/setup` + `bin/dev`、Django 模板、Next.js 企业模板）：
+
+| 脚本 | 定位 | 使用频率 |
+|---|---|---|
+| `scripts/dev-setup.sh` | **首次环境初始化**：Docker 检查 + 容器拉起 + 重试式健康检查（pg/redis/minio）| 首次 clone / 重建卷 |
+| `scripts/start.sh` | **日常启动**：Docker 中间件 + Go 后端 + 前台 + 管理端全量拉起，端口占用自动跳过 | 每天多次 |
+| `scripts/stop.sh` | **日常停止**：优雅终止应用层（先 TERM 后 KILL 兜底），默认保留容器，支持 `--all` 全关 | 每天多次 |
+| `scripts/status.sh` | **状态查看**：三应用端口 + 三容器状态一览 | 排障随时 |
+
+核心特性：
+- **端口占用自动跳过**：`lsof` 检测，已占用则 WARN 跳过，不重复启动
+- **PID + 日志分离**：PID 写入 `.run/*.pid`，stdout 写入 `.run/logs/*.log`（已加入 `.gitignore`）
+- **MinIO 健康等待**：`dev-setup.sh` 新增 `/minio/health/live` 重试检查，补齐原脚本遗漏
+- **单项启停**：`./scripts/start.sh backend|frontend|admin|docker`
+
+涉及文件：
+- 新增 `scripts/start.sh`、`scripts/stop.sh`、`scripts/status.sh`
+- 改造 `scripts/dev-setup.sh`（新增 MinIO 检查 + 头部使用时机注释）
+- 更新 `README.md`（置顶一键脚本章节，阐述首次/日常使用顺序）
+- 更新 `.gitignore`（忽略 `.run/`）
 
 ---
 
@@ -197,8 +236,20 @@ EchoChat/
 │       │   ├── join-requests.vue # 入群审批
 │       │   └── search.vue       # 搜索群聊
 │       ├── pages/contact/       # [Phase 2a] 6 个页面
+│       ├── components/msg/     # [Phase 2d] 消息类型组件
+│       │   ├── MsgText.vue     # 文本消息
+│       │   ├── MsgImage.vue    # 图片消息（网格+预览）
+│       │   ├── MsgVoice.vue    # 语音消息（播放+波形）
+│       │   └── MsgFile.vue     # 文件消息（卡片+下载）
+│       ├── components/chat/    # [Phase 2d] 聊天辅助组件
+│       │   ├── MorePanel.vue   # "+"展开面板
+│       │   └── VoiceRecorder.vue # 语音录制
 │       └── components/CustomTabBar.vue（含 badge）
 ├── admin/                       # 管理端（Vue 3 + Element Plus）
+│   └── src/views/
+│       ├── message/            # [Phase 2d] 消息管理
+│       │   ├── list.vue        # 消息列表（多条件筛选+操作）
+│       │   └── stats.vue       # 消息统计（ECharts 仪表板）
 ├── deploy/
 ├── design-system/
 └── docs/
@@ -387,8 +438,96 @@ kill $(lsof -ti :8085) 2>/dev/null; sleep 2; cd backend/go-service && go run cmd
 - `im_conversation_members` — 扩展字段（role, nickname, is_muted, is_do_not_disturb, joined_at, at_me_count）
 - `im_messages` — 扩展字段（at_user_ids BIGINT[]）
 
+---
+
+## 九、Phase 2d — 消息类型扩展
+
+> **状态：** ✅ 已完成
+> **设计文档：** `docs/plans/2026-03-04-phase2d-design.md`
+> **实施计划：** `docs/plans/2026-03-04-phase2d-implementation.plan.md`
+> **分支：** `feature/phase2d-message-types`
+
+### 功能范围
+
+| 模块 | 内容 |
+|------|------|
+| 文件上传增强 | 50MB 上传上限、图片缩略图（200px JPEG）、语音校验（mp3/wav/aac/m4a, 最长 60s） |
+| 富媒体消息 | 图片（多图网格 + 大图预览）、语音（录制+播放+波形）、文件（卡片+下载+预览） |
+| IM Service | extra JSON 存储、会话列表预览文案（[图片x3]/[语音 12"]/[文件] xxx.pdf） |
+| 前端组件 | MsgText/MsgImage/MsgVoice/MsgFile + MorePanel + VoiceRecorder |
+| 管理端 | 消息列表（多条件筛选+撤回+删除+详情）+ 消息统计仪表板（ECharts 四图表） |
+
+### Task 完成状态
+
+| Task | 描述 | 状态 |
+|------|------|------|
+| Task 1 | 文件上传服务增强（50MB + 缩略图 + 语音校验） | ✅ 完成 |
+| Task 2 | 消息 extra 结构定义 + DTO 扩展 + 常量启用 | ✅ 完成 |
+| Task 3 | IM Service 适配富媒体消息 | ✅ 完成 |
+| Task 4 | 管理端消息 DAO + Service + Controller | ✅ 完成 |
+| Task 5 | 消息组件体系 + conversation 页改造 | ✅ 完成 |
+| Task 6 | 图片消息完整流程 | ✅ 完成 |
+| Task 7 | 语音消息完整流程 | ✅ 完成 |
+| Task 8 | 文件消息完整流程 | ✅ 完成 |
+| Task 9 | 输入栏改造 | ✅ 完成 |
+| Task 10 | 管理端消息列表页 | ✅ 完成 |
+| Task 11 | 管理端消息统计页 | ✅ 完成 |
+| Task 12 | 管理端路由 + Store + API | ✅ 完成 |
+| Task 13 | 群聊适配 + 编译验证 | ✅ 完成 |
+| Task 14 | 代码审查 + 文档更新 | ✅ 完成 |
+| 代码审查修复 | C1: im_groups 表名修复 + C2: 管理端撤回 WS 推送补全 | ✅ 完成 |
+
+### 后端新增/修改
+
+#### 文件上传 API
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | /api/v1/upload/image | 图片上传（含缩略图生成） |
+| POST | /api/v1/upload/voice | 语音上传（含时长校验） |
+
+#### 管理端消息 API
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | /api/v1/admin/messages | 消息列表（分页+多条件筛选） |
+| GET | /api/v1/admin/messages/:id | 消息详情 |
+| DELETE | /api/v1/admin/messages/:id | 删除消息（软删除） |
+| PUT | /api/v1/admin/messages/:id/recall | 撤回消息（+WS 推送） |
+| GET | /api/v1/admin/messages/stats | 消息统计 |
+
+### 前端新增组件
+
+| 组件 | 路径 | 功能 |
+|------|------|------|
+| MsgText.vue | components/msg/ | 文本消息渲染 |
+| MsgImage.vue | components/msg/ | 图片网格 + 大图预览 |
+| MsgVoice.vue | components/msg/ | 语音播放 + 波形 + 时长 |
+| MsgFile.vue | components/msg/ | 文件卡片 + 下载 + 预览 |
+| MorePanel.vue | components/chat/ | "+"展开面板 |
+| VoiceRecorder.vue | components/chat/ | 长按录音 |
+
+### 管理端新增页面
+
+| 页面 | 路径 | 功能 |
+|------|------|------|
+| 消息列表 | views/message/list.vue | 多条件筛选 + 操作 + 详情弹窗 |
+| 消息统计 | views/message/stats.vue | 趋势折线图 + 类型饼图 + 活跃排行 |
+
+### Playwright 端到端测试（2026-04-17）
+
+| 测试项 | 结果 | 说明 |
+|------|------|------|
+| 前台单聊输入栏改造 | ✅ 通过 | 语音切换 + MorePanel 展开正常 |
+| 前台群聊输入栏改造 | ✅ 通过 | 与单聊一致的改造结构 |
+| 管理端消息列表展示 | ✅ 通过 | 表格、分页、操作按钮正常 |
+| 管理端筛选功能 | ✅ 通过 | 关键词/类型/发送者ID/重置全部正常 |
+| 管理端撤回/删除操作 | ✅ 通过 | 确认弹窗 + 状态变更 + 按钮联动正常 |
+| 管理端消息详情弹窗 | ✅ 通过 | 发送者信息 + 元数据 + 内容展示正常 |
+| 管理端消息统计图表 | ✅ 通过 | ECharts 线图/饼图/条形图渲染正常 |
+
+> 详细报告：`test-report-phase2d.md`
+
 ### 留待后续阶段
 
-- 消息类型扩展（图片/语音/文件）
-- 管理端消息管理功能
 - 群头像上传 UI 完善
+- 消息转发功能
+- 视频消息支持

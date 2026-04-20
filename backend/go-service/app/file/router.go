@@ -12,5 +12,7 @@ func RegisterRoutes(r *gin.Engine, ctrl *controller.FileController, jwtAuth gin.
 	authed.Use(jwtAuth)
 	{
 		authed.POST("/upload", ctrl.Upload)
+		authed.POST("/upload/image", ctrl.UploadImage)
+		authed.POST("/upload/voice", ctrl.UploadVoice)
 	}
 }

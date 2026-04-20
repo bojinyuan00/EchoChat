@@ -6,23 +6,25 @@ package dto
 type SendMessageRequest struct {
 	ConversationID int64   `json:"conversation_id"`  // 会话 ID（与 TargetUserID 二选一）
 	TargetUserID   int64   `json:"target_user_id"`   // 对方用户 ID（首次发消息时使用，自动创建会话）
-	Type           int     `json:"type"`              // 消息类型：1=文本
-	Content        string  `json:"content"`           // 消息内容
+	Type           int     `json:"type"`              // 消息类型：1=文本, 2=图片, 3=语音, 5=文件
+	Content        string  `json:"content"`           // 消息内容（富媒体消息时为空字符串）
+	Extra          string  `json:"extra"`             // 扩展数据 JSON 字符串（图片/语音/文件元信息）
 	ClientMsgID    string  `json:"client_msg_id"`     // 客户端消息唯一 ID，用于幂等去重
 	AtUserIDs      []int64 `json:"at_user_ids"`       // @提醒用户 ID 列表（含 0 表示 @所有人）
 }
 
 // MessageDTO 消息传输对象（返回给前端）
 type MessageDTO struct {
-	ID             int64   `json:"id"`              // 消息 ID
-	ConversationID int64   `json:"conversation_id"` // 所属会话 ID
-	SenderID       int64   `json:"sender_id"`       // 发送者用户 ID
-	Type           int     `json:"type"`            // 消息类型
-	Content        string  `json:"content"`         // 消息内容
-	Status         int     `json:"status"`          // 消息状态：1=正常，2=已撤回
-	ClientMsgID    string  `json:"client_msg_id"`   // 客户端消息 ID
-	AtUserIDs      []int64 `json:"at_user_ids"`     // @提醒用户 ID 列表
-	CreatedAt      string  `json:"created_at"`      // 发送时间
+	ID             int64   `json:"id"`                        // 消息 ID
+	ConversationID int64   `json:"conversation_id"`           // 所属会话 ID
+	SenderID       int64   `json:"sender_id"`                 // 发送者用户 ID
+	Type           int     `json:"type"`                      // 消息类型
+	Content        string  `json:"content"`                   // 消息内容
+	Extra          *string `json:"extra,omitempty"`           // 扩展数据 JSON（图片/语音/文件元信息）
+	Status         int     `json:"status"`                    // 消息状态：1=正常，2=已撤回
+	ClientMsgID    string  `json:"client_msg_id"`             // 客户端消息 ID
+	AtUserIDs      []int64 `json:"at_user_ids"`               // @提醒用户 ID 列表
+	CreatedAt      string  `json:"created_at"`                // 发送时间
 }
 
 // RecallMessageRequest 撤回消息请求（WS 事件 im.message.recall 的 data 字段）

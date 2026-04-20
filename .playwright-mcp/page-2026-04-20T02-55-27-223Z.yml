@@ -1,0 +1,38 @@
+- generic [ref=e7]:
+  - generic [ref=e8]:
+    - generic [ref=e10]: 
+    - generic [ref=e12]: 卜锦元
+    - generic [ref=e14]: 
+  - generic [ref=e18]:
+    - generic [ref=e19]:
+      - generic [ref=e22]: 卜
+      - generic [ref=e25]: "111"
+    - generic [ref=e27]:
+      - generic [ref=e28]:
+        - generic [ref=e31]: "112121212"
+        - generic [ref=e34]: 新
+      - generic [ref=e35]: 未读
+    - generic [ref=e37]:
+      - generic [ref=e38]:
+        - generic [ref=e39]:
+          - generic:
+            - generic:
+              - generic:
+                - img
+        - generic [ref=e42]: 新
+      - generic [ref=e43]: 未读
+    - generic [ref=e45]:
+      - generic [ref=e46]:
+        - generic [ref=e47]:
+          - generic:
+            - generic:
+              - generic:
+                - img
+        - generic [ref=e50]: 新
+      - generic [ref=e51]: 未读
+  - generic [ref=e53]:
+    - generic [ref=e55]: 
+    - generic [ref=e58]:
+      - generic: 输入消息...
+      - textbox [ref=e59]
+    - generic [ref=e61]: 

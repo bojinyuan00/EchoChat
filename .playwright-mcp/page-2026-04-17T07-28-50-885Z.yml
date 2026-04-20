@@ -1,0 +1,70 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e162]:
+    - complementary [ref=e163]:
+      - generic [ref=e164]:
+        - generic [ref=e165]: E
+        - generic [ref=e166]: EchoChat
+      - menubar [ref=e167]:
+        - menuitem "仪表盘" [ref=e168] [cursor=pointer]:
+          - img [ref=e170]
+          - text: 仪表盘
+        - menuitem "用户管理" [ref=e172]:
+          - generic [ref=e173] [cursor=pointer]:
+            - img [ref=e175]
+            - generic [ref=e177]: 用户管理
+            - img [ref=e179]
+        - menuitem "联系人管理" [ref=e181]:
+          - generic [ref=e182] [cursor=pointer]:
+            - img [ref=e184]
+            - generic [ref=e187]: 联系人管理
+            - img [ref=e189]
+        - menuitem "群组管理" [ref=e191]:
+          - generic [ref=e192] [cursor=pointer]:
+            - img [ref=e194]
+            - generic [ref=e197]: 群组管理
+            - img [ref=e199]
+        - menuitem "消息管理" [ref=e201]:
+          - generic [ref=e202] [cursor=pointer]:
+            - img [ref=e204]
+            - generic [ref=e206]: 消息管理
+            - img [ref=e208]
+        - menuitem "在线监控" [ref=e210] [cursor=pointer]:
+          - img [ref=e212]
+          - text: 在线监控
+    - generic [ref=e214]:
+      - generic [ref=e215]:
+        - img [ref=e218] [cursor=pointer]
+        - button "管 admin_test" [ref=e222] [cursor=pointer]:
+          - generic [ref=e223]: 管
+          - generic [ref=e224]: admin_test
+          - img [ref=e226]
+      - main [ref=e228]:
+        - generic [ref=e229]:
+          - heading "仪表盘" [level=2] [ref=e230]
+          - generic [ref=e231]:
+            - generic [ref=e234]:
+              - img [ref=e237]
+              - generic [ref=e239]: "--"
+              - generic [ref=e240]: 总用户数
+            - generic [ref=e243]:
+              - img [ref=e246]
+              - generic [ref=e249]: "--"
+              - generic [ref=e250]: 在线用户
+            - generic [ref=e253]:
+              - img [ref=e256]
+              - generic [ref=e258]: "--"
+              - generic [ref=e259]: 今日会议
+            - generic [ref=e262]:
+              - img [ref=e265]
+              - generic [ref=e268]: "--"
+              - generic [ref=e269]: 系统消息
+          - generic [ref=e270]:
+            - generic [ref=e271]: 开发进度
+            - generic [ref=e272]:
+              - paragraph [ref=e273]:
+                - text: "Phase 1: 基础设施与用户认证模块 —"
+                - generic [ref=e275]: 进行中
+              - paragraph [ref=e276]: 更多数据面板将在后续阶段中完善（IM 统计、会议统计、系统监控等）
+  - alert [ref=e277]:
+    - img [ref=e279]
+    - paragraph [ref=e281]: 登录成功

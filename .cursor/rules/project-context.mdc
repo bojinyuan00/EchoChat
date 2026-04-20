@@ -20,10 +20,11 @@ alwaysApply: true
 - 分支：`feature/phase2b-instant-messaging`
 - **Phase 2c（群聊与已读回执）**：✅ 全部完成（14 个 Task + 代码审查修复 14 项 + 浏览器测试修复 21 项），设计文档 `docs/plans/2026-03-04-phase2c-design.md`
 - 分支：`feature/phase2c-group-read-receipt`
-- 范围：群聊全功能（三级角色/禁言/@提醒/群公告/入群审批）+ 已读回执（单聊会话级 + 群聊消息级）+ MinIO 文件存储 + 管理端群组管理
-- 代码审查修复：Critical×5（角色类型/公告字段/at_user_ids/@导航/Wire 注册）+ Important×4 + Minor×2 + Suggestion×3
-- 浏览器测试修复：搜索 ILIKE 替换 to_tsvector、管理端群详情 UI 重设计、群搜索已加入状态、创建/邀请支持非好友搜索、全角色身份标识、全局错误信息路径修复（8文件18处）、自定义操作弹窗替代 uni.showActionSheet、已读详情页群昵称展示、免打扰 API 补全（DAO/Service/Controller/Router）、联系人 Tab 页 onShow 刷新
-- **跨模块通信模式**：接口注入标准（ws.FriendIDsGetter / im.FriendChecker / im.UserInfoGetter → contact.FriendshipDAO，im.OfflineMessagePusher → ws.Handler，contact.OnlineChecker → ws.OnlineService，im.GroupInfoGetter → group.GroupDAO，im.MessageReadRecorder → group.MessageReadDAO，group.UserInfoProvider → auth.UserDAO，group.MessageWriter → im.MessageDAO）
+- **Phase 2d（消息类型扩展）**：✅ 全部完成（14 个 Task + 代码审查修复 2 项 + 富媒体 Bug 修复 4 项），设计文档 `docs/plans/2026-03-04-phase2d-design.md`
+- 分支：`feature/phase2d-message-types`
+- **开发者运维脚本（2026-04-20）**：新增 `scripts/{start,stop,status}.sh` 三件套，`scripts/dev-setup.sh` 补齐 MinIO 健康检查；遵循 setup/start 职责分离（Rails/Django 社区模式）
+- 范围：图片/语音/文件消息完整流程 + 管理端消息管理（列表+统计+撤回+删除）+ ECharts 仪表板
+- **跨模块通信模式**：接口注入标准（ws.FriendIDsGetter / im.FriendChecker / im.UserInfoGetter → contact.FriendshipDAO，im.OfflineMessagePusher → ws.Handler，contact.OnlineChecker → ws.OnlineService，im.GroupInfoGetter → group.GroupDAO，im.MessageReadRecorder → group.MessageReadDAO，group.UserInfoProvider → auth.UserDAO，group.MessageWriter → im.MessageDAO，admin.MessageManageService → im.ConversationDAO + ws.PubSub）
 
 ## 项目概述
 
@@ -32,7 +33,7 @@ EchoChat 是一个实时音视频通讯平台，包含三个子项目：
 - `frontend/` — 前台用户端（uni-app + Vue 3.4 + Pinia 2.x）
 - `admin/` — 后台管理端（Vue 3.5+ + Element Plus + Pinia 3.x）
 
-已实现模块：auth（认证）、contact（联系人）、ws（WebSocket）、admin（管理端）、im（即时通讯 + 已读回执）、group（群聊管理）、file（文件上传/MinIO）
+已实现模块：auth（认证）、contact（联系人）、ws（WebSocket）、im（即时通讯）、group（群聊）、file（文件上传）、admin（管理端含消息管理）、im（即时通讯 + 已读回执）、group（群聊管理）、file（文件上传/MinIO）
 前端常量：`frontend/src/constants/group.js`（GROUP_ROLE / GROUP_STATUS / JOIN_REQUEST_STATUS，与后端 constants/group.go 对齐）
 
 ## 核心开发规则
@@ -52,6 +53,12 @@ EchoChat 是一个实时音视频通讯平台，包含三个子项目：
 13. **验证方式**：使用 Playwright MCP 进行页面自动化验证
 14. **代码审查**：每个 Task 完成后，使用 `code-reviewer` 子代理进行结构化审查，确保代码质量和计划一致性
 15. **完成验证**：使用 `verification-before-completion` 技能，在声称完成前运行验证命令并确认输出
+16. **本地启停脚本（强制）**：启动/停止三端服务统一使用 `scripts/` 下的脚本，**禁止在聊天中直接指导用户敲 `cd backend && go run ...` 等原始命令**：
+    - 首次初始化：`./scripts/dev-setup.sh`（检查 Docker、拉起 Postgres/Redis/MinIO 并健康等待）
+    - 日常启动：`./scripts/start.sh`（端口占用自动跳过，支持 `backend|frontend|admin|docker|--no-docker` 单项启动）
+    - 日常停止：`./scripts/stop.sh`（默认保留 Docker 容器，`--all` 全关）
+    - 状态查看：`./scripts/status.sh`
+    - 后台进程的 PID 与日志位于 `.run/`（已 gitignore），排障优先查看 `.run/logs/*.log`
 
 ## 代码风格全局一致规则（最高优先级，强制执行）
 

@@ -36,7 +36,7 @@ func Setup(engine *gin.Engine, app *provider.App) {
 
 	// --- 各模块路由注册 ---
 	auth.RegisterRoutes(engine, app.AuthController, app.AdminAuthController, jwtAuth)
-	admin.RegisterRoutes(engine, app.UserManageController, app.OnlineController, app.ContactManageController, app.GroupManageController, jwtAuth)
+	admin.RegisterRoutes(engine, app.UserManageController, app.OnlineController, app.ContactManageController, app.GroupManageController, app.MessageManageController, jwtAuth)
 	wsApp.RegisterRoutes(engine, app.WSHandler)
 	contact.RegisterRoutes(engine, app.ContactController, jwtAuth)
 	imApp.RegisterRoutes(engine, app.IMController, jwtAuth)

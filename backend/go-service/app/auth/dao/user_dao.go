@@ -115,6 +115,20 @@ func (d *UserDAO) UpdateLastLogin(ctx context.Context, userID int64, ip string) 
 	return err
 }
 
+// FindByIDs 批量按 ID 查询用户
+func (d *UserDAO) FindByIDs(ctx context.Context, ids []int64) ([]model.User, error) {
+	funcName := "dao.user_dao.FindByIDs"
+	logs.Debug(ctx, funcName, "批量查询用户", zap.Int("count", len(ids)))
+
+	var users []model.User
+	err := d.db.WithContext(ctx).Where("id IN ?", ids).Find(&users).Error
+	if err != nil {
+		logs.Error(ctx, funcName, "批量查询用户失败", zap.Error(err))
+		return nil, err
+	}
+	return users, nil
+}
+
 // FindByAccount 按用户名或邮箱查找用户（登录时使用）
 func (d *UserDAO) FindByAccount(ctx context.Context, account string) (*model.User, error) {
 	funcName := "dao.user_dao.FindByAccount"
