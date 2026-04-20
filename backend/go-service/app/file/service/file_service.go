@@ -29,7 +29,7 @@ var (
 	ErrUploadFailed   = errors.New("文件上传失败")
 	ErrFileTooLarge   = errors.New("文件大小超出限制")
 	ErrInvalidImage   = errors.New("无效的图片文件")
-	ErrInvalidVoice   = errors.New("不支持的语音格式，仅支持 mp3/wav/aac/m4a")
+	ErrInvalidVoice   = errors.New("不支持的语音格式，仅支持 mp3/wav/aac/m4a/webm/ogg")
 	ErrVoiceTooLong   = errors.New("语音时长不能超过 60 秒")
 	ErrThumbnailGen   = errors.New("缩略图生成失败")
 )
@@ -76,11 +76,14 @@ type VoiceUploadResult struct {
 }
 
 // allowedVoiceExts 允许的语音文件扩展名
+// .webm / .ogg 用于兼容 H5 端浏览器 MediaRecorder 输出（uni-app H5 端不支持 getRecorderManager）
 var allowedVoiceExts = map[string]bool{
-	".mp3": true,
-	".wav": true,
-	".aac": true,
-	".m4a": true,
+	".mp3":  true,
+	".wav":  true,
+	".aac":  true,
+	".m4a":  true,
+	".webm": true,
+	".ogg":  true,
 }
 
 // Upload 上传文件到 MinIO，返回文件访问 URL

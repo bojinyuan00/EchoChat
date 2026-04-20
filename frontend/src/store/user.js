@@ -120,6 +120,12 @@ export const useUserStore = defineStore('user', () => {
     } catch (e) {
       console.warn('登出 API 调用失败，仍然清除本地状态', e)
     }
+    // 清理 chat store 中的私人视图态（语音已播放缓存按 userId 隔离存在 storage，
+    // 此处只重置运行时 state，下次登录会按新 userId 加载对应缓存）
+    try {
+      const { useChatStore } = await import('@/store/chat')
+      useChatStore().resetVoicePlayedState()
+    } catch (_) { /* ignore */ }
     token.value = ''
     userInfo.value = null
     clearAll()

@@ -1,0 +1,17 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - generic [ref=e10]: 
+      - generic [ref=e12]: 聊天
+      - generic [ref=e14]: 
+    - generic [ref=e20]: 加载更多
+    - generic [ref=e22]:
+      - generic [ref=e24]: 
+      - generic [ref=e27]:
+        - generic: 输入消息...
+        - textbox [ref=e28]
+      - generic [ref=e30]: 
+  - generic:
+    - generic:
+      - generic:
+        - paragraph: 缺少认证信息

@@ -96,9 +96,17 @@ type HistoryMessageRequest struct {
 }
 
 // HistoryMessageResponse 历史消息响应
+//
+// 已读状态回填设计（2026-04-20）：
+//   - PeerLastReadMsgID：单聊时填"对方 last_read_msg_id"，用于前端在页面刷新后恢复 readStatusMap，
+//     避免已读标签变未读的体验退化；群聊时为 0
+//   - ReadCountMap：群聊时批量返回"自己发送消息的 read_count"，前端合并到 groupReadCountMap；
+//     单聊时为 nil（JSON omitempty 省略，节省带宽）
 type HistoryMessageResponse struct {
-	List    []MessageDTO `json:"list"`     // 消息列表（ID 降序）
-	HasMore bool         `json:"has_more"` // 是否还有更多历史消息
+	List              []MessageDTO  `json:"list"`                         // 消息列表（ID 降序）
+	HasMore           bool          `json:"has_more"`                     // 是否还有更多历史消息
+	PeerLastReadMsgID int64         `json:"peer_last_read_msg_id"`        // 单聊：对方已读位置（群聊=0）
+	ReadCountMap      map[int64]int `json:"read_count_map,omitempty"`     // 群聊：{messageID: readCount}（仅自己发的消息）
 }
 
 // ====== 已读标记 DTO ======

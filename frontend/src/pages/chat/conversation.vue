@@ -29,6 +29,9 @@
       :scroll-into-view="scrollToId"
       :scroll-with-animation="true"
       @scrolltoupper="onLoadMore"
+      @scrolltolower="onScrollToLower"
+      @scroll="onScroll"
+      :lower-threshold="150"
     >
       <view v-if="hasMore" class="load-more" @tap="onLoadMore">
         <text class="load-more-text">{{ loadingMore ? '加载中...' : '加载更多' }}</text>
@@ -100,6 +103,12 @@
       <view id="msg-bottom" style="height: 2rpx;" />
     </scroll-view>
 
+    <!-- 新消息悬浮提示（仅当用户远离底部且有新消息时显示） -->
+    <view v-if="newMsgCount > 0" class="new-msg-hint" @tap="jumpToBottom">
+      <uni-icons type="bottom" size="14" color="#2563EB" />
+      <text class="new-msg-hint-text">{{ newMsgCount }} 条新消息</text>
+    </view>
+
     <!-- 输入栏 -->
     <view class="input-bar">
       <view class="voice-toggle-btn" @tap="toggleVoiceMode">
@@ -164,6 +173,18 @@ export default {
     const inputText = ref('')
     const scrollToId = ref('')
     const loadingMore = ref(false)
+
+    // 滚动位置感知：判断用户视图是否"贴近底部"
+    // 策略：每次 @scroll 事件都对比"历史最大 scrollTop"（等价于贴底位置），
+    // 差值 < 150 视为贴底。此方式不依赖 @scrolltolower 能否在程序化滚动后触发，
+    // 对 scroll-into-view + 动态 scrollHeight 都能正确响应。
+    const nearBottom = ref(true)
+    // 用户未看到的新消息累计数（悬浮按钮显示用）
+    const newMsgCount = ref(0)
+    // 首次渲染完成前，避免滚动事件误判
+    let scrollReady = false
+    // 已记录的最大 scrollTop（scrollHeight 增大并滚到底时会同步增长）
+    let maxScrollTop = 0
 
     const messages = computed(() => chatStore.currentMessages)
     const hasMore = computed(() => conversationId.value > 0 && chatStore.hasMoreMap[conversationId.value] !== false)
@@ -242,6 +263,8 @@ export default {
         await chatStore.loadHistoryMessages(conversationId.value)
       }
       scrollToBottom()
+      // 初次进入会话且消息已加载：等待渲染后启用滚动感知
+      nextTick(() => { scrollReady = true })
     }
 
     const scrollToBottom = () => {
@@ -250,6 +273,80 @@ export default {
         nextTick(() => { scrollToId.value = 'msg-bottom' })
       })
     }
+
+    /**
+     * 滚动事件：维护 maxScrollTop，并据此更新 nearBottom
+     * - scrollTop 持续增长（贴底滚动）→ maxScrollTop 同步增长 → 贴底
+     * - scrollTop 相对 maxScrollTop 回退 > 150 → 用户主动上滑，视为远离底部
+     */
+    const onScroll = (e) => {
+      if (!scrollReady) return
+      const scrollTop = e.detail?.scrollTop
+      if (typeof scrollTop !== 'number') return
+      if (scrollTop > maxScrollTop) maxScrollTop = scrollTop
+      const wasNear = nearBottom.value
+      nearBottom.value = (maxScrollTop - scrollTop) < 150
+      // 由"远离"回到"贴底"的瞬间，清空未读悬浮并标记已读
+      if (!wasNear && nearBottom.value) {
+        if (newMsgCount.value > 0) newMsgCount.value = 0
+        if (conversationId.value) chatStore.markRead(conversationId.value)
+      }
+    }
+
+    /** 滚动到达下边界（lower-threshold 内）：权威地置贴底 */
+    const onScrollToLower = () => {
+      nearBottom.value = true
+      if (newMsgCount.value > 0) {
+        newMsgCount.value = 0
+      }
+      if (conversationId.value) {
+        chatStore.markRead(conversationId.value)
+      }
+    }
+
+    /** 点击悬浮提示：滚到底部、清零计数、标记已读 */
+    const jumpToBottom = () => {
+      scrollToBottom()
+      newMsgCount.value = 0
+      nearBottom.value = true
+      if (conversationId.value) {
+        chatStore.markRead(conversationId.value)
+      }
+    }
+
+    // 监听消息数组变化：只对「末尾新增的消息」做处理
+    // 关键点：必须对比末尾消息标识，而非仅看 length——加载历史时从头部插入大量消息，
+    // length 会增加但 tail 不变，不应计入 newMsgCount
+    let lastTailKey = ''
+    const getTailKey = (msg) => msg ? String(msg.id || msg.client_msg_id || '') : ''
+    watch(() => messages.value.length, (newLen) => {
+      if (!scrollReady) return
+      const tail = messages.value[newLen - 1]
+      const tailKey = getTailKey(tail)
+      // 末尾消息未变（仅头部插入历史消息）→ 不处理
+      if (!tailKey || tailKey === lastTailKey) {
+        lastTailKey = tailKey || lastTailKey
+        return
+      }
+      const prevKey = lastTailKey
+      lastTailKey = tailKey
+      // 首次初始化（从空数组到有消息）不触发逻辑，由 loadInitialMessages 负责滚动
+      if (!prevKey) return
+
+      // 仅对「对方发来的新消息」做累计；自己发出的消息在 onSend/onChoose 等处已显式滚动
+      const myId = Number(userStore.userInfo?.id) || 0
+      const fromOther = tail.sender_id && tail.sender_id !== myId
+      if (!fromOther) return
+
+      if (nearBottom.value) {
+        scrollToBottom()
+        if (conversationId.value) {
+          chatStore.markRead(conversationId.value)
+        }
+      } else {
+        newMsgCount.value += 1
+      }
+    })
 
     const onSend = () => {
       const content = inputText.value.trim()
@@ -433,10 +530,13 @@ export default {
       // #endif
     }
 
-    const onVoiceRecorded = async ({ tempFilePath, duration }) => {
+    const onVoiceRecorded = async ({ tempFilePath, duration, blob, mimeType }) => {
       try {
         uni.showLoading({ title: '发送中...' })
-        const result = await uploadVoice(tempFilePath, duration)
+        // H5 端：根据 mimeType 推断扩展名，传递 Blob 以走 fetch+FormData 精确上传
+        const ext = mimeTypeToExt(mimeType)
+        const fileName = ext ? `voice-${Date.now()}.${ext}` : undefined
+        const result = await uploadVoice(tempFilePath, duration, fileName, blob)
         chatStore.sendVoiceMessage({
           conversationId: conversationId.value || 0,
           targetUserId: conversationId.value ? 0 : peerId.value,
@@ -455,6 +555,18 @@ export default {
       }
     }
 
+    // 根据 MediaRecorder 的 mimeType 推断文件扩展名
+    const mimeTypeToExt = (mime) => {
+      if (!mime) return ''
+      const m = mime.toLowerCase()
+      if (m.includes('webm')) return 'webm'
+      if (m.includes('ogg')) return 'ogg'
+      if (m.includes('mp4') || m.includes('aac')) return 'm4a'
+      if (m.includes('mpeg') || m.includes('mp3')) return 'mp3'
+      if (m.includes('wav')) return 'wav'
+      return ''
+    }
+
     const goToSettings = () => {
       uni.navigateTo({
         url: `/pages/chat/settings?conversationId=${conversationId.value}&peerId=${peerId.value}&peerName=${encodeURIComponent(peerName.value)}&peerAvatar=${encodeURIComponent(peerAvatar.value)}`
@@ -466,8 +578,10 @@ export default {
       inputText, scrollToId, loadingMore, convType,
       voiceMode, showMorePanel,
       messages, hasMore, isTyping,
+      newMsgCount,
       isSelf, isRead, getReadLabel,
       onSend, onInputChange, onLoadMore,
+      onScroll, onScrollToLower, jumpToBottom,
       onMsgLongPress, onResend, goBack, goToSettings,
       toggleVoiceMode, toggleMorePanel,
       onChooseImage, onChooseFile, onVoiceRecorded
@@ -660,5 +774,32 @@ export default {
 .bubble-media {
   padding: 12rpx !important;
   background-color: transparent !important;
+}
+
+/* ===== 新消息悬浮提示（远离底部时展示，点击滚到底并标记已读） ===== */
+.new-msg-hint {
+  position: fixed;
+  right: 32rpx;
+  /* 输入栏约 104rpx + 底部安全区 + 16rpx 间距 */
+  bottom: calc(120rpx + env(safe-area-inset-bottom, 0rpx));
+  display: flex;
+  align-items: center;
+  padding: 12rpx 24rpx;
+  background-color: #FFFFFF;
+  border: 1rpx solid #E2E8F0;
+  border-radius: 32rpx;
+  box-shadow: 0 4rpx 16rpx rgba(15, 23, 42, 0.12);
+  z-index: 10;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.new-msg-hint:active {
+  opacity: 0.85;
+  transform: translateY(1rpx);
+}
+.new-msg-hint-text {
+  font-size: 24rpx;
+  color: #2563EB;
+  margin-left: 6rpx;
+  font-weight: 500;
 }
 </style>

@@ -20,9 +20,13 @@ alwaysApply: true
 - 分支：`feature/phase2b-instant-messaging`
 - **Phase 2c（群聊与已读回执）**：✅ 全部完成（14 个 Task + 代码审查修复 14 项 + 浏览器测试修复 21 项），设计文档 `docs/plans/2026-03-04-phase2c-design.md`
 - 分支：`feature/phase2c-group-read-receipt`
-- **Phase 2d（消息类型扩展）**：✅ 全部完成（14 个 Task + 代码审查修复 2 项 + 富媒体 Bug 修复 4 项），设计文档 `docs/plans/2026-03-04-phase2d-design.md`
-- 分支：`feature/phase2d-message-types`
+- **Phase 2d（消息类型扩展）**：✅ 全部完成（14 个 Task + 代码审查修复 2 项 + 富媒体 Bug 修复 4 项 + UX 优化 1 项），设计文档 `docs/plans/2026-03-04-phase2d-design.md`
+- **⚠️ 分支说明**：Phase 2d 的实际开发工作误用了 `feature/phase2c-group-read-receipt` 分支，`feature/phase2d-message-types` 分支未承载 2d 代码。此次偏差不做回溯修复；**Phase 2e 起必须为每个阶段新建独立分支**（`feature/phase2e-xxx`）。
 - **开发者运维脚本（2026-04-20）**：新增 `scripts/{start,stop,status}.sh` 三件套，`scripts/dev-setup.sh` 补齐 MinIO 健康检查；遵循 setup/start 职责分离（Rails/Django 社区模式）
+- **聊天页 UX 优化（2026-04-20）**：单聊/群聊引入「新消息悬浮提示 + 按需已读」机制（贴底自动滚+已读，远离底部显示"N 条新消息"悬浮按钮），消除"视图未见但对方已读"的 UX 错位；**后续修复**：watch 误将"加载更多历史消息"计入 newMsgCount → 改为对比「末尾消息标识（tail id/client_msg_id）」而非 `messages.length`，真实双账号（duanlingyun ↔ bojinyuan）端到端验证通过
+- **语音消息 H5 兼容（2026-04-20）**：修复 PC Chrome 无法按住"按住说话"的问题，链路涉及 4 层（事件 + 录音 API + 上传 + 后端校验）：VoiceRecorder 并行监听 touch/mouse 事件；新增 `H5Recorder` 类（基于 `MediaRecorder + getUserMedia`）作为 uni 录音接口在 H5 端的回退；`uploadVoice` 增加 blob 分支走 `fetch+FormData` 精确控制 filename；后端 `allowedVoiceExts` 扩展 `.webm/.ogg`。Playwright 端到端验证：录音计时正常（3s→5s 跳动）、Blob 上传成功、数据库 `im_messages` type=3 记录写入
+- **语音未听红点（2026-04-20，仿微信）**：语音需"听"才算真消费，仅通用已读不能准确反映 → 为「对方发来的」语音叠加独立状态。`chat store` 新增 `voicePlayedMap` + 4 API（`markVoicePlayed/isVoicePlayed/loadVoicePlayedState/resetVoicePlayedState`），localStorage 按 userId 隔离（`echo:voice-played:{userId}`），不同步后端（私人视图态）；`MsgVoice.vue` 自主消费 store（单聊/群聊同构），模板加 `.unplayed-dot`（10rpx 红圆），`onTogglePlay` 点击即标记清除；`user.logout()` 补 `resetVoicePlayedState()` 防串用户。Playwright 验证：duanlingyun(13) ↔ bojinyuan(7) 会话 6，初始 5 个红点（对方 5 条语音） → 点击 2 条 → 红点减至 3 → 页面刷新仍为 3（持久化生效）
+- **已读状态刷新持久化（2026-04-20）**：修复"刷新后所有已读标签变未读 / 群聊 N人已读消失"的体验倒退 bug，根因是前端 `readStatusMap`/`groupReadCountMap` 仅由 WS 事件填充、刷新后无 API 补回。扩展 `HistoryMessageResponse` 新增 `peer_last_read_msg_id`（单聊）+ `read_count_map`（群聊仅含自己发送消息）；`GetHistoryMessages` 按会话类型分支填充（`GetPeerUserID`+`GetMember` 或 `readRecorder.GetReadCountBatch`）；前端 `loadHistoryMessages` 仅在首次加载时回填（避免加载更多时覆盖 WS 增量）。Playwright 双端验证：单聊会话 6（peer_last_read=202）首屏 20 已读+1 未读、群聊 8 刷新后 13 条自己消息全部显示"N人已读"（11×1人 + 2×2人）；不新增 API，不增加请求次数，向前兼容
 - 范围：图片/语音/文件消息完整流程 + 管理端消息管理（列表+统计+撤回+删除）+ ECharts 仪表板
 - **跨模块通信模式**：接口注入标准（ws.FriendIDsGetter / im.FriendChecker / im.UserInfoGetter → contact.FriendshipDAO，im.OfflineMessagePusher → ws.Handler，contact.OnlineChecker → ws.OnlineService，im.GroupInfoGetter → group.GroupDAO，im.MessageReadRecorder → group.MessageReadDAO，group.UserInfoProvider → auth.UserDAO，group.MessageWriter → im.MessageDAO，admin.MessageManageService → im.ConversationDAO + ws.PubSub）
 

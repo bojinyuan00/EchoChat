@@ -1,0 +1,27 @@
+- generic [ref=e4]:
+  - generic [ref=e6]:
+    - img [ref=e9] [cursor=pointer]
+    - generic [ref=e12]: 登录
+  - generic [ref=e16]:
+    - generic [ref=e17]:
+      - generic [ref=e19]: E
+      - generic [ref=e20]: EchoChat
+      - generic [ref=e21]: 连接无限，沟通无界
+    - generic [ref=e22]:
+      - generic [ref=e23]: 登录
+      - generic [ref=e24]:
+        - generic [ref=e25]: 账号
+        - generic [ref=e28]:
+          - generic: 请输入用户名或邮箱
+          - textbox [ref=e29]
+      - generic [ref=e30]:
+        - generic [ref=e31]: 密码
+        - generic [ref=e32]:
+          - generic [ref=e34]:
+            - generic: 请输入密码
+            - textbox [ref=e35]
+          - generic [ref=e36]: 显示
+      - generic [ref=e38] [cursor=pointer]: 登录
+      - generic [ref=e39]:
+        - generic [ref=e40]: 还没有账号？
+        - generic [ref=e41]: 立即注册

@@ -3,29 +3,33 @@
   显示播放按钮 + 波形条 + 时长
   宽度按时长线性缩放：最小 120rpx（1秒），最大 500rpx（60秒）
   同一时间只允许一个语音播放（全局单例）
+  "未听"红点：对方发来的语音，若本地未播放过，右侧显示红点；点击播放即清除（与微信一致）
 -->
 <template>
   <view v-if="msg.status === 2" class="recalled-text">消息已撤回</view>
-  <view
-    v-else
-    class="msg-voice-wrap"
-    :class="{ 'voice-self': isSelf, 'voice-playing': isPlaying }"
-    :style="{ width: voiceWidth + 'rpx' }"
-    @tap="onTogglePlay"
-  >
-    <view class="voice-icon" :class="{ 'voice-icon-self': isSelf }">
-      <uni-icons :type="isPlaying ? 'sound-filled' : 'sound'" :size="18" :color="isSelf ? '#FFFFFF' : '#2563EB'" />
+  <view v-else class="msg-voice-container">
+    <view
+      class="msg-voice-wrap"
+      :class="{ 'voice-self': isSelf, 'voice-playing': isPlaying }"
+      :style="{ width: voiceWidth + 'rpx' }"
+      @tap="onTogglePlay"
+    >
+      <view class="voice-icon" :class="{ 'voice-icon-self': isSelf }">
+        <uni-icons :type="isPlaying ? 'sound-filled' : 'sound'" :size="18" :color="isSelf ? '#FFFFFF' : '#2563EB'" />
+      </view>
+      <view class="voice-bars">
+        <view v-for="i in 5" :key="i" class="voice-bar" :class="{ 'bar-self': isSelf }" :style="{ height: barHeights[i-1] + 'rpx' }" />
+      </view>
+      <text class="voice-duration" :class="{ 'duration-self': isSelf }">{{ duration }}"</text>
     </view>
-    <view class="voice-bars">
-      <view v-for="i in 5" :key="i" class="voice-bar" :class="{ 'bar-self': isSelf }" :style="{ height: barHeights[i-1] + 'rpx' }" />
-    </view>
-    <text class="voice-duration" :class="{ 'duration-self': isSelf }">{{ duration }}"</text>
+    <view v-if="showUnplayedDot" class="unplayed-dot" />
   </view>
 </template>
 
 <script>
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { parseExtra } from '@/utils/file'
+import { useChatStore } from '@/store/chat'
 
 let _globalAudio = null
 let _globalPlayingId = null
@@ -38,6 +42,20 @@ export default {
   },
   setup(props) {
     const isPlaying = ref(false)
+    const chatStore = useChatStore()
+
+    /**
+     * 是否显示"未播放"红点：
+     * - 仅对「对方发来的」语音显示（isSelf=false）
+     * - 消息未被撤回（由外层 v-if 已保证）
+     * - 本地存储未记录"已播放"
+     */
+    const showUnplayedDot = computed(() => {
+      if (props.isSelf) return false
+      const id = props.msg.id
+      if (!id) return false
+      return !chatStore.isVoicePlayed(id)
+    })
 
     const voiceData = computed(() => {
       const extra = parseExtra(props.msg.extra)
@@ -60,6 +78,11 @@ export default {
     const onTogglePlay = () => {
       const url = voiceData.value.url
       if (!url) return
+
+      // 对方发来的语音一经点击即视为"已播放"，消除红点（与微信一致）
+      if (!props.isSelf && props.msg.id) {
+        chatStore.markVoicePlayed(props.msg.id)
+      }
 
       const msgId = props.msg.id || props.msg.client_msg_id
 
@@ -107,18 +130,32 @@ export default {
       }
     })
 
-    return { isPlaying, duration, voiceWidth, barHeights, onTogglePlay }
+    return { isPlaying, duration, voiceWidth, barHeights, onTogglePlay, showUnplayedDot }
   }
 }
 </script>
 
 <style scoped>
+.msg-voice-container {
+  display: flex;
+  align-items: center;
+}
 .msg-voice-wrap {
   display: flex;
   align-items: center;
   gap: 12rpx;
   padding: 4rpx 0;
   cursor: pointer;
+}
+/* "未播放"红点：紧贴气泡右侧，不占据主体宽度 */
+.unplayed-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background-color: #DC2626;
+  margin-left: 10rpx;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2rpx rgba(220, 38, 38, 0.15);
 }
 .voice-icon {
   flex-shrink: 0;

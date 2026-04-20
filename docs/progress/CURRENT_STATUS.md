@@ -1,11 +1,162 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-20（Phase 2d 富媒体消息缺陷修复，Playwright 全流程验证通过）
-> **当前阶段**：Phase 2d 全部完成 + Bug 修复 4 项（图片上传端口/MinIO 策略/MsgImage 布局/文件名保留）
-> **当前分支**：`feature/phase2d-message-types`
+> **最后更新**：2026-04-20（Phase 2d 完成 + UX 优化 + 已读状态刷新持久化）
+> **当前阶段**：Phase 2d 全部完成 + Bug 修复 7 项 + UX 优化 2 项
+> **当前分支**：`feature/phase2c-group-read-receipt`（注：Phase 2d 工作误用了 2c 分支，下一阶段 2e 直接新建分支开发）
 > **实施计划**：`docs/plans/2026-03-04-phase2d-implementation.plan.md`
 > **设计文档**：`docs/plans/2026-03-04-phase2d-design.md`
 > **本次修复报告**：`test-report-phase2d-bugfix.md`
+
+---
+
+## 🐛 2026-04-20 Bug 修复：已读状态刷新后丢失（变回"未读"）
+
+**问题**：单聊/群聊页面中大量消息显示"已读"的情况下，刷新浏览器 → 所有已读标签全部变为"未读" / "N人已读"消失，直到对方再次触发读消息才恢复 —— 严重影响真实性与信任度。
+
+**根因（单句）**：前端 `readStatusMap`（对方已读位置）和 `groupReadCountMap`（群聊已读计数）仅由 WebSocket 事件 `im.message.read.ack / im.message.read.count` 填充，从未在页面加载时从后端拉取，刷新后 state 归零且无 API 补回 → `isRead()` 判定 `msg.id <= 0` 恒为 false。后端数据库 `im_conversation_members.last_read_msg_id` 与 `im_message_reads` 数据其实都存在，只是未暴露给前端初始化。
+
+**修复方案（前后端联动，不新增 API，仅扩展 `HistoryMessageResponse`）**：
+
+| 端 | 改动 |
+|---|---|
+| 后端 DTO | `HistoryMessageResponse` 新增 `peer_last_read_msg_id int64`（单聊）、`read_count_map map[int64]int`（群聊 omitempty） |
+| 后端 Service | `GetHistoryMessages` 按会话类型分支：type=1 → `GetPeerUserID` + `GetMember` 拿对方 `last_read_msg_id`；type=2 → 过滤自己发送的消息 ID，调 `readRecorder.GetReadCountBatch` |
+| 前端 Store | `loadHistoryMessages` 仅在「首次加载（messages.length===0）」时回填，避免后续"加载更多"时用历史数据覆盖 WS 增量的最新态 |
+
+**涉及文件**：
+- `backend/go-service/app/dto/im_dto.go`：DTO 扩展
+- `backend/go-service/app/im/service/im_service.go`：GetHistoryMessages 回填逻辑
+- `frontend/src/store/chat.js`：loadHistoryMessages 消费新字段
+
+**Playwright 端到端验证**：
+1. 数据库事实：会话 6 中 `bojinyuan(7)` last_read_msg_id=202（已读到 id=202）
+2. duanlingyun 登录 → API 返回 `peer_last_read_msg_id=202` ✓
+3. 会话页首屏：21 条自己发送的消息 → 20 条"已读" + 1 条新插入的 id=203"未读" ✓（与期望完全吻合）
+4. 群聊验证：bojinyuan 登录 → 群 8 API 返回 `read_count_map={94:1, 95:1, ..., 139:2, 140:2}`（共 13 条自己发的消息）→ 页面正确显示 11 个"1人已读" + 2 个"2人已读" ✓
+5. 视觉回归：同一截图中语音"未听红点"仍正常工作（表明两项 UX 优化无互相干扰）
+
+**设计权衡**：
+- 为什么不新增独立 API：避免每次进入会话多一次往返请求
+- 为什么仅首次加载回填：后续 WS 事件已能增量更新，用历史数据覆盖反而可能倒退
+- 为什么群聊只查"自己发的消息"：前端仅在 `isSelf=true` 时展示"N人已读"，避免无用 DB 查询
+
+---
+
+## 🎙️ 2026-04-20 UX 优化：语音消息「未听红点」（仿微信）
+
+**需求**：通用"已读"状态基于滚动可见性，适合文字/图片（肉眼可直接阅读）；但**语音必须点击播放才算"听过"**，仅"已读"不能反映用户是否真的听过。参照微信设计，为「对方发来的语音」叠加独立的"未播放"视觉提示（红点）。
+
+**设计决策（均为推荐方案）**：
+| 维度 | 取舍 |
+|---|---|
+| 作用范围 | 仅「对方发来的」语音显示红点（自己发的无此语义） |
+| 持久化 | 本地 localStorage（按 userId 隔离） —— 不同步后端，属于私人视图态 |
+| 触发时机 | 用户点击播放即刻清除红点（不要求播放完整） |
+| 作用层级 | 仅聊天详情页；会话列表不处理 |
+
+**核心实现**：
+- `chat store` 新增 `voicePlayedMap: {[msgId]: true}` + `markVoicePlayed / isVoicePlayed / loadVoicePlayedState / resetVoicePlayedState` 4 个 API
+- localStorage key：`echo:voice-played:{userId}`，完整 JSON 覆盖写入
+- `MsgVoice.vue` 自主消费 store（父级无需改动，单聊/群聊同构生效）
+  - 模板：`<view v-if="showUnplayedDot" class="unplayed-dot" />`（10rpx 红圆，紧贴气泡右侧）
+  - `showUnplayedDot = computed(() => !isSelf && msg.id && !chatStore.isVoicePlayed(msg.id))`
+  - `onTogglePlay` 首行：`if (!isSelf && msg.id) chatStore.markVoicePlayed(msg.id)`
+- `user.store.logout()`：动态导入 chat store 调用 `resetVoicePlayedState()` 防止串用户
+- `chat.store.initWsListeners()`：按当前 `userStore.userInfo.id` 懒加载对应缓存
+
+**涉及文件**：
+- `frontend/src/store/chat.js`：新增 voicePlayed 状态 + 4 个方法
+- `frontend/src/components/msg/MsgVoice.vue`：模板加红点 + 消费 store
+- `frontend/src/store/user.js`：logout 清理运行时 state
+
+**Playwright 验证**：
+1. duanlingyun(id=13) 登录 → 会话 6（内含自己 3 条语音 + 对方 5 条语音）
+2. 初始：8 条语音 → 5 个红点（全部对方发） + 0 个红点（自己 3 条 `voice-self`）✓
+3. 点击任意两条对方语音 → 红点数 5→4→3 ✓
+4. localStorage 写入 `echo:voice-played:13 = {195:true, 196:true}` ✓
+5. 页面刷新 → 仍只剩 3 个红点（持久化生效）✓
+
+---
+
+## 💡 2026-04-20 UX 优化：聊天页「新消息悬浮提示 + 按需已读」
+
+**问题**：用户停留在聊天页旧消息位置时，对方发来新消息 → 页面不会自动滚动到底 → 但 store 层一律自动 `markRead` → 对方看到"已读"但用户实际没看到消息，产生体验错位。
+
+**方案（混合策略，业内通用）**：
+- 贴底（距底 < 150px）时：新消息自动滚动到底部 + 标记已读（保留原有体验）
+- 远离底部时：不滚动、不标记已读，右下角显示「↓ N 条新消息」悬浮胶囊按钮
+- 点击悬浮按钮：滚到底 + 清零计数 + 标记已读
+- 用户手动滚回底部：自动隐藏悬浮 + 标记已读
+
+**技术实现（`maxScrollTop` 追踪策略）**：
+- `@scroll` 事件中维护"历史最大 scrollTop"，`maxScrollTop - scrollTop < 150` 判断是否贴底
+- 不依赖 `@scrolltolower` 作为唯一权威信号，对 `scroll-into-view` + 动态 scrollHeight 都正确响应
+- Store 层移除 `_onNewMessage` 中对当前会话的自动 `markRead`，把决策权交给页面
+
+**涉及文件**：
+- `frontend/src/store/chat.js`：移除新消息到达时的自动 `markRead`
+- `frontend/src/pages/chat/conversation.vue`：单聊滚动感知 + 悬浮按钮
+- `frontend/src/pages/group/conversation.vue`：群聊同构改造
+
+**验证结果**：Playwright 全流程通过三种场景（贴底自动滚、远离底部显示悬浮、点击悬浮滚到底清零）。
+
+### 🐛 UX 优化后续修复（2026-04-20）：watch 逻辑误把"加载历史消息"计入 newMsgCount
+
+**问题**：用户在页面中段滚动时触发「加载更多」→ 从数组**头部**插入 20 条历史消息 → `messages.value.length` 变化 → watch 误以为是"对方的新消息"并 `newMsgCount += 20`，悬浮按钮显示"40+ 条新消息"。
+
+**根因**：watch 回调只看 `messages.length` 增量（delta），未区分"头部插入历史"与"尾部追加新消息"。读取 `messages[length-1]` 拿到的是已存在的最后一条消息，若恰好是对方发的即通过 fromOther 判断并累加。
+
+**修复策略**：监听「末尾消息标识（id / client_msg_id）」是否变化，而非仅看长度：
+- 头部插入历史消息 → tail 未变 → 直接返回，不做任何处理
+- 尾部追加一条新消息 → tail 变化 → 才进入"fromSelf/fromOther/nearBottom"判断分支
+- 自己发的消息 tail 也会变但会被 `fromSelf` 拦下
+
+**真实双账号验证（duanlingyun ↔ bojinyuan，会话 id=6）**：
+
+| 操作 | messages.length | scrollTop | scrollHeight | 悬浮按钮 |
+|---|---|---|---|---|
+| 初始贴底 | 20 | 1419 | 2066 | 无 |
+| 滚至顶部触发加载更多 ×3 | 76 | 0 | 4823 | **无** ✅ |
+| 对方发 1 条 | 77 | 1003 | 4877 | "1 条新消息" ✅ |
+| 对方再发 2 条 | 79 | 1003 | 4877 | "3 条新消息" ✅ |
+| 再次加载更多历史 | 79+10 | 0 | 4986 | **仍为 "3 条新消息"** ✅ |
+| 点击悬浮 | 79+10 | 4339 (贴底) | 4986 | 消失 ✅ |
+
+**涉及文件**：
+- `frontend/src/pages/chat/conversation.vue`：`lastMsgCount` → `lastTailKey` 改造
+- `frontend/src/pages/group/conversation.vue`：相同改造（群聊）
+
+### 🐛 语音消息 H5 兼容修复（2026-04-20）
+
+**问题链**（按排查顺序）：
+1. **事件层**：PC Chrome 按住"按住说话"按钮无反应 —— 只绑定了 `@touchstart/move/end`，现代浏览器鼠标不合成 touch 事件
+2. **录音 API 层**：修复事件绑定后报 `method 'uni.getRecorderManager' not supported` —— uni-app H5 端不支持原生 `getRecorderManager`
+3. **上传层**：即便录到 Blob，`uni.uploadFile(blob:URL)` 推断出的 filename 无扩展名，被后端白名单拦下
+4. **后端校验层**：`allowedVoiceExts` 只允许 `.mp3/.wav/.aac/.m4a`，不接受 H5 MediaRecorder 输出的 webm/ogg
+
+**修复链**：
+| 层 | 改动 |
+|---|---|
+| 事件 | VoiceRecorder 同时监听 touch + mouse 事件，`pressing` 重入守卫，`@mouseleave` 兜底取消 |
+| 录音 | 新增 `H5Recorder` 类，基于 `MediaRecorder` + `getUserMedia` 实现 uni 录音接口（`onStart/onStop/onError/start/stop`），`createRecorder()` 工厂按平台自动选择 |
+| 上传 | `uploadVoice` 增加 blob 参数分支，H5 走 `fetch` + `FormData` 精确控制 filename（基于 mimeType 推断扩展名，如 `voice-{ts}.webm`）|
+| 后端 | `allowedVoiceExts` 新增 `.webm`、`.ogg`，错误消息同步更新 |
+
+**验证结果（Playwright 自动化）**：
+
+| 阶段 | class | 按钮文字 | 遮罩 | 计时 |
+|---|---|---|---|---|
+| 按压中 (4s) | `record-btn recording` | "松开发送" | ✓ 显示 | "3\"" |
+| 按压中 (5.5s) | 同上 | 同上 | ✓ | "5\"" （跳动正常）|
+| 松开后 | `record-btn` | "按住 说话" | 消失 | — |
+
+数据库验证：连续 3 次录音上传成功（1/2/5 秒，size 18K/35K/75K），`im_messages` type=3（语音）记录正确写入，MinIO 中 `.webm` 文件可访问。
+
+**涉及文件**：
+- `frontend/src/components/chat/VoiceRecorder.vue`：核心改造（事件兼容 + H5Recorder 类）
+- `frontend/src/api/file.js`：`uploadVoice` 增加 blob 分支，新增 `_doUploadBlob` 私有方法
+- `frontend/src/pages/chat/conversation.vue` & `frontend/src/pages/group/conversation.vue`：`onVoiceRecorded` 按 mimeType 生成 fileName 并传 blob
+- `backend/go-service/app/file/service/file_service.go`：`allowedVoiceExts` 扩展 + 错误消息更新
 
 ---
 

@@ -537,7 +537,44 @@ func (s *IMService) GetHistoryMessages(ctx context.Context, userID int64, req *d
 		list = append(list, *s.toMessageDTO(&m))
 	}
 
-	return &dto.HistoryMessageResponse{List: list, HasMore: hasMore}, nil
+	resp := &dto.HistoryMessageResponse{List: list, HasMore: hasMore}
+
+	// ========== 已读状态回填（修复页面刷新后已读标签变未读的 Bug） ==========
+	// 获取会话类型以决定回填策略
+	conv, convErr := s.convDAO.GetByID(ctx, req.ConversationID)
+	if convErr != nil || conv == nil {
+		// 拉不到会话元信息时静默跳过已读回填，消息仍正常返回（向前兼容）
+		return resp, nil
+	}
+
+	switch conv.Type {
+	case constants.ConversationTypePrivate:
+		// 单聊：查询对方成员的 last_read_msg_id
+		peerID, pErr := s.convDAO.GetPeerUserID(ctx, req.ConversationID, userID)
+		if pErr == nil && peerID > 0 {
+			peerMember, pmErr := s.convDAO.GetMember(ctx, req.ConversationID, peerID)
+			if pmErr == nil && peerMember != nil {
+				resp.PeerLastReadMsgID = peerMember.LastReadMsgID
+			}
+		}
+	case constants.ConversationTypeGroup:
+		// 群聊：批量查询"本次返回消息中自己发送的那些"的 read_count
+		// 仅查自己发的，因为前端仅在 isSelf=true 时展示 "N人已读"
+		selfMsgIDs := make([]int64, 0, len(messages))
+		for i := range messages {
+			if messages[i].SenderID == userID && messages[i].ID > 0 {
+				selfMsgIDs = append(selfMsgIDs, messages[i].ID)
+			}
+		}
+		if len(selfMsgIDs) > 0 && s.readRecorder != nil {
+			countMap, rcErr := s.readRecorder.GetReadCountBatch(ctx, selfMsgIDs)
+			if rcErr == nil && len(countMap) > 0 {
+				resp.ReadCountMap = countMap
+			}
+		}
+	}
+
+	return resp, nil
 }
 
 // MarkRead 标记会话已读（清零未读 + 更新 Redis 总未读数 + 推送已读 ACK 给对方）

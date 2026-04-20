@@ -46,6 +46,71 @@ export const useChatStore = defineStore('chat', () => {
   /** 群聊已读计数：messageId -> readCount */
   const groupReadCountMap = ref({})
 
+  /**
+   * 语音"已播放"状态：messageId -> true
+   *
+   * 说明：区别于通用"已读"（基于滚动可见）；此状态记录用户是否"真的点击播放过"对方发来的语音。
+   * - 仅对"对方发来的语音"有意义（自己发的无需标记）
+   * - 本地持久化（按 userId 隔离），换设备会重新显示红点（与微信行为一致）
+   * - 不同步到服务端：属于私人视图态，不影响对方
+   */
+  const voicePlayedMap = ref({})
+  /** 已加载 voicePlayed 的 userId，避免重复加载 */
+  let _voicePlayedLoadedUserId = null
+
+  /** 生成 voicePlayed 的存储 key（按 userId 隔离） */
+  const _voicePlayedStorageKey = (userId) => `echo:voice-played:${userId}`
+
+  /**
+   * 从本地存储加载指定用户的语音已播放状态
+   * 幂等：同一 userId 只会加载一次；切换用户时自动重新加载
+   */
+  const loadVoicePlayedState = (userId) => {
+    if (!userId) return
+    if (_voicePlayedLoadedUserId === userId) return
+    try {
+      const raw = uni.getStorageSync(_voicePlayedStorageKey(userId))
+      voicePlayedMap.value = raw && typeof raw === 'object' ? { ...raw } : {}
+    } catch (_) {
+      voicePlayedMap.value = {}
+    }
+    _voicePlayedLoadedUserId = userId
+  }
+
+  /**
+   * 标记某条语音消息为"已播放"，并持久化到本地存储
+   * @param {number|string} messageId
+   */
+  const markVoicePlayed = (messageId) => {
+    if (!messageId) return
+    const key = String(messageId)
+    if (voicePlayedMap.value[key]) return
+    voicePlayedMap.value[key] = true
+    try {
+      const userStore = useUserStore()
+      const userId = userStore.userInfo?.id
+      if (userId) {
+        uni.setStorageSync(_voicePlayedStorageKey(userId), { ...voicePlayedMap.value })
+      }
+    } catch (_) { /* ignore storage errors */ }
+  }
+
+  /**
+   * 查询某条语音是否已播放
+   * @param {number|string} messageId
+   * @returns {boolean}
+   */
+  const isVoicePlayed = (messageId) => {
+    if (!messageId) return false
+    return !!voicePlayedMap.value[String(messageId)]
+  }
+
+  /** 重置语音已播放状态（登出时调用） */
+  const resetVoicePlayedState = () => {
+    voicePlayedMap.value = {}
+    _voicePlayedLoadedUserId = null
+  }
+
   // ==================== Computed ====================
 
   /** 当前会话的消息列表（conversationId 为 null 时取 pending 队列） */
@@ -211,6 +276,9 @@ export const useChatStore = defineStore('chat', () => {
     if (!conversationId) return
     const messages = messagesMap.value[conversationId] || []
     const beforeId = messages.length > 0 ? messages[0].id : 0
+    // 仅在「首次加载（本地还没缓存任何消息）」时回填已读状态；
+    // 滚动加载更多历史消息时不覆盖，避免把已通过 WS 增量到达的最新状态冲回旧值
+    const isInitialLoad = messages.length === 0
 
     const res = await imApi.getHistoryMessages(conversationId, beforeId)
     if (res.data) {
@@ -220,6 +288,23 @@ export const useChatStore = defineStore('chat', () => {
       if (list.length > 0) {
         const existing = messagesMap.value[conversationId] || []
         messagesMap.value[conversationId] = [...list.reverse(), ...existing]
+      }
+
+      // ========== 已读状态回填（修复页面刷新后已读标签变未读的 Bug） ==========
+      if (isInitialLoad) {
+        // 单聊：对方 last_read_msg_id → 写入 readStatusMap
+        const peerLastRead = Number(res.data.peer_last_read_msg_id) || 0
+        if (peerLastRead > 0) {
+          readStatusMap.value[conversationId] = peerLastRead
+        }
+        // 群聊：自己发送消息的 read_count → 合并到 groupReadCountMap
+        const rcMap = res.data.read_count_map
+        if (rcMap && typeof rcMap === 'object') {
+          Object.keys(rcMap).forEach(mid => {
+            const count = Number(rcMap[mid]) || 0
+            if (count > 0) groupReadCountMap.value[mid] = count
+          })
+        }
       }
     }
   }
@@ -266,6 +351,13 @@ export const useChatStore = defineStore('chat', () => {
 
   /** 初始化 WebSocket 事件监听（幂等） */
   const initWsListeners = () => {
+    // 懒加载语音播放态（按当前用户隔离，每次调用都会检查 userId 是否变更）
+    try {
+      const userStore = useUserStore()
+      const uid = userStore.userInfo?.id
+      if (uid) loadVoicePlayedState(uid)
+    } catch (_) { /* ignore */ }
+
     if (_wsInitialized) return
     _wsInitialized = true
 
@@ -308,9 +400,9 @@ export const useChatStore = defineStore('chat', () => {
         existingConv.unread_count = (existingConv.unread_count || 0) + 1
       }
       totalUnread.value++
-    } else {
-      markRead(data.conversation_id)
     }
+    // 注意：当前会话的 markRead 由聊天页面根据滚动位置决定
+    // （仅当用户视图贴近底部、能看到新消息时才触发），避免"视图未看到但已读"的 UX 错位
   }
 
   /** 消息撤回推送 */
@@ -492,6 +584,7 @@ export const useChatStore = defineStore('chat', () => {
     hasMoreMap,
     readStatusMap,
     groupReadCountMap,
+    voicePlayedMap,
     currentMessages,
     sortedConversations,
     fetchConversations,
@@ -509,6 +602,10 @@ export const useChatStore = defineStore('chat', () => {
     deleteConversation,
     clearHistory,
     setCurrentConversation,
-    initWsListeners
+    initWsListeners,
+    markVoicePlayed,
+    isVoicePlayed,
+    loadVoicePlayedState,
+    resetVoicePlayedState
   }
 })

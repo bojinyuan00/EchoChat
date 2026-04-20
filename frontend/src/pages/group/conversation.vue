@@ -30,6 +30,9 @@
       :scroll-into-view="scrollToId"
       :scroll-with-animation="true"
       @scrolltoupper="onLoadMore"
+      @scrolltolower="onScrollToLower"
+      @scroll="onScroll"
+      :lower-threshold="150"
     >
       <view v-if="hasMore" class="load-more" @tap="onLoadMore">
         <text class="load-more-text">{{ loadingMore ? '加载中...' : '加载更多' }}</text>
@@ -123,6 +126,12 @@
 
       <view id="msg-bottom" style="height: 2rpx;" />
     </scroll-view>
+
+    <!-- 新消息悬浮提示（仅当用户远离底部且有新消息时显示） -->
+    <view v-if="newMsgCount > 0" class="new-msg-hint" @tap="jumpToBottom">
+      <uni-icons type="bottom" size="14" color="#2563EB" />
+      <text class="new-msg-hint-text">{{ newMsgCount }} 条新消息</text>
+    </view>
 
     <!-- @成员选择器 -->
     <view v-if="showAtPicker" class="at-overlay" @tap="showAtPicker = false">
@@ -238,6 +247,13 @@ export default {
     const voiceMode = ref(false)
     const showMorePanel = ref(false)
 
+    // 滚动位置感知（与单聊一致）：远离底部时新消息转为悬浮提示，避免视图未见却已标已读
+    // 使用 maxScrollTop 追踪策略：scrollTop 相对历史最大值回退 > 150 视为远离底部
+    const nearBottom = ref(true)
+    const newMsgCount = ref(0)
+    let scrollReady = false
+    let maxScrollTop = 0
+
     const messages = computed(() => chatStore.currentMessages)
     const hasMore = computed(() => chatStore.hasMoreMap[conversationId.value] !== false)
     const selfAvatar = computed(() => userStore.userInfo?.avatar || '')
@@ -349,6 +365,7 @@ export default {
       }
       scrollToBottom()
       markVisibleMessagesRead()
+      nextTick(() => { scrollReady = true })
     }
 
     const scrollToBottom = () => {
@@ -365,6 +382,37 @@ export default {
       if (messageIds.length > 0) {
         chatStore.markGroupRead(conversationId.value, messageIds)
       }
+    }
+
+    /** 滚动事件：维护 maxScrollTop 并判断是否贴底（与单聊一致） */
+    const onScroll = (e) => {
+      if (!scrollReady) return
+      const scrollTop = e.detail?.scrollTop
+      if (typeof scrollTop !== 'number') return
+      if (scrollTop > maxScrollTop) maxScrollTop = scrollTop
+      const wasNear = nearBottom.value
+      nearBottom.value = (maxScrollTop - scrollTop) < 150
+      if (!wasNear && nearBottom.value) {
+        if (newMsgCount.value > 0) newMsgCount.value = 0
+        markVisibleMessagesRead()
+      }
+    }
+
+    /** 滚动接近底部触发：将 nearBottom 置 true 并立即标记已读 */
+    const onScrollToLower = () => {
+      nearBottom.value = true
+      if (newMsgCount.value > 0) {
+        newMsgCount.value = 0
+      }
+      markVisibleMessagesRead()
+    }
+
+    /** 点击悬浮提示：滚到底、清零、标记已读 */
+    const jumpToBottom = () => {
+      scrollToBottom()
+      newMsgCount.value = 0
+      nearBottom.value = true
+      markVisibleMessagesRead()
     }
 
     // ==================== 消息发送 ====================
@@ -592,10 +640,23 @@ export default {
       // #endif
     }
 
-    const onVoiceRecorded = async ({ tempFilePath, duration }) => {
+    const mimeTypeToExt = (mime) => {
+      if (!mime) return ''
+      const m = mime.toLowerCase()
+      if (m.includes('webm')) return 'webm'
+      if (m.includes('ogg')) return 'ogg'
+      if (m.includes('mp4') || m.includes('aac')) return 'm4a'
+      if (m.includes('mpeg') || m.includes('mp3')) return 'mp3'
+      if (m.includes('wav')) return 'wav'
+      return ''
+    }
+
+    const onVoiceRecorded = async ({ tempFilePath, duration, blob, mimeType }) => {
       try {
         uni.showLoading({ title: '发送中...' })
-        const result = await uploadVoice(tempFilePath, duration)
+        const ext = mimeTypeToExt(mimeType)
+        const fileName = ext ? `voice-${Date.now()}.${ext}` : undefined
+        const result = await uploadVoice(tempFilePath, duration, fileName, blob)
         chatStore.sendVoiceMessage({
           conversationId: conversationId.value,
           voice: { url: result.url, duration: result.duration || duration, size: result.size, file_name: result.file_name }
@@ -608,13 +669,38 @@ export default {
       }
     }
 
-    // ==================== 监听新消息到达后标记已读 ====================
-
+    // ==================== 监听新消息到达，按滚动位置分流处理 ====================
+    // 关键点：对比末尾消息标识，避免"加载更多"时头部插入历史消息被误计入 newMsgCount
+    let lastTailKey = ''
+    const getTailKey = (msg) => msg ? String(msg.id || msg.client_msg_id || '') : ''
     watch(
       () => messages.value.length,
-      () => {
-        scrollToBottom()
-        markVisibleMessagesRead()
+      (newLen) => {
+        if (!scrollReady) return
+        const tail = messages.value[newLen - 1]
+        const tailKey = getTailKey(tail)
+        if (!tailKey || tailKey === lastTailKey) {
+          lastTailKey = tailKey || lastTailKey
+          return
+        }
+        const prevKey = lastTailKey
+        lastTailKey = tailKey
+        if (!prevKey) return
+
+        // 系统消息（type===10 或 sender_id===0）与自己发的消息，不计入悬浮计数
+        const isSystem = tail.type === 10 || tail.sender_id === 0
+        const fromSelf = tail.sender_id === myId.value
+        if (isSystem || fromSelf) {
+          if (nearBottom.value) scrollToBottom()
+          return
+        }
+
+        if (nearBottom.value) {
+          scrollToBottom()
+          markVisibleMessagesRead()
+        } else {
+          newMsgCount.value += 1
+        }
       }
     )
 
@@ -623,9 +709,11 @@ export default {
       groupName, groupAvatar, selfAvatar, selfName,
       inputText, scrollToId, loadingMore, memberCount,
       messages, hasMore, showAtPicker, atMemberList, isMuted, isAllMuted,
+      newMsgCount,
       isSelf, getMemberName, getMemberAvatar, getReadLabel,
       onSend, onInputChange, onSelectAtMember,
       onLoadMore, onMsgLongPress, onResend,
+      onScroll, onScrollToLower, jumpToBottom,
       goBack, goToSettings, goToReadDetail,
       voiceMode, showMorePanel,
       toggleVoiceMode, toggleMorePanel,
@@ -932,5 +1020,31 @@ export default {
 .more-btn:active { background-color: #E2E8F0; }
 .bubble-media {
   max-width: 420rpx;
+}
+
+/* ===== 新消息悬浮提示（远离底部时展示，点击滚到底并标记已读） ===== */
+.new-msg-hint {
+  position: fixed;
+  right: 32rpx;
+  bottom: calc(120rpx + env(safe-area-inset-bottom, 0rpx));
+  display: flex;
+  align-items: center;
+  padding: 12rpx 24rpx;
+  background-color: #FFFFFF;
+  border: 1rpx solid #E2E8F0;
+  border-radius: 32rpx;
+  box-shadow: 0 4rpx 16rpx rgba(15, 23, 42, 0.12);
+  z-index: 10;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.new-msg-hint:active {
+  opacity: 0.85;
+  transform: translateY(1rpx);
+}
+.new-msg-hint-text {
+  font-size: 24rpx;
+  color: #2563EB;
+  margin-left: 6rpx;
+  font-weight: 500;
 }
 </style>

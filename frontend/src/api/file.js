@@ -34,10 +34,43 @@ export function uploadImage(filePath, fileName) {
  * @param {string} filePath 本地语音文件临时路径
  * @param {number} duration 语音时长（秒）
  * @param {string} [fileName] 文件名
+ * @param {Blob} [blob] 可选：H5 端 MediaRecorder 产出的原始 Blob。传入时走 fetch+FormData
+ *                     路径，能精确控制 filename/mimeType（`uni.uploadFile` 对 blob: URL 推断的
+ *                     filename 通常缺扩展名，会被后端白名单拦下）
  * @returns {Promise<{ url, file_name, size, duration, mime_type }>}
  */
-export function uploadVoice(filePath, duration, fileName) {
+export function uploadVoice(filePath, duration, fileName, blob) {
+  if (blob && typeof window !== 'undefined' && typeof FormData !== 'undefined') {
+    return _doUploadBlob('/api/v1/upload/voice', blob, fileName || 'voice.webm', {
+      duration: String(duration)
+    })
+  }
   return _doUpload('/api/v1/upload/voice', filePath, fileName, { duration: String(duration) })
+}
+
+/**
+ * H5 专用：直接用 Blob 上传（避免 uni.uploadFile 对 blob: URL 的 filename 不可控）
+ */
+function _doUploadBlob(apiPath, blob, fileName, extraFormData = {}) {
+  const userStore = useUserStore()
+  const token = userStore.token
+  const fd = new FormData()
+  fd.append('file', blob, fileName)
+  Object.entries(extraFormData).forEach(([k, v]) => fd.append(k, v))
+  return fetch(`${BASE_URL}${apiPath}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: fd
+  }).then(async (resp) => {
+    let result
+    try {
+      result = await resp.json()
+    } catch (_) {
+      throw new Error(`上传失败（${resp.status}）`)
+    }
+    if (result.code === 0) return result.data
+    throw new Error(result.message || '上传失败')
+  })
 }
 
 /**
