@@ -65,11 +65,13 @@ type MeetingService struct {
 	userResolver      UserInfoResolver
 	onlineChecker     OnlineChecker
 	mediaOrchestrator MediaOrchestrator
+	lifecycleSvc      *MeetingLifecycleService
 }
 
 // NewMeetingService 创建 MeetingService 实例
 // 依赖通过构造函数注入；接口依赖由上游 Wire 绑定到具体实现
 // Task 7 (2026-04-21) 起 mediaOrchestrator 默认绑定 HTTPMediaOrchestrator
+// Task 8 (2026-04-21) 起新增 lifecycleSvc 依赖：JoinRoom/LeaveRoom 的空房/复活场景由 lifecycleSvc 托管
 func NewMeetingService(
 	roomDAO *dao.MeetingRoomDAO,
 	participantDAO *dao.MeetingParticipantDAO,
@@ -81,6 +83,7 @@ func NewMeetingService(
 	userResolver UserInfoResolver,
 	onlineChecker OnlineChecker,
 	mediaOrchestrator MediaOrchestrator,
+	lifecycleSvc *MeetingLifecycleService,
 ) *MeetingService {
 	return &MeetingService{
 		roomDAO:           roomDAO,
@@ -93,6 +96,7 @@ func NewMeetingService(
 		userResolver:      userResolver,
 		onlineChecker:     onlineChecker,
 		mediaOrchestrator: mediaOrchestrator,
+		lifecycleSvc:      lifecycleSvc,
 	}
 }
 
@@ -210,9 +214,10 @@ func (s *MeetingService) CreateRoom(ctx context.Context, hostID int64, req *dto.
 		return nil, nil, "", err
 	}
 
+	// Task 7 起 CreateRouter 对接真实 mediasoup；Task 8 起仅在会议首次创建时调一次（房间级资源）
 	routerID, mediaErr := s.mediaOrchestrator.CreateRouter(ctx, code)
 	if mediaErr != nil {
-		logs.Warn(ctx, funcName, "mediasoup Router 创建失败（Task 7 前为占位实现，不影响流程）",
+		logs.Warn(ctx, funcName, "mediasoup Router 创建失败",
 			zap.String("room_code", code), zap.Error(mediaErr))
 		routerID = ""
 	}
@@ -309,10 +314,18 @@ func (s *MeetingService) JoinRoom(ctx context.Context, userID int64, code, passw
 		return nil, nil, "", err
 	}
 
-	routerID, mediaErr := s.mediaOrchestrator.CreateRouter(ctx, code)
-	if mediaErr != nil {
-		logs.Warn(ctx, funcName, "mediasoup Router 创建失败（占位实现）", zap.String("room_code", code), zap.Error(mediaErr))
-		routerID = ""
+	// Task 8：空房 TTL 复活
+	// 若该房间正处于 empty_ttl 阶段（全员离开后的 5 分钟窗口），新成员加入立即取消销毁
+	if s.lifecycleSvc != nil {
+		s.lifecycleSvc.CancelEmptyTTL(ctx, code)
+	}
+
+	// Task 8：JoinRoom 不再主动调 CreateRouter（Router 在 CreateRoom 时创建、由 HTTPMediaOrchestrator 本地缓存）
+	// 从缓存读取 routerID；缺失时（极少见：服务重启后未重建缓存）保持为空，不阻塞加入流程
+	routerID, _ := s.mediaOrchestrator.ResolveRouterID(code)
+	if routerID == "" {
+		logs.Debug(ctx, funcName, "RouterID 缓存缺失（非致命，可能服务重启）",
+			zap.String("room_code", code))
 	}
 
 	go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventMemberJoined, map[string]interface{}{
@@ -378,9 +391,10 @@ func (s *MeetingService) LeaveRoom(ctx context.Context, userID int64, code strin
 		}
 	}
 
-	if len(actives) == 0 {
-		_, _ = s.roomDAO.MarkEnded(ctx, room.ID, constants.MeetingEndedReasonEmptyTTL, time.Now())
-		_ = s.mediaOrchestrator.CloseRouter(ctx, code)
+	// Task 8：全员离会改走生命周期状态机（空房 TTL），不再立即销毁房间
+	// 在 TTL 窗口内如有新成员加入，房间会被 CancelEmptyTTL 复活；TTL 到期由 HandleEmptyRoomExpired 兜底销毁
+	if len(actives) == 0 && s.lifecycleSvc != nil {
+		s.lifecycleSvc.OnAllMembersLeft(ctx, code)
 	}
 
 	go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventMemberLeft, map[string]interface{}{

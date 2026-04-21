@@ -55,3 +55,10 @@ media_server:
   timeout_ms: 5000
   close_timeout_ms: 2000
   close_retry: 2
+
+# 会议模块生命周期参数（Phase 2e-2 Task 8）
+meeting:
+  host_grace_seconds: 120
+  empty_room_ttl_seconds: 300
+  cleanup_interval_seconds: 30
+  stale_room_hours: 4

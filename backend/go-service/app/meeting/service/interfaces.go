@@ -86,9 +86,14 @@ type CreateConsumerReq struct {
 //   - 所有方法均幂等：重复调用不报错，符合 WS 信令重试语义
 type MediaOrchestrator interface {
 	// CreateRouter 为会议房间创建 mediasoup Router
+	// Task 8 起实现需自带 sync.Map 幂等缓存：roomCode 已有 Router 时直接返回缓存值
 	CreateRouter(ctx context.Context, roomCode string) (routerID string, err error)
 	// CloseRouter 关闭房间对应 Router 及其下所有资源（幂等）
 	CloseRouter(ctx context.Context, roomCode string) error
+	// ResolveRouterID 从本地缓存查询 roomCode 对应的 routerID（不触发 HTTP 调用）
+	// Task 8 引入：用于 JoinRoom 等"仅需复用"的场景，避免重复调 CreateRouter
+	// 返回 (id, true) 命中；(_, false) 缺失（通常说明房间未创建 Router 或服务重启后未 reschedule）
+	ResolveRouterID(roomCode string) (string, bool)
 
 	// CreateTransport 为用户创建 send/recv WebRTC Transport
 	CreateTransport(ctx context.Context, req *CreateTransportReq) (*TransportInfo, error)
@@ -125,6 +130,11 @@ func (n *NoopMediaOrchestrator) CreateRouter(_ context.Context, roomCode string)
 // CloseRouter 占位实现：直接返回 nil
 func (n *NoopMediaOrchestrator) CloseRouter(_ context.Context, _ string) error {
 	return nil
+}
+
+// ResolveRouterID 占位实现：始终命中，返回 noop-router-{code}
+func (n *NoopMediaOrchestrator) ResolveRouterID(roomCode string) (string, bool) {
+	return "noop-router-" + roomCode, true
 }
 
 // CreateTransport 占位：返回以 "noop-transport-" 为前缀的伪造 ID，带最小合法 JSON 结构

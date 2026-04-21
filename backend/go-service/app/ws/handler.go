@@ -35,6 +35,15 @@ type NotifyConnectHook interface {
 	PushUnreadTotalOnConnect(ctx context.Context, userID int64)
 }
 
+// MeetingDisconnectHook 会议 WS 断线钩子接口（Phase 2e-2 Task 8）
+// 由 meeting.service.MeetingSignalService 隐式实现
+// 触发时机：用户最后一条 WS 连接被移除（最终下线）
+// 职责：清理该用户在会议中的媒体资源；若为 host 则启动 host 宽限期
+// 抽象为接口避免 ws 包反向依赖 meeting 包引发循环引用
+type MeetingDisconnectHook interface {
+	OnWSDisconnect(ctx context.Context, userID int64)
+}
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -45,13 +54,14 @@ var upgrader = websocket.Upgrader{
 
 // Handler WebSocket 连接处理器
 type Handler struct {
-	hub              *ws.Hub
-	pubsub           *ws.PubSub
-	jwtCfg           *config.JWTConfig
-	onlineService    *OnlineService
-	tokenValidator   TokenValidator
-	offlinePusher    OfflineMessagePusher
-	notifyConnectHook NotifyConnectHook
+	hub                   *ws.Hub
+	pubsub                *ws.PubSub
+	jwtCfg                *config.JWTConfig
+	onlineService         *OnlineService
+	tokenValidator        TokenValidator
+	offlinePusher         OfflineMessagePusher
+	notifyConnectHook     NotifyConnectHook
+	meetingDisconnectHook MeetingDisconnectHook // Task 8 注入
 }
 
 // NewHandler 创建 WebSocket Handler 实例
@@ -73,6 +83,12 @@ func (h *Handler) SetOfflinePusher(pusher OfflineMessagePusher) {
 // SetNotifyConnectHook 设置通知未读补偿钩子（由 notify 模块在初始化时注入）
 func (h *Handler) SetNotifyConnectHook(hook NotifyConnectHook) {
 	h.notifyConnectHook = hook
+}
+
+// SetMeetingDisconnectHook 设置会议 WS 断线钩子（由 meeting 模块在初始化时注入）
+// Phase 2e-2 Task 8：WS 最终下线时触发 host 宽限期 / 媒体资源清理
+func (h *Handler) SetMeetingDisconnectHook(hook MeetingDisconnectHook) {
+	h.meetingDisconnectHook = hook
 }
 
 // Upgrade 处理 WebSocket 升级请求
@@ -120,6 +136,11 @@ func (h *Handler) Upgrade(c *gin.Context) {
 		}
 		h.pubsub.Unsubscribe(userID)
 		h.onlineService.UserOffline(context.Background(), userID)
+		// Task 8：通知会议模块处理 host 宽限期 / 媒体资源清理
+		// 钩子为可选（测试或 meeting 模块未加载场景安全跳过）
+		if h.meetingDisconnectHook != nil {
+			go h.meetingDisconnectHook.OnWSDisconnect(context.Background(), userID)
+		}
 	})
 	h.hub.Register(client)
 	h.pubsub.Subscribe(claims.UserID)

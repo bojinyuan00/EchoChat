@@ -13,6 +13,7 @@ import (
 	imHandler "github.com/echochat/backend/app/im/handler"
 	meetingController "github.com/echochat/backend/app/meeting/controller"
 	meetingService "github.com/echochat/backend/app/meeting/service"
+	meetingTask "github.com/echochat/backend/app/meeting/task"
 	notifyController "github.com/echochat/backend/app/notify/controller"
 	notifyService "github.com/echochat/backend/app/notify/service"
 	notifyTask "github.com/echochat/backend/app/notify/task"
@@ -56,8 +57,10 @@ type App struct {
 	NotifyCleanupTask     *notifyTask.CleanupTask                    // 通知清理定时任务
 	MeetingService        *meetingService.MeetingService             // 会议 REST 业务服务（Task 5 落地）
 	MeetingSignalService  *meetingService.MeetingSignalService       // 会议 WS 信令业务服务（Task 6 落地）
+	MeetingLifecycleSvc   *meetingService.MeetingLifecycleService    // 会议生命周期状态机（Task 8 落地）
 	MeetingController     *meetingController.MeetingController       // 会议 REST 控制器
 	MeetingWSHandler      *meetingController.MeetingWSHandler        // 会议 WS 事件 Handler（构造时自动注册路由到 Hub）
+	MeetingCleanupTask    *meetingTask.MeetingCleanupTask            // 会议生命周期兜底定时任务（Task 8 落地）
 }
 
 // NewApp 创建应用实例
@@ -89,11 +92,14 @@ func NewApp(
 	notifyCleanup *notifyTask.CleanupTask,
 	meetingSvc *meetingService.MeetingService,
 	meetingSignalSvc *meetingService.MeetingSignalService,
+	meetingLifecycleSvc *meetingService.MeetingLifecycleService,
 	meetingCtrl *meetingController.MeetingController,
 	meetingWSHandler *meetingController.MeetingWSHandler,
+	meetingCleanup *meetingTask.MeetingCleanupTask,
 ) *App {
 	wsHandler.SetOfflinePusher(offlinePusher)
 	wsHandler.SetNotifyConnectHook(notifySvc)
+	wsHandler.SetMeetingDisconnectHook(meetingSignalSvc)
 
 	return &App{
 		Config:                  cfg,
@@ -123,8 +129,10 @@ func NewApp(
 		NotifyCleanupTask:       notifyCleanup,
 		MeetingService:          meetingSvc,
 		MeetingSignalService:    meetingSignalSvc,
+		MeetingLifecycleSvc:     meetingLifecycleSvc,
 		MeetingController:       meetingCtrl,
 		MeetingWSHandler:        meetingWSHandler,
+		MeetingCleanupTask:      meetingCleanup,
 	}
 }
 

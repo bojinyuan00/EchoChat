@@ -160,6 +160,27 @@ func (d *MeetingRoomDAO) ListByHost(ctx context.Context, hostID int64, status in
 	return rooms, total, err
 }
 
+// ListStaleActive 返回 status != Ended 且 started_at（或 created_at 若未开始）早于 hoursAgo 小时的房间 ID
+// 用于定时任务兜底清理"创建 / Active 但长期无任何成员活动的僵尸房间"（设计 §11.4 的 4 小时兜底）
+// 排序：最早 started_at 在前，优先清理最老
+func (d *MeetingRoomDAO) ListStaleActive(ctx context.Context, hoursAgo int, limit int) ([]int64, error) {
+	funcName := "dao.meeting_room_dao.ListStaleActive"
+	cutoff := time.Now().Add(-time.Duration(hoursAgo) * time.Hour)
+
+	var ids []int64
+	err := d.db.WithContext(ctx).
+		Model(&model.MeetingRoom{}).
+		Where("status != ? AND COALESCE(started_at, created_at) < ?",
+			constants.MeetingStatusEnded, cutoff).
+		Order("COALESCE(started_at, created_at) ASC").
+		Limit(limit).
+		Pluck("id", &ids).Error
+	if err != nil {
+		logs.Error(ctx, funcName, "查询 stale 活跃房间失败", zap.Error(err))
+	}
+	return ids, err
+}
+
 // ListExpiredForCleanup 返回已结束且超过指定小时数的房间 ID 列表
 // 供定时任务清理 meeting_chats 使用；room 本身保留归档不删
 // 返回 limit 上限用于分批处理，避免一次捞太多

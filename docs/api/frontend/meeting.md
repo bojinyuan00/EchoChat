@@ -208,8 +208,8 @@
 
 **行为**：
 - `participant.left_at = now`、`duration = EXTRACT(EPOCH FROM now - joined_at)`；
-- 若离开者是 host 且仍有其他活跃成员 → 自动将 host 转让给**最早加入的活跃成员**，广播 `meeting.host.changed`；
-- 若房间无剩余活跃成员 → 标记 `status=2 ended_reason=empty_ttl` 并触发 mediaOrchestrator.CloseRouter；
+- 若离开者是 host 且仍有其他活跃成员 → 自动将 host 转让给**最早加入的活跃成员**，广播 `meeting.host.changed`（`auto_reason=host_left_with_members`）；
+- **若房间无剩余活跃成员**（Task 8 变更）→ **不再立即销毁**，改为调 `MeetingLifecycleService.OnAllMembersLeft` 设置 `echo:meeting:empty_ttl:{code}`（默认 TTL 300s）+ 启动本地 `time.AfterFunc`；TTL 内若有新成员 `POST /join`，`MeetingLifecycleService.CancelEmptyTTL` 会 DEL key 让房间复活；TTL 过期触发 `HandleEmptyRoomExpired` → `MarkEnded(reason=empty_ttl)` + `mediaOrchestrator.CloseRouter` + 广播 `meeting.room.ended{reason=empty_ttl}`；
 - 广播 `meeting.member.left`。
 
 **响应 `200 OK`**
@@ -595,8 +595,8 @@
 | `meeting.member.joined` | room_code / participant 对象 | REST /join 触发 |
 | `meeting.member.left` | room_code / user_id / reason | REST /leave /kick 或 WS 资源清理 |
 | `meeting.member.kicked` | room_code / reason | 仅发给被踢者本人，对应 REST /kick |
-| `meeting.host.changed` | room_code / old_host_id / new_host_id | REST /transfer-host 或 host 离会自动转让 |
-| `meeting.room.ended` | room_code / reason（`host_ended` / `empty_ttl`） | REST /end 或空房 TTL |
+| `meeting.host.changed` | room_code / old_host_id / new_host_id / **auto_reason**? | REST /transfer-host（无 `auto_reason`）/ host 离会自动转让（`auto_reason=host_left_with_members`）/ **host 宽限期过期自动转让**（`auto_reason=host_grace_expired`，Task 8 新增） |
+| `meeting.room.ended` | room_code / reason（`host_ended` / `empty_ttl` / **`system_error`**） | REST /end（`host_ended`）/ 空房 TTL 过期（`empty_ttl`）/ 兜底清理 4 小时陈旧房间（`system_error`，Task 8 新增） |
 | `meeting.member.state.changed` | 见白名单 #3 | WS `meeting.member.state.changed` 触发 |
 | `meeting.member.producer.new` | 见白名单 #6 / #8 | WS `meeting.produce.start` / `meeting.producer.close` 触发 |
 | `meeting.chat` | message 对象 | REST /chats 触发 |
@@ -639,11 +639,16 @@
   - `meeting.transport.create`（direction=send）返回**真实** mediasoup `id`（非 `noop-` 前缀）+ `iceParameters` 对象 + `iceCandidates[]` 非空 + `dtlsParameters.fingerprints[]` 非空
   - 虚构 producer_id 调 `meeting.producer.close` → Node 返回 404 → Go 幂等转 `code=0`
   - host `POST /rooms/:code/end` 触发 `CloseRouter`，media-server 日志确认 `router closed explicitly`
+- **Task 8** 端到端验证脚本（`docs/verify/meeting_t8_verify.mjs`）结果：**20/20 PASS**，覆盖 5 个会议生命周期场景：
+  - **S1 host 宽限期过期自动转让**：host WS 断线 → Redis 写入 `echo:meeting:host_grace:{code}` → 3s 后过期 → `meeting.host.changed{auto_reason=host_grace_expired}` 广播 + DB `host_id` 更新为最早加入者
+  - **S2 宽限期内重连保留身份**：host 断线 1s 内重连 `meeting.room.join` → `host_grace` key DEL + host 身份保留
+  - **S3 空房 TTL 复活**：全员 leave → Redis 写入 `echo:meeting:empty_ttl:{code}` → TTL 内新用户 join → key DEL + 房间保持 Active
+  - **S4 空房 TTL 过期销毁**：全员 leave → 3s 后 TTL 过期 → 房间 Ended + 新 join 被拒
+  - **S5 Router 幂等**：`POST /meeting/rooms` 后 `stats.routers` +1；`POST /meeting/rooms/:code/join` 不再触发新 Router（业务层 `JoinRoom` 不调 `CreateRouter` + HTTP 层 `sync.Map` 幂等防御）
 
 ---
 
 ## 后续任务关联
 
-- **Task 8**：会议生命周期状态机（host 宽限期 + 自动转让 + 空房 TTL），同时修复"CreateRoom + JoinRoom 重复调 `CreateRouter`"遗留行为。
-- **Task 9**：Vue 前端 mediasoup-client 接入，按本文 WS 契约实现 `mediasoup.Transport` 的 `connect / produce` 回调；补齐 `ResumeConsumer`（Node REST 已就绪）或在 Go 侧改为创建 Consumer 后自动 resume。
+- **Task 9**：Vue 前端 mediasoup-client 接入，按本文 WS 契约实现 `mediasoup.Transport` 的 `connect / produce` 回调；补齐 `ResumeConsumer`（Node REST 已就绪）或在 Go 侧改为创建 Consumer 后自动 resume；需处理 `meeting.host.changed` 的 `auto_reason` 字段以在 UI 上标注"自动转让"。
 - **Task 13**：通知卡片 UI 补齐 `meeting_invite` 内联按钮。

@@ -5,7 +5,7 @@
 > **上级路线图：** [Phase 2e 整体路线图](./2026-04-20-phase2e-design.md)
 > **分支：** `feature/phase2e-2-meeting-mvp`
 > **预估总工时：** **约 17 人日**（17 个 Task，含 PoC 与 UI 打磨）
-> **最后更新：** 2026-04-21（Task 0-7 ✅ 已落地，Go↔Node HTTP 媒体链路打通，下一步 Task 8 生命周期状态机）
+> **最后更新：** 2026-04-21（Task 0-8 ✅ 已落地，会议生命周期状态机 E2E 20/20 PASS，下一步 Task 9 前端 mediasoup-client 接入）
 
 ---
 
@@ -351,24 +351,44 @@ flowchart LR
   - 单元测试（`httptest.NewServer` 模拟）本次未落地，用更真实的"Go + 真 Node + Playwright-style E2E"替代，证据力更强；Task 10（可观测性）补齐单测
 - **实际工作量**：**0.5 人日**（符合预估）
 
-### Task 8：会议生命周期状态机（host 宽限期 + 自动转让 + 空房 TTL）
+### Task 8：会议生命周期状态机（host 宽限期 + 自动转让 + 空房 TTL）✅ 已完成
 
-- **目标**：实现设计 §6.5 的状态机完整逻辑
-- **依赖**：T5
-- **主要产出**：
-  - `app/meeting/service/meeting_service.go` 补充：
-    - `OnHostDisconnect(ctx, roomCode)` → 写 `echo:meeting:host_grace:{code}` EX 120s
-    - `OnHostReconnect(ctx, roomCode, userID)` → 清除宽限期键
-    - `HandleHostGraceExpired(ctx, roomCode)` → 转让主持（挑最早加入者）或销毁会议
-    - `OnAllMembersLeft(ctx, roomCode)` → 设置房间 Redis key TTL 300s
-    - `OnRoomTTLExpired(ctx, roomCode)` → `status=2, ended_reason=empty_ttl`，清理 Node 资源
-  - `app/meeting/task/meeting_cleanup_task.go`：每 30 秒扫描 Redis TTL + DB 状态，兜底清理
-  - 事务包裹主持人转让（见设计 §11.3）
-- **检查点**：
-  - 手测：host 关闭浏览器 → 2 分钟内重连，身份保留 → 超过 2 分钟自动转让给另一成员
-  - 手测：全员退出 → 5 分钟后 DB `status=2`、Redis key 清空
-  - 单元测试覆盖：转让事务回滚、并发转让竞态
-- **工作量**：**0.5 人日**
+- **目标**：实现设计 §6.5 的状态机完整逻辑；同步修复 Task 7 遗留的"CreateRoom/JoinRoom 各自调一次 `CreateRouter`"行为
+- **依赖**：T5 / T7
+- **实际产出**：
+  - `backend/go-service/config/config.go` + `config.dev.yaml` / `config.docker.yaml`：新增 `MeetingConfig{HostGraceSeconds=120, EmptyRoomTTLSeconds=300, CleanupIntervalSeconds=30, StaleRoomHours=4}`
+  - `backend/go-service/app/meeting/service/meeting_lifecycle_service.go`（新，470 行）：
+    - `OnHostDisconnect(ctx, roomCode, hostID)` → 写 `echo:meeting:host_grace:{code}` + 本地 `time.AfterFunc`，Redis TTL = 业务时长 + `max(cleanup*2, 30s)` buffer
+    - `OnHostReconnect(ctx, roomCode, hostID)` → `DEL` key + 取消 timer
+    - `HandleHostGraceExpired(ctx, roomCode)` → `DEL` key（返回 1 确认唯一处理权）→ `TransferHost` 事务（最早加入者）+ `UpdateHost` + 广播 `meeting.host.changed{auto_reason=host_grace_expired}`；无其他活跃成员则走 `OnAllMembersLeft`
+    - `OnAllMembersLeft(ctx, roomCode)` → 写 `echo:meeting:empty_ttl:{code}` + 本地 timer
+    - `CancelEmptyTTL(ctx, roomCode)` → `DEL` key + 取消 timer（新成员加入复活）
+    - `HandleEmptyRoomExpired(ctx, roomCode)` → `DEL` key → `MarkEnded(reason=empty_ttl)` + `CloseRouter` 幂等 + 广播 `meeting.room.ended`
+    - `RescheduleFromRedis` / `ScanExpired` / `HostGracePrefix` / `EmptyTTLPrefix` 辅助（供 cleanup task 兜底）
+  - `backend/go-service/app/meeting/dao/meeting_room_dao.go`：新增 `ListStaleActive(hoursAgo, limit)` 扫陈旧活跃房间
+  - `backend/go-service/app/meeting/service/interfaces.go`：`MediaOrchestrator` 新增 `ResolveRouterID(roomCode) (string, bool)`
+  - `backend/go-service/app/meeting/service/http_media_orchestrator.go`：`CreateRouter` 入口查 `sync.Map` 命中直接返回（HTTP 层幂等防御）；实现 `ResolveRouterID` 纯缓存读
+  - `backend/go-service/app/meeting/service/meeting_service.go`：`JoinRoom` 移除 `CreateRouter`，改调 `lifecycleSvc.CancelEmptyTTL` + `ResolveRouterID`；`LeaveRoom` 空房分支改调 `lifecycleSvc.OnAllMembersLeft`
+  - `backend/go-service/app/meeting/service/meeting_signal_service.go`：新增 `OnWSDisconnect(userID)` 实现 `ws.MeetingDisconnectHook`；`OnRoomJoin` 追加 host 重连钩子
+  - `backend/go-service/app/ws/handler.go`：定义 `MeetingDisconnectHook` 接口 + `SetMeetingDisconnectHook`，`SetOnDisconnect` 末尾 invoke
+  - `backend/go-service/app/meeting/task/meeting_cleanup_task.go`（新，220 行）：启动时 `RescheduleFromRedis`；每 `CleanupIntervalSeconds` 秒扫 `host_grace:*` / `empty_ttl:*` 兜底 + 扫 stale active rooms → `MarkEnded(reason=system_error)`；每小时清理 Ended 会议的聊天记录
+  - `backend/go-service/app/provider/{provider,wire,wire_gen}.go` + `cmd/server/main.go`：注入 `MeetingLifecycleService` / `MeetingCleanupTask` + `wire.Bind(new(ws.MeetingDisconnectHook), new(*service.MeetingSignalService))` + 启动/停止 cleanup task
+  - `media-server/src/app.ts`：`/internal/info` 追加 `stats.routers` 字段供 E2E 断言 Router 幂等
+  - `docs/verify/meeting_t8_verify.mjs`（新，320 行）：5 场景 E2E 脚本
+- **实际检查点**（全部通过）：
+  - `go build ./...` / `go vet ./...` / `ReadLints` 全绿（保留 Task 7 遗留 pre-existing 警告）
+  - E2E 脚本 `meeting_t8_verify.mjs` **20/20 PASS**（含 Router 幂等断言）
+  - 场景覆盖：
+    - S1：host 掉线 3s 后宽限期过期 → 自动转让给 B，`meeting.host.changed` 广播 `auto_reason=host_grace_expired`，DB `host_id` 更新
+    - S2：host 掉线后 1s 内重连 → `host_grace` key DEL，身份保留
+    - S3：全员 leave → `empty_ttl` 写入 → C 加入 → key DEL + 房间仍 Active
+    - S4：全员 leave → 3s 后 `empty_ttl` 过期 → 房间 Ended → 再 join 被拒
+    - S5：`CreateRoom` 使 `stats.routers` +1；`JoinRoom` 不再触发新 Router
+- **关键设计决策**：
+  - **Redis TTL 加 buffer 避免 DEL 与自动过期并发误判**：E2E 调试时发现若 Redis key TTL 与本地 `time.AfterFunc` 时长相同，本地 timer 触发时 key 已被 Redis 自动删除，`DEL` 返回 0 被误判为"已被其他路径处理"而跳过业务逻辑；修复：Redis TTL = 业务时长 + `max(CleanupIntervalSeconds*2, 30s)`
+  - **普通成员 WS 断线不动 DB**（决策 `q1_nonhost_disconnect=a1_keep_current`）：仅清理 WS/media 资源，`meeting_participants` 记录保留；长期不活跃由 4 小时后台扫描兜底
+  - **Router 幂等双层防御**（决策 `q2_router_dedup=a2_both`）：业务层 `JoinRoom` 不调 `CreateRouter` + HTTP 层 `CreateRouter` 入口查 `sync.Map` 幂等
+- **实际工作量**：**0.5 人日**（符合预估）
 
 ### Task 9：前端 mediasoup-client 集成 + Pinia Store
 

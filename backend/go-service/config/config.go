@@ -18,6 +18,16 @@ type Config struct {
 	Log         LogConfig         `mapstructure:"log"`
 	Minio       MinioConfig       `mapstructure:"minio"`
 	MediaServer MediaServerConfig `mapstructure:"media_server"`
+	Meeting     MeetingConfig     `mapstructure:"meeting"`
+}
+
+// MeetingConfig 会议模块生命周期参数（Phase 2e-2 Task 8）
+// 所有字段均允许通过环境变量 ECHOCHAT_MEETING_* 覆盖，便于 E2E 测试以短时长加速场景触发
+type MeetingConfig struct {
+	HostGraceSeconds       int `mapstructure:"host_grace_seconds"`       // host 掉线宽限期秒数，默认 120
+	EmptyRoomTTLSeconds    int `mapstructure:"empty_room_ttl_seconds"`   // 空房自动销毁 TTL 秒数，默认 300
+	CleanupIntervalSeconds int `mapstructure:"cleanup_interval_seconds"` // 兜底扫描周期秒数，默认 30
+	StaleRoomHours         int `mapstructure:"stale_room_hours"`         // 活跃超过此小时且无成员视为 stale，默认 4
 }
 
 // MediaServerConfig Node media-server 接入配置（Phase 2e-2 Task 7）

@@ -82,6 +82,11 @@ func main() {
 	app.NotifyCleanupTask.Start()
 	defer app.NotifyCleanupTask.Stop()
 
+	// 7.2 启动 meeting 模块生命周期兜底任务（Phase 2e-2 Task 8）
+	// 内部会先 RescheduleFromRedis 恢复服务重启前残留的 host_grace / empty_ttl timer
+	app.MeetingCleanupTask.Start()
+	defer app.MeetingCleanupTask.Stop()
+
 	// 8. 启动 HTTP 服务（优雅关闭）
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	srv := &http.Server{

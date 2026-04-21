@@ -10,6 +10,7 @@ import { consumerRoutes } from './routes/consumer.route.js';
 import { producerRoutes } from './routes/producer.route.js';
 import { routerRoutes } from './routes/router.route.js';
 import { transportRoutes } from './routes/transport.route.js';
+import { getRouterStats } from './services/router.service.js';
 import { logger } from './utils/logger.js';
 
 export async function buildApp() {
@@ -52,6 +53,7 @@ export async function buildApp() {
 
   app.get('/internal/info', async () => {
     const snapshot = getWorkerSnapshot();
+    const routerStats = getRouterStats();
     return {
       service: 'media-server',
       version: '0.1.0',
@@ -63,6 +65,10 @@ export async function buildApp() {
         rtcMinPort: config.mediasoup.rtcMinPort,
         rtcMaxPort: config.mediasoup.rtcMaxPort,
       },
+      stats: {
+        routers: routerStats.total,
+      },
+      routers: routerStats.rooms,
     };
   });
 

@@ -85,8 +85,20 @@ func NewHTTPMediaOrchestrator(cfg *config.Config) *HTTPMediaOrchestrator {
 
 // CreateRouter 调用 POST /internal/v1/routers
 // 成功后在本地缓存 roomCode → routerID 映射供 CloseRouter 使用
+// Task 8 幂等防御（双层，与业务层 JoinRoom 不再主动调用形成互补）：
+//   - 命中缓存直接返回已缓存 routerID，不发起 HTTP 请求
+//   - 仅在缓存缺失时真正调 Node；避免业务误多次调用产生 Node 侧重复 Router
 func (h *HTTPMediaOrchestrator) CreateRouter(ctx context.Context, roomCode string) (string, error) {
 	funcName := "service.http_media_orchestrator.CreateRouter"
+
+	if cached, ok := h.roomRouterIDs.Load(roomCode); ok {
+		if rid, _ := cached.(string); rid != "" {
+			logs.Debug(ctx, funcName, "命中本地 Router 缓存，跳过 Node 调用",
+				zap.String("room_code", roomCode),
+				zap.String("router_id", rid))
+			return rid, nil
+		}
+	}
 
 	reqBody := map[string]any{"roomCode": roomCode}
 	var resp struct {
@@ -104,13 +116,37 @@ func (h *HTTPMediaOrchestrator) CreateRouter(ctx context.Context, roomCode strin
 		return "", err
 	}
 
-	// 记忆映射：一个 roomCode 仅对应一个 Router；若此前存在旧 Router ID（极少见），以新值覆盖
-	h.roomRouterIDs.Store(roomCode, resp.RouterID)
+	// LoadOrStore 防止并发首次创建时重复覆盖：若他人已写入先到的值就用已存在的
+	actual, loaded := h.roomRouterIDs.LoadOrStore(roomCode, resp.RouterID)
+	if loaded {
+		if existing, _ := actual.(string); existing != "" && existing != resp.RouterID {
+			logs.Warn(ctx, funcName, "并发创建 Router 出现不一致，保留先到值",
+				zap.String("room_code", roomCode),
+				zap.String("existing", existing),
+				zap.String("new", resp.RouterID))
+			return existing, nil
+		}
+	}
 
 	logs.Info(ctx, funcName, "Node Router 创建成功",
 		zap.String("room_code", roomCode),
 		zap.String("router_id", resp.RouterID))
 	return resp.RouterID, nil
+}
+
+// ResolveRouterID 从本地缓存读取 roomCode 对应的 routerID（不触发 HTTP）
+// 返回 (id, true) 表示命中；返回 (_, false) 表示缓存缺失（通常意味着该房间尚未创建 Router）
+// 供 MeetingService.JoinRoom 等需复用已有 Router 的场景使用，避免重复调 Node
+func (h *HTTPMediaOrchestrator) ResolveRouterID(roomCode string) (string, bool) {
+	v, ok := h.roomRouterIDs.Load(roomCode)
+	if !ok {
+		return "", false
+	}
+	rid, _ := v.(string)
+	if rid == "" {
+		return "", false
+	}
+	return rid, true
 }
 
 // CloseRouter 调用 DELETE /internal/v1/routers/:routerId

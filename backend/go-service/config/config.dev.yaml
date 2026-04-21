@@ -63,3 +63,11 @@ media_server:
   timeout_ms: 5000                           # 创建类接口超时（毫秒）
   close_timeout_ms: 2000                     # 关闭类接口超时（毫秒）
   close_retry: 2                             # 关闭类接口失败重试次数（指数退避 200/500ms）
+
+# 会议模块生命周期参数（Phase 2e-2 Task 8 会议状态机）
+# E2E 测试可通过环境变量 ECHOCHAT_MEETING_HOST_GRACE_SECONDS 等覆盖为更短值以加速触发
+meeting:
+  host_grace_seconds: 120           # 主持人掉线宽限期（秒），期间保留 host 身份
+  empty_room_ttl_seconds: 300       # 空房自动销毁 TTL（秒），期间有人加入可复活
+  cleanup_interval_seconds: 30      # 兜底扫描周期（秒），定时任务检查过期 grace/empty_ttl key
+  stale_room_hours: 4               # 活跃超过此小时且无活跃成员视为 stale，强制结束

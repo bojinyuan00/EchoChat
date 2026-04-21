@@ -54,6 +54,8 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		wire.Bind(new(meetingService.NotifyPusher), new(*notifyService.NotifyService)),
 		wire.Bind(new(meetingService.UserInfoResolver), new(*contactDAO.FriendshipDAO)),
 		wire.Bind(new(meetingService.OnlineChecker), new(*wsApp.OnlineService)),
+		// Task 8：WS 断线钩子 → MeetingSignalService
+		wire.Bind(new(wsApp.MeetingDisconnectHook), new(*meetingService.MeetingSignalService)),
 	)
 	return nil, nil
 }

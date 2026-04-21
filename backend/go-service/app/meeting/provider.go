@@ -4,6 +4,7 @@ import (
 	"github.com/echochat/backend/app/meeting/controller"
 	"github.com/echochat/backend/app/meeting/dao"
 	"github.com/echochat/backend/app/meeting/service"
+	"github.com/echochat/backend/app/meeting/task"
 	"github.com/google/wire"
 )
 
@@ -20,10 +21,12 @@ var MeetingSet = wire.NewSet(
 	dao.NewMeetingParticipantDAO,
 	dao.NewMeetingChatDAO,
 	service.NewMeetingBroadcaster,
+	service.NewMeetingLifecycleService, // Task 8 新增：会议生命周期状态机
 	service.NewMeetingService,
 	service.NewMeetingSignalService,
 	controller.NewMeetingController,
 	controller.NewMeetingWSHandler,
+	task.NewMeetingCleanupTask, // Task 8 新增：生命周期兜底定时任务
 
 	// MediaOrchestrator 使用真实 HTTP 实现（Task 7 落地）
 	// 注入 *config.Config，通过 cfg.MediaServer 获取 base_url / internal_token / timeout 等配置

@@ -31,15 +31,18 @@ type MeetingSignalService struct {
 
 	broadcaster       *MeetingBroadcaster
 	mediaOrchestrator MediaOrchestrator
+	lifecycleSvc      *MeetingLifecycleService
 }
 
 // NewMeetingSignalService 构造 WS 信令服务
+// Task 8 注入 lifecycleSvc：host 掉线 / 重连的生命周期联动
 func NewMeetingSignalService(
 	roomDAO *dao.MeetingRoomDAO,
 	participantDAO *dao.MeetingParticipantDAO,
 	redis *redis.Client,
 	broadcaster *MeetingBroadcaster,
 	mediaOrchestrator MediaOrchestrator,
+	lifecycleSvc *MeetingLifecycleService,
 ) *MeetingSignalService {
 	return &MeetingSignalService{
 		roomDAO:           roomDAO,
@@ -47,6 +50,7 @@ func NewMeetingSignalService(
 		redis:             redis,
 		broadcaster:       broadcaster,
 		mediaOrchestrator: mediaOrchestrator,
+		lifecycleSvc:      lifecycleSvc,
 	}
 }
 
@@ -116,11 +120,58 @@ func (s *MeetingSignalService) OnRoomJoin(ctx context.Context, userID int64, roo
 	key := resourceTrackKey(roomCode, userID)
 	_ = s.redis.Expire(ctx, key, resourceTTL).Err()
 
+	// Task 8：若本次 WS 在线的用户是会议 host，尝试撤销 host 宽限期
+	// 本方法幂等：若此前无 host_grace key（正常场景）DEL 返回 0，不产生副作用
+	if s.lifecycleSvc != nil && room.HostID == userID {
+		s.lifecycleSvc.OnHostReconnect(ctx, roomCode, userID)
+	}
+
 	logs.Info(ctx, "service.meeting_signal_service.OnRoomJoin", "用户宣告 WS 在线",
 		zap.String("room_code", roomCode),
 		zap.Int64("user_id", userID),
 		zap.Int64("room_id", room.ID))
 	return nil
+}
+
+// OnWSDisconnect WS 断线钩子，实现 ws.MeetingDisconnectHook 接口（Task 8）
+// 由 ws.handler 的 SetOnDisconnect 回调触发；场景：用户的最后一条 WS 连接被移除
+// 职责：
+//  1. 若该用户当前存在活跃 meeting_participants 记录：清理其媒体资源 + 若是 host 启动 host 宽限期
+//  2. 普通成员：仅清媒体资源（设计 Q1=A：不动 meeting_participants，长期不活跃由 4h 兜底清理）
+//
+// 容错：所有异常仅 Warn 日志，不返回 error；保证 ws.handler 主断连流程不受影响
+func (s *MeetingSignalService) OnWSDisconnect(ctx context.Context, userID int64) {
+	funcName := "service.meeting_signal_service.OnWSDisconnect"
+
+	active, err := s.participantDAO.FindActiveByUser(ctx, userID)
+	if err != nil {
+		logs.Warn(ctx, funcName, "查询活跃会议失败", zap.Int64("user_id", userID), zap.Error(err))
+		return
+	}
+	if active == nil {
+		// 用户当前不在任何会议
+		return
+	}
+	room, err := s.roomDAO.GetByID(ctx, active.RoomID)
+	if err != nil || room == nil {
+		logs.Warn(ctx, funcName, "加载 room 失败或已不存在",
+			zap.Int64("room_id", active.RoomID), zap.Error(err))
+		return
+	}
+	if room.Status == constants.MeetingStatusEnded {
+		return
+	}
+
+	s.cleanupUserResources(ctx, room.RoomCode, userID)
+
+	if s.lifecycleSvc != nil && room.HostID == userID {
+		s.lifecycleSvc.OnHostDisconnect(ctx, room.RoomCode, userID)
+	}
+
+	logs.Info(ctx, funcName, "WS 断线已处理",
+		zap.String("room_code", room.RoomCode),
+		zap.Int64("user_id", userID),
+		zap.Bool("is_host", room.HostID == userID))
 }
 
 // OnRoomLeave 处理 meeting.room.leave 事件

@@ -94,7 +94,7 @@ EchoChat 采用 **「精简单体 + 媒体微服务」** 架构，核心思想�
 | im | 即时消息收发（单聊）、会话管理、消息存储、撤回、搜索、离线推送 | ✅ Phase 2b |
 | group | 群聊管理（建群/加入/退出/角色/禁言/@提醒/群公告/入群审批） | ✅ Phase 2c |
 | file | 文件上传（MinIO 对象存储 + 通用上传 API） | ✅ Phase 2c |
-| meeting | 会议创建/管理、WebSocket 信令转发、mediasoup 资源编排（Go→Node HTTP）、会议内聊天、主持人控制 | 🚧 Phase 2e-2 代码开发中（Task 0-7 ✅：12 REST + 13 WS 事件 + HTTPMediaOrchestrator 真实 Router/Transport/Producer/Consumer 落地；Task 8-16 待执行）；专用设计：`docs/plans/2026-04-21-phase2e-2-design.md` |
+| meeting | 会议创建/管理、WebSocket 信令转发、mediasoup 资源编排（Go→Node HTTP）、**会议生命周期状态机（host 宽限期 + 自动转让 + 空房 TTL）**、会议内聊天、主持人控制 | 🚧 Phase 2e-2 代码开发中（Task 0-8 ✅：12 REST + 13 WS 事件 + HTTPMediaOrchestrator 真实媒体链路 + MeetingLifecycleService + MeetingCleanupTask + Router 幂等双层防御；Task 9-16 待执行）；专用设计：`docs/plans/2026-04-21-phase2e-2-design.md` |
 | notify | 统一通知中心、好友/群聊事件 + 系统广播推送、11 种类型枚举、跨模块 Pusher 接口注入 | ✅ Phase 2e-1（10 种落地 + 2 种预留 `meeting_invite` / `meeting_reminder`） |
 | admin | 后台管理（用户管理 + 角色权限管理 + 在线监控 + 好友关系管理 + 群聊管理、会议监控、系统配置） | ✅ Phase 1/2a/2c |
 

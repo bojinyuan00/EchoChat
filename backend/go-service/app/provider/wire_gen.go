@@ -25,6 +25,7 @@ import (
 	controller7 "github.com/echochat/backend/app/meeting/controller"
 	dao6 "github.com/echochat/backend/app/meeting/dao"
 	service7 "github.com/echochat/backend/app/meeting/service"
+	task2 "github.com/echochat/backend/app/meeting/task"
 	controller6 "github.com/echochat/backend/app/notify/controller"
 	dao5 "github.com/echochat/backend/app/notify/dao"
 	service3 "github.com/echochat/backend/app/notify/service"
@@ -103,10 +104,12 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	meetingChatDAO := dao6.NewMeetingChatDAO(gormDB)
 	meetingBroadcaster := service7.NewMeetingBroadcaster(meetingParticipantDAO, pubSub)
 	httpMediaOrchestrator := service7.NewHTTPMediaOrchestrator(cfg)
-	meetingService := service7.NewMeetingService(meetingRoomDAO, meetingParticipantDAO, meetingChatDAO, gormDB, client, meetingBroadcaster, notifyService, friendshipDAO, onlineService, httpMediaOrchestrator)
-	meetingSignalService := service7.NewMeetingSignalService(meetingRoomDAO, meetingParticipantDAO, client, meetingBroadcaster, httpMediaOrchestrator)
+	meetingLifecycleService := service7.NewMeetingLifecycleService(meetingRoomDAO, meetingParticipantDAO, client, meetingBroadcaster, httpMediaOrchestrator, cfg)
+	meetingService := service7.NewMeetingService(meetingRoomDAO, meetingParticipantDAO, meetingChatDAO, gormDB, client, meetingBroadcaster, notifyService, friendshipDAO, onlineService, httpMediaOrchestrator, meetingLifecycleService)
+	meetingSignalService := service7.NewMeetingSignalService(meetingRoomDAO, meetingParticipantDAO, client, meetingBroadcaster, httpMediaOrchestrator, meetingLifecycleService)
 	meetingController := controller7.NewMeetingController(meetingService)
 	meetingWSHandler := controller7.NewMeetingWSHandler(meetingSignalService, hub)
-	app := NewApp(cfg, gormDB, client, minioClient, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, groupManageController, messageManageController, handler, hub, pubSub, onlineService, contactController, imController, eventHandler, offlinePusher, fileController, groupController, notifyService, notificationController, cleanupTask, meetingService, meetingSignalService, meetingController, meetingWSHandler)
+	meetingCleanupTask := task2.NewMeetingCleanupTask(meetingLifecycleService, meetingRoomDAO, meetingChatDAO)
+	app := NewApp(cfg, gormDB, client, minioClient, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, groupManageController, messageManageController, handler, hub, pubSub, onlineService, contactController, imController, eventHandler, offlinePusher, fileController, groupController, notifyService, notificationController, cleanupTask, meetingService, meetingSignalService, meetingLifecycleService, meetingController, meetingWSHandler, meetingCleanupTask)
 	return app, nil
 }
