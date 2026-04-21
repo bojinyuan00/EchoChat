@@ -8,7 +8,9 @@
   功能：
   - 底部导航栏，4 个 Tab：消息 / 联系人 / 会议 / 我的
   - 选中态使用 filled 图标 + Primary 色，未选中态使用轮廓图标 + Muted 色
-  - 消息 Tab 支持未读消息 badge，联系人 Tab 支持好友申请未读 badge
+  - 消息 Tab / 联系人 Tab：数字 badge（getBadge）
+  - 我的 Tab：聚合小红点（hasDot），当前来源 notifyStore.unreadTotal，
+    未来可扩展为「资料待完善」「安全提醒」「新版本可用」等聚合指示器
   - 使用 switchTab 跳转
 -->
 <template>
@@ -26,7 +28,9 @@
           size="24"
           :color="currentIndex === index ? '#2563EB' : '#94A3B8'"
         />
+        <!-- 优先显示数字 badge（消息/联系人）；否则若有未读红点则显示小红点（我的） -->
         <text v-if="getBadge(index) > 0" class="tab-badge">{{ getBadge(index) > 99 ? '99+' : getBadge(index) }}</text>
+        <text v-else-if="hasDot(index)" class="tab-dot" />
       </view>
       <text class="tab-label">{{ item.label }}</text>
     </view>
@@ -48,6 +52,7 @@
  */
 import { useChatStore } from '@/store/chat'
 import { useContactStore } from '@/store/contact'
+import { useNotifyStore } from '@/store/notify'
 
 export default {
   name: 'CustomTabBar',
@@ -84,7 +89,7 @@ export default {
       uni.switchTab({ url: this.tabs[index].path })
     },
     /**
-     * 获取指定 Tab 的 badge 数
+     * 获取指定 Tab 的数字 badge 数（消息/联系人 Tab 使用）
      * @param {number} index - Tab 索引
      * @returns {number} badge 数量（0 表示不显示）
      */
@@ -98,6 +103,33 @@ export default {
         return contactStore.pendingCount
       }
       return 0
+    },
+    /**
+     * 判断指定 Tab 是否需要显示小红点（聚合指示器）
+     *
+     * 当前实现：
+     *   - index=3（我的）：聚合 notifyStore.unreadTotal > 0
+     *
+     * 未来扩展示例（仅示意，不是 TODO）：
+     *   - 资料待完善：profileStore.hasProfileReminder
+     *   - 安全提醒：securityStore.hasSecurityAlert
+     *   - 新版本提示：appStore.hasNewVersion
+     *   追加新来源时，仅需在 index=3 分支里 `|| 新来源`，外层调用方无需感知
+     *
+     * 与 getBadge 语义区分：
+     *   - getBadge 返回数字（0 表示不显示）
+     *   - hasDot 返回布尔（true 表示仅显示纯红点）
+     *   模板先判断 getBadge，数字优先；无数字时再判断 hasDot
+     *
+     * @param {number} index - Tab 索引
+     * @returns {boolean} 是否显示红点
+     */
+    hasDot(index) {
+      if (index === 3) {
+        const notifyStore = useNotifyStore()
+        return notifyStore.unreadTotal > 0
+      }
+      return false
     }
   }
 }
@@ -155,6 +187,18 @@ export default {
   background-color: #EF4444;
   border-radius: 16rpx;
   text-align: center;
+}
+
+/* 聚合未读小红点（用于"我的" Tab，纯红色圆点，不显示数字） */
+.tab-dot {
+  position: absolute;
+  top: -4rpx;
+  right: -8rpx;
+  width: 16rpx;
+  height: 16rpx;
+  background-color: #EF4444;
+  border-radius: 50%;
+  border: 2rpx solid #FFFFFF;
 }
 
 .tab-label {

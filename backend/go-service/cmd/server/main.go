@@ -78,6 +78,10 @@ func main() {
 	// 7. 注册路由（由 router.Setup 统一汇总各模块路由）
 	router.Setup(engine, app)
 
+	// 7.1 启动 notify 模块过期通知清理定时任务（后台周期执行）
+	app.NotifyCleanupTask.Start()
+	defer app.NotifyCleanupTask.Stop()
+
 	// 8. 启动 HTTP 服务（优雅关闭）
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	srv := &http.Server{

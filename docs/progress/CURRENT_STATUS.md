@@ -1,11 +1,123 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-20（Phase 2d 完成 + UX 优化 + 已读状态刷新持久化）
-> **当前阶段**：Phase 2d 全部完成 + Bug 修复 7 项 + UX 优化 2 项
-> **当前分支**：`feature/phase2c-group-read-receipt`（注：Phase 2d 工作误用了 2c 分支，下一阶段 2e 直接新建分支开发）
-> **实施计划**：`docs/plans/2026-03-04-phase2d-implementation.plan.md`
-> **设计文档**：`docs/plans/2026-03-04-phase2d-design.md`
-> **本次修复报告**：`test-report-phase2d-bugfix.md`
+> **最后更新**：2026-04-21（Phase 2e-1 通知系统 + TabBar 聚合红点 UX 完善）
+> **当前阶段**：Phase 2e-1 通知系统 ✅ 已完成；下一步进入 Phase 2e-2 会议 MVP
+> **当前分支**：`feature/phase2e-meeting-notification`
+> **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
+> **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（子阶段详细设计 + 实施后修订 + 审查记录）
+> **Phase 2e-1 实施计划**：`docs/plans/2026-04-20-phase2e-1-implementation.plan.md`（11 个 Task 全部完成；原 `.cursor/plans/*` Cursor 临时文件已归档至本位置）
+> **Phase 2e-1 验证报告**：`test-report-phase2e-1-notification.md`
+
+---
+
+## ✅ 2026-04-20 Phase 2e-1 通知系统完成
+
+**交付范围**：统一通知中心，覆盖好友 / 群聊 / 会议（预留枚举）/ 系统广播 四大类，共 11 种业务通知类型。
+
+### 后端（`backend/go-service/`）
+| 模块 | 路径 | 作用 |
+|---|---|---|
+| 数据表 | `deploy/docker/postgres/init.sql` | 新增 `notify_notifications` + 3 索引 |
+| 常量 | `app/constants/notify.go` | 11 种 type 常量 + 4 种 category + WS 事件名 |
+| Model | `app/notify/model/notification.go` | GORM 模型 |
+| DTO | `app/dto/notify_dto.go` | 请求/响应/广播 DTO |
+| DAO | `app/notify/dao/notification_dao.go` | CRUD + 批量 + 未读统计 + 清理 + 全量用户列表 |
+| Service | `app/notify/service/{notify_service.go,pusher.go}` | 业务逻辑 + Pusher 接口 + 持久化+推送降级 |
+| Controller | `app/notify/controller/notification_controller.go` | 4 用户接口 + 1 管理员广播接口 |
+| Router | `app/notify/router.go` | `/api/v1/notifications/*` + `/api/v1/admin/notifications/broadcast` |
+| Cleanup Task | `app/notify/task/cleanup_task.go` | 30 天已读通知定时清理（默认每日） |
+| Provider | `app/notify/provider.go` + `app/provider/{provider,wire,wire_gen}.go` | Wire 注入 + NotifyPusher / NotifyConnectHook 接口绑定 |
+| WS 钩子 | `app/ws/handler.go` | 连接建立 → 推送 `notify.unread.total` 补偿 |
+| contact 集成 | `app/contact/service/contact_service.go` | 3 处 Pusher.Push：friend_request/accepted/rejected |
+| group 集成 | `app/group/service/group_service.go` | 6 处 Pusher.Push：invite/join_request/approved/rejected/kicked/role_changed |
+| main.go | `cmd/server/main.go` | 启动 CleanupTask + defer Stop |
+
+### 前端（`frontend/src/`）
+| 文件 | 作用 |
+|---|---|
+| `api/notify.js` | 4 个 REST 封装 |
+| `constants/notify.js` | 前端 type / category / 图标 / 颜色常量 |
+| `store/notify.js` | Pinia Store：5 分类分页缓存 + 未读数 + WS 事件（notify.new / notify.unread.total） |
+| `components/notify/NotifyItem.vue` | 通用通知卡片（按 type 渲染 + 内联接受/拒绝） |
+| `pages/notify/index.vue` | 通知中心主页（顶部铃铛 + 5 Tab + 下拉刷新 + 无限滚动 + 全部已读） |
+| `pages/profile/index.vue` | 新增铃铛入口 + 徽标 + 菜单项 |
+| `pages.json` | 注册 `pages/notify/index` |
+| `App.vue` / `pages/auth/login.vue` | 全局初始化 notifyStore 监听 + 未读数拉取 |
+| `store/user.js` | logout 时调用 `notifyStore.reset()` 清缓存 |
+| `store/contact.js` / `store/group.js` | 清理散落 toast 和冗余 `notify.friend.request` / `group.join.request` 直接处理 |
+
+### 架构决策
+- **单端 WS 连接架构**：沿用现有 `ws.Hub`，**不做多端已读同步**。多端改造推迟到 Phase 2f/二期（已在设计文档 §3.1/§3.5/§九记录）。
+- **跨模块依赖方向**：`contact` / `group` → `notify`（严格单向），通过接口 `notifyService.Pusher` 注入，类似 Phase 2a `ws.FriendIDsGetter → contact.FriendshipDAO` 模式。
+- **降级策略**：Pusher 先入库、后推送；WS 推送失败不回滚入库；入库失败仅 Warn 日志不影响业务。
+- **游标分页**：通知列表使用 `before_id` + `limit` 替代传统 `page`，天然抗数据插入扰动。
+- **30 天清理**：默认每 24 小时扫描一次，删除 `is_read=true AND created_at < NOW() - INTERVAL 30 DAY`；未读永久保留。
+
+### Task 完成情况（11/11）
+- [x] Task 0: 数据库 DDL + constants + DTO + model
+- [x] Task 1: Notify 模块骨架（DAO + Service + Pusher 接口 + Wire）
+- [x] Task 2: REST API（4 用户 + 1 管理员）
+- [x] Task 3: WS 事件 `notify.new` + `notify.unread.total`
+- [x] Task 4: contact 集成（3 类）
+- [x] Task 5: group 集成（6 类）
+- [x] Task 6: 30 天清理定时任务
+- [x] Task 7: 前端 Pinia Store + API + WS 监听
+- [x] Task 8: 通知中心页 + NotifyItem + 5 分类 Tab
+- [x] Task 9: profile 入口 + 冗余清理（contact.js:155 / group.js:292）
+- [x] Task 10: E2E 验证清单（`test-report-phase2e-1-notification.md`）
+- [x] Task 11: 文档同步 + `code-reviewer` 子代理审查（本文件 + API 文档 + project-context.mdc + 设计文档 §3.1/§3.5/§八/§九 修订）
+
+### Task 11 代码审查成果（2026-04-20）
+- `code-reviewer` 整体结论：**有条件通过**（1 Blocker / 5 Major / 11 Minor / 10 亮点）
+- **Blocker 已当场修复**：前端 `markAllRead` 契约错位 —— 原将 `category` 放入 PUT body 而后端读 query，已改为 `?category=xxx` Query 拼接，并同步 `docs/api/frontend/notify.md` §4
+- **Major / Minor 项**：均不阻塞合入，已纳入 `docs/plans/2026-04-20-phase2e-design.md` §九 Phase 2f 清理清单
+- 涉及修复文件：`frontend/src/api/notify.js`、`docs/api/frontend/notify.md`、`test-report-phase2e-1-notification.md` §七
+- 验证：`cd backend/go-service && go build ./...` 通过
+
+### Playwright MCP 端到端验证成果（2026-04-20）
+- 使用 Playwright MCP 驱动 H5 浏览器完整走查通知中心：登录 → 进入 `/pages/notify/index` → 构造好友申请 → 管理员广播 → 点击通知 → 标记已读 → 跳转 → 全部已读，均通过
+- **WS 实时推送链路通过**：admin 广播后 1s 内页面自动插入通知到列表顶部，「全部/系统」角标实时变化，证明 `notify.new` 事件、前端 `_onNotifyNew` 处理器、UI 响应式更新三段链路一致
+- **额外修复 2 个交互 Bug**（Playwright 现场发现）：
+  - 🔴 Bug-1：`NotifyItem` 自定义 emit 事件名 `tap` 与 uni-app 原生 DOM 事件冲突，导致 Event 对象覆盖 notify 参数 → `PUT .../undefined/read` 400。修复：emit 名改为 `item-tap` / `item-accept` / `item-reject`
+  - 🟡 Bug-2：`store/notify.js#markRead` 在 `_patchAll` 后再判断 `!target.is_read` 永假，unreadTotal 没有递减。修复：预先快照 `wasUnread`
+- 修改文件：`frontend/src/components/notify/NotifyItem.vue`、`frontend/src/pages/notify/index.vue`、`frontend/src/store/notify.js`
+- 详细过程见 `test-report-phase2e-1-notification.md` §八
+
+### TabBar「我的」聚合未读红点（2026-04-21）
+- **背景**：通知未读状态之前仅在 `/pages/profile/index` 内可见（铃铛 badge、菜单项 badge），用户在其他 tabBar 页面（消息/联系人/会议）无法感知有新事件，必须被动切进"我的"才能发现
+- **设计**：采用业界主流做法（微信/QQ/钉钉的"我"Tab 模式）—— tabBar「我的」图标右上角显示**纯红点（无数字）**作为"我的"模块**聚合未读指示器**
+  - 信息层级分离：tabBar 一级导航只承载 Boolean（有/无未读），具体数字留在二级页面
+  - 聚合开放集合：当前只聚合 `notifyStore.unreadTotal`，未来可无缝追加「资料待完善」「安全提醒」「新版本可用」等
+  - 语义清晰：保留原 `getBadge(index)`（数字，用于消息/联系人）；新增 `hasDot(index)`（布尔，用于"我的"）；模板先数字后红点优先级渲染
+- **实现文件**：`frontend/src/components/CustomTabBar.vue`（新增 `hasDot` 方法 + `.tab-dot` 样式）
+- **Playwright 回归**：有 3 条未读时消息页/我的页 tabBar 红点均亮起；点"全部已读"后 tabBar 红点消失、铃铛 badge 消失、菜单 badge 消失三层同步响应；所有场景均通过
+- **详细设计**：见 `docs/plans/2026-04-20-phase2e-1-design.md` §6.4
+
+---
+
+
+---
+
+## 📘 2026-04-20 Phase 2e 规划：会议与通知系统
+
+**拆分理由**：原 Phase 2e（会议+通知）工作量约 23-33 人日，引入全新技术栈（mediasoup + Node.js），必须按风险梯度拆分。
+
+| 子阶段 | 范围 | 周期 | 状态 |
+|---|---|---|---|
+| **2e-1 通知系统** | 统一通知中心（11 种类型）+ 双通道推送 + 跨模块 Pusher 接口 | 3-4 天 | ✅ 已完成 |
+| **2e-2 会议 MVP** | mediasoup Node 媒体服务 + 即时会议（≤8人）+ 基础音视频控制 | 10-14 天 | 📋 待开发 |
+| **2e-3 会议增强** | 预约会议 + 定时提醒 + 会议邀请（复用 2e-1 通知） | 7-10 天 | 📋 待开发 |
+
+**关键决策**：
+- 维持原 mediasoup SFU 架构（不改用 Mesh）
+- 会议 MVP 仅音视频通话（不含录制/屏幕共享/预约）
+- 管理端扩展推迟到 Phase 2f（新增阶段）
+- 通知系统覆盖全部 10+ 种业务事件，含 `meeting_invite`/`meeting_reminder` 类型预留
+
+**后续规划清单**（含推迟项，见设计文档 §九）：
+- Phase 2f：会议管理后台 + 通知广播发布 UI + 管理端仪表板等
+- 第二期：屏幕共享、录制、虚拟背景、微信登录、互动直播
+- 第三期：微服务拆分、K8s、多 Worker 集群、AI 辅助
 
 ---
 

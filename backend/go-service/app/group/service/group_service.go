@@ -12,6 +12,7 @@ import (
 	"github.com/echochat/backend/app/group/dao"
 	"github.com/echochat/backend/app/group/model"
 	imModel "github.com/echochat/backend/app/im/model"
+	notifyService "github.com/echochat/backend/app/notify/service"
 	"github.com/echochat/backend/pkg/logs"
 	"github.com/echochat/backend/pkg/ws"
 	"go.uber.org/zap"
@@ -46,6 +47,12 @@ type MessageWriter interface {
 	Create(ctx context.Context, msg *imModel.Message) error
 }
 
+// NotifyPusher 通知推送接口
+// 由 notify.service.NotifyService 隐式实现；group → notify 单向依赖
+type NotifyPusher interface {
+	Push(ctx context.Context, payload *notifyService.PushPayload)
+}
+
 // GroupService 群聊业务服务
 type GroupService struct {
 	groupDAO       *dao.GroupDAO
@@ -53,6 +60,7 @@ type GroupService struct {
 	userInfo       UserInfoProvider
 	pubsub         *ws.PubSub
 	msgWriter      MessageWriter
+	notifyPusher   NotifyPusher
 }
 
 // NewGroupService 创建 GroupService 实例
@@ -62,6 +70,7 @@ func NewGroupService(
 	userInfo UserInfoProvider,
 	pubsub *ws.PubSub,
 	msgWriter MessageWriter,
+	notifyPusher NotifyPusher,
 ) *GroupService {
 	return &GroupService{
 		groupDAO:       groupDAO,
@@ -69,6 +78,7 @@ func NewGroupService(
 		userInfo:       userInfo,
 		pubsub:         pubsub,
 		msgWriter:      msgWriter,
+		notifyPusher:   notifyPusher,
 	}
 }
 
@@ -308,6 +318,17 @@ func (s *GroupService) InviteMembers(ctx context.Context, userID, groupID int64,
 			"user_ids":        addedIDs,
 			"operator_id":     userID,
 		})
+
+		// 向被邀请的每个用户推送入群通知，由通知中心持久化 + WS 实时弹出
+		s.pushGroupNotify(ctx, addedIDs, userID, constants.NotifyTypeGroupInvite,
+			fmt.Sprintf("%s 邀请你加入「%s」", inviterName, group.Name),
+			groupID, map[string]interface{}{
+				"group_id":        groupID,
+				"group_name":      group.Name,
+				"conversation_id": group.ConversationID,
+				"inviter_id":      userID,
+				"inviter_name":    inviterName,
+			})
 	}
 
 	return nil
@@ -357,6 +378,16 @@ func (s *GroupService) KickMember(ctx context.Context, userID, groupID, targetID
 		"operator_id":     userID,
 	})
 
+	// 通知被踢用户：持久化到通知中心
+	operatorName := s.getUserNickname(ctx, userID)
+	s.pushGroupNotify(ctx, []int64{targetID}, userID, constants.NotifyTypeGroupKicked,
+		fmt.Sprintf("%s 将你移出了群聊「%s」", operatorName, group.Name),
+		groupID, map[string]interface{}{
+			"group_id":    groupID,
+			"group_name":  group.Name,
+			"operator_id": userID,
+		})
+
 	return nil
 }
 
@@ -401,6 +432,22 @@ func (s *GroupService) SetMemberRole(ctx context.Context, userID, groupID, targe
 		"role":            role,
 		"operator_id":     userID,
 	})
+
+	// 通知被设置角色的用户：持久化到通知中心
+	var content string
+	if role == constants.GroupRoleAdmin {
+		content = fmt.Sprintf("你已被设为群聊「%s」的管理员", group.Name)
+	} else {
+		content = fmt.Sprintf("你的群聊「%s」管理员身份已被取消", group.Name)
+	}
+	s.pushGroupNotify(ctx, []int64{targetID}, userID, constants.NotifyTypeGroupRoleChanged,
+		content,
+		groupID, map[string]interface{}{
+			"group_id":    groupID,
+			"group_name":  group.Name,
+			"role":        role,
+			"operator_id": userID,
+		})
 
 	return nil
 }
@@ -585,6 +632,18 @@ func (s *GroupService) SubmitJoinRequest(ctx context.Context, userID, groupID in
 		"message":       message,
 	})
 
+	// 向群管理员持久化通知：需要审批的入群申请
+	s.pushGroupNotify(ctx, adminIDs, userID, constants.NotifyTypeGroupJoinRequest,
+		fmt.Sprintf("%s 申请加入群聊「%s」", userName, group.Name),
+		groupID, map[string]interface{}{
+			"group_id":      groupID,
+			"group_name":    group.Name,
+			"request_id":    req.ID,
+			"applicant_id":  userID,
+			"applicant_name": userName,
+			"message":       message,
+		})
+
 	return nil
 }
 
@@ -692,10 +751,33 @@ func (s *GroupService) ReviewJoinRequest(ctx context.Context, userID, groupID, r
 			"user_ids":        []int64{req.UserID},
 		})
 
+		// 通知申请人：入群申请已通过
+		s.pushGroupNotify(ctx, []int64{req.UserID}, userID, constants.NotifyTypeGroupJoinApproved,
+			fmt.Sprintf("你加入群聊「%s」的申请已通过", group.Name),
+			groupID, map[string]interface{}{
+				"group_id":        groupID,
+				"group_name":      group.Name,
+				"conversation_id": group.ConversationID,
+				"request_id":      requestID,
+			})
+
 		return nil
 	}
 
-	return s.joinRequestDAO.Reject(ctx, requestID, userID)
+	if err := s.joinRequestDAO.Reject(ctx, requestID, userID); err != nil {
+		return err
+	}
+
+	// 通知申请人：入群申请被拒绝
+	s.pushGroupNotify(ctx, []int64{req.UserID}, userID, constants.NotifyTypeGroupJoinRejected,
+		fmt.Sprintf("你加入群聊「%s」的申请已被拒绝", group.Name),
+		groupID, map[string]interface{}{
+			"group_id":   groupID,
+			"group_name": group.Name,
+			"request_id": requestID,
+		})
+
+	return nil
 }
 
 // SearchGroups 搜索公开群
@@ -856,6 +938,52 @@ func (s *GroupService) pushToGroupMembers(ctx context.Context, conversationID in
 		return
 	}
 	s.pushToMembers(ctx, memberIDs, excludeUID, event, data)
+}
+
+// pushGroupNotify 向多个用户批量投递群聊相关通知（持久化 + WS）
+// notifyPusher 内部自动写入通知中心并推送 notify.new 事件
+func (s *GroupService) pushGroupNotify(
+	ctx context.Context,
+	userIDs []int64,
+	actorID int64,
+	notifyType string,
+	content string,
+	groupID int64,
+	extra map[string]interface{},
+) {
+	if s.notifyPusher == nil || len(userIDs) == 0 {
+		return
+	}
+	gid := groupID
+	actor := actorID
+	payloads := make([]*notifyService.PushPayload, 0, len(userIDs))
+	for _, uid := range userIDs {
+		if uid <= 0 || uid == actorID {
+			continue
+		}
+		payloads = append(payloads, &notifyService.PushPayload{
+			UserID:     uid,
+			Type:       notifyType,
+			Content:    content,
+			ActorID:    &actor,
+			TargetType: constants.NotifyTargetGroup,
+			TargetID:   &gid,
+			Extra:      extra,
+		})
+	}
+	if len(payloads) == 0 {
+		return
+	}
+	// 使用批量接口，减少数据库往返
+	if batch, ok := s.notifyPusher.(interface {
+		PushBatch(ctx context.Context, payloads []*notifyService.PushPayload)
+	}); ok {
+		batch.PushBatch(ctx, payloads)
+		return
+	}
+	for _, p := range payloads {
+		s.notifyPusher.Push(ctx, p)
+	}
 }
 
 // writeSystemMessage 写入系统消息到群会话

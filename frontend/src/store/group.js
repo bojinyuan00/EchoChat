@@ -286,17 +286,18 @@ export const useGroupStore = defineStore('group', () => {
     }
   }
 
-  /** 新入群申请 → 提示通知 */
-  const _onJoinRequest = (msg) => {
-    if (!msg || !msg.data) return
-    uni.showToast({ title: '收到新的入群申请', icon: 'none' })
-  }
+  /**
+   * 新入群申请 → 不再 toast，由 notify store（notify.new 事件）统一负责提示和徽标
+   * 保留空监听以便未来扩展（如高亮申请列表），避免重复弹窗
+   */
+  const _onJoinRequest = () => {}
 
-  /** 入群申请通过 → 刷新会话列表 */
+  /**
+   * 入群申请通过 → 刷新会话列表（toast 由 notify store 统一处理）
+   */
   const _onJoinApproved = () => {
     const chatStore = useChatStore()
     chatStore.fetchConversations()
-    uni.showToast({ title: '入群申请已通过', icon: 'none' })
   }
 
   return {

@@ -11,6 +11,7 @@ import { useWebSocketStore } from '@/store/websocket'
 import { useChatStore } from '@/store/chat'
 import { useContactStore } from '@/store/contact'
 import { useGroupStore } from '@/store/group'
+import { useNotifyStore } from '@/store/notify'
 
 export default {
   onLaunch() {
@@ -37,10 +38,13 @@ export default {
       const chatStore = useChatStore()
       const contactStore = useContactStore()
       const groupStore = useGroupStore()
+      const notifyStore = useNotifyStore()
       chatStore.initWsListeners()
       contactStore.initWsListeners()
       groupStore.initWsListeners()
+      notifyStore.initWsListeners()
       contactStore.fetchPendingRequests().catch(() => {})
+      notifyStore.fetchUnreadCount().catch(() => {})
     }
   }
 }

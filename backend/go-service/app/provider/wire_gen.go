@@ -22,6 +22,10 @@ import (
 	dao4 "github.com/echochat/backend/app/group/dao"
 	service5 "github.com/echochat/backend/app/group/service"
 	imApp "github.com/echochat/backend/app/im"
+	controller6 "github.com/echochat/backend/app/notify/controller"
+	dao5 "github.com/echochat/backend/app/notify/dao"
+	service6 "github.com/echochat/backend/app/notify/service"
+	task2 "github.com/echochat/backend/app/notify/task"
 	"github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/db"
@@ -67,7 +71,14 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	contactManageController := controller2.NewContactManageController(contactManageService)
 	handler := ws.ProvideWSHandler(hub, pubSub, jwtConfig, onlineService, authService)
 	friendGroupDAO := dao3.NewFriendGroupDAO(gormDB)
-	contactService := service3.NewContactService(friendshipDAO, friendGroupDAO, pubSub, onlineService)
+
+	// Notify 模块初始化（contact/group 依赖 NotifyPusher）
+	notificationDAO := dao5.NewNotificationDAO(gormDB)
+	notifyService := service6.NewNotifyService(notificationDAO, pubSub, friendshipDAO)
+	notificationController := controller6.NewNotificationController(notifyService)
+	notifyCleanupTask := task2.NewCleanupTask(notificationDAO)
+
+	contactService := service3.NewContactService(friendshipDAO, friendGroupDAO, onlineService, notifyService)
 	contactController := controller3.NewContactController(contactService)
 
 	// IM 模块初始化
@@ -86,7 +97,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 
 	// Group 模块初始化
 	joinRequestDAO := dao4.NewJoinRequestDAO(gormDB)
-	groupService := service5.NewGroupService(groupDAO, joinRequestDAO, friendshipDAO, pubSub, messageDAO)
+	groupService := service5.NewGroupService(groupDAO, joinRequestDAO, friendshipDAO, pubSub, messageDAO, notifyService)
 	groupController := controller5.NewGroupController(groupService)
 
 	// Admin 群组管理初始化
@@ -98,6 +109,6 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	messageManageService := service2.NewMessageManageService(messageManageDAO, userDAO, conversationDAO, pubSub)
 	messageManageController := controller2.NewMessageManageController(messageManageService)
 
-	app := NewApp(cfg, gormDB, client, minioClient, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, groupManageController, messageManageController, handler, hub, pubSub, onlineService, contactController, imController, imEventHandler, offlinePusher, fileController, groupController)
+	app := NewApp(cfg, gormDB, client, minioClient, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, groupManageController, messageManageController, handler, hub, pubSub, onlineService, contactController, imController, imEventHandler, offlinePusher, fileController, groupController, notifyService, notificationController, notifyCleanupTask)
 	return app, nil
 }

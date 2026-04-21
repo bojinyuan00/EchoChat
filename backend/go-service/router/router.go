@@ -12,6 +12,7 @@ import (
 	fileApp "github.com/echochat/backend/app/file"
 	groupApp "github.com/echochat/backend/app/group"
 	imApp "github.com/echochat/backend/app/im"
+	notifyApp "github.com/echochat/backend/app/notify"
 	"github.com/echochat/backend/app/provider"
 	wsApp "github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/pkg/middleware"
@@ -42,7 +43,7 @@ func Setup(engine *gin.Engine, app *provider.App) {
 	imApp.RegisterRoutes(engine, app.IMController, jwtAuth)
 	fileApp.RegisterRoutes(engine, app.FileController, jwtAuth)
 	groupApp.RegisterRoutes(engine, app.GroupController, jwtAuth)
+	notifyApp.RegisterRoutes(engine, app.NotifyController, jwtAuth)
 
 	// [未来] meeting.RegisterRoutes(engine, app.MeetingController, jwtAuth)
-	// [未来] notify.RegisterRoutes(engine, app.NotifyController, jwtAuth)
 }

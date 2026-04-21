@@ -93,6 +93,7 @@ import { useUserStore } from '@/store/user'
 import { useWebSocketStore } from '@/store/websocket'
 import { useChatStore } from '@/store/chat'
 import { useContactStore } from '@/store/contact'
+import { useNotifyStore } from '@/store/notify'
 
 export default {
   name: 'LoginPage',
@@ -159,6 +160,9 @@ export default {
         wsStore.connect()
         useChatStore().initWsListeners()
         useContactStore().initWsListeners()
+        const notifyStore = useNotifyStore()
+        notifyStore.initWsListeners()
+        notifyStore.fetchUnreadCount().catch(() => {})
         uni.showToast({ title: '登录成功', icon: 'success' })
         setTimeout(() => uni.reLaunch({ url: '/pages/index/index' }), 800)
       } catch (e) {

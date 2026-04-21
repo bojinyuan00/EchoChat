@@ -152,9 +152,8 @@ export const useContactStore = defineStore('contact', () => {
     if (_wsInitialized) return
     _wsInitialized = true
 
-    wsService.on('notify.friend.request', () => {
-      fetchPendingRequests()
-    })
+    // 好友申请、接受、拒绝的实时通知统一由 notify store 接管（notify.new 事件）
+    // 本 store 仅保留好友列表变更监听，避免重复弹窗和数据刷新
 
     wsService.on('contact.request.accepted', () => {
       fetchFriends()

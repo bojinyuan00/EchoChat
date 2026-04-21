@@ -331,3 +331,44 @@ COMMENT ON COLUMN im_message_reads.user_id    IS '已读用户 ID';
 COMMENT ON COLUMN im_message_reads.read_at    IS '已读时间';
 
 CREATE INDEX idx_msg_reads_user ON im_message_reads(user_id, read_at);
+
+-- ============================================================
+-- notify_notifications: 通知消息表
+-- 统一通知中心持久化存储，覆盖好友 / 群聊 / 会议 / 系统广播四类场景
+-- 写入失败不回滚业务；WS 推送失败不回滚入库（降级策略）
+-- ============================================================
+CREATE TABLE notify_notifications (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     BIGINT       NOT NULL,
+    type        VARCHAR(50)  NOT NULL,
+    title       VARCHAR(100) NOT NULL DEFAULT '',
+    content     VARCHAR(500) NOT NULL DEFAULT '',
+    extra       JSONB        DEFAULT NULL,
+    actor_id    BIGINT       DEFAULT NULL,
+    target_type VARCHAR(30)  NOT NULL DEFAULT '',
+    target_id   BIGINT       DEFAULT NULL,
+    is_read     BOOLEAN      NOT NULL DEFAULT FALSE,
+    read_at     TIMESTAMP(0) DEFAULT NULL,
+    created_at  TIMESTAMP(0) NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE  notify_notifications             IS '通知消息表，统一通知中心持久化载体';
+COMMENT ON COLUMN notify_notifications.id          IS '通知唯一标识，自增主键';
+COMMENT ON COLUMN notify_notifications.user_id     IS '接收者用户 ID（每条通知对应单个用户）';
+COMMENT ON COLUMN notify_notifications.type        IS '通知类型常量：friend_request / friend_accepted / friend_rejected / group_invite / group_join_request / group_join_approved / group_join_rejected / group_kicked / group_role_changed / system_broadcast / meeting_invite / meeting_reminder';
+COMMENT ON COLUMN notify_notifications.title       IS '通知标题（前端列表主文案）';
+COMMENT ON COLUMN notify_notifications.content     IS '通知副文案（详细说明或申请附言）';
+COMMENT ON COLUMN notify_notifications.extra       IS '扩展数据 JSON，保存类型相关的原始参数（group_id / request_id / role 等）';
+COMMENT ON COLUMN notify_notifications.actor_id    IS '触发此通知的主体用户 ID（申请人 / 邀请人等），系统广播为 NULL';
+COMMENT ON COLUMN notify_notifications.target_type IS '业务对象类型：user / group / meeting / system，用于点击跳转路由';
+COMMENT ON COLUMN notify_notifications.target_id   IS '业务对象 ID，与 target_type 联合定位跳转目标';
+COMMENT ON COLUMN notify_notifications.is_read     IS '是否已读：FALSE=未读，TRUE=已读';
+COMMENT ON COLUMN notify_notifications.read_at     IS '已读时间，未读时为 NULL';
+COMMENT ON COLUMN notify_notifications.created_at  IS '通知生成时间';
+
+-- 列表查询核心索引（按用户倒序分页）
+CREATE INDEX idx_notify_user_time ON notify_notifications (user_id, created_at DESC);
+-- 未读数统计索引（覆盖索引）
+CREATE INDEX idx_notify_user_unread ON notify_notifications (user_id, is_read) WHERE is_read = FALSE;
+-- 清理任务索引（按创建时间扫描旧数据）
+CREATE INDEX idx_notify_created_at ON notify_notifications (created_at);

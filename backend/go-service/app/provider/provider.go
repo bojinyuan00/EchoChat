@@ -11,6 +11,9 @@ import (
 	groupController "github.com/echochat/backend/app/group/controller"
 	imController "github.com/echochat/backend/app/im/controller"
 	imHandler "github.com/echochat/backend/app/im/handler"
+	notifyController "github.com/echochat/backend/app/notify/controller"
+	notifyService "github.com/echochat/backend/app/notify/service"
+	notifyTask "github.com/echochat/backend/app/notify/task"
 	wsApp "github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/db"
@@ -46,6 +49,9 @@ type App struct {
 	OfflinePusher         *imHandler.OfflinePusher                   // 离线消息推送器
 	FileController        *fileController.FileController             // 文件上传控制器
 	GroupController       *groupController.GroupController           // 群聊管理控制器
+	NotifyService         *notifyService.NotifyService               // 通知业务服务（兼 Pusher、ConnectHook）
+	NotifyController      *notifyController.NotificationController   // 通知控制器
+	NotifyCleanupTask     *notifyTask.CleanupTask                    // 通知清理定时任务
 }
 
 // NewApp 创建应用实例
@@ -72,9 +78,12 @@ func NewApp(
 	offlinePusher *imHandler.OfflinePusher,
 	fileCtrl *fileController.FileController,
 	groupCtrl *groupController.GroupController,
+	notifySvc *notifyService.NotifyService,
+	notifyCtrl *notifyController.NotificationController,
+	notifyCleanup *notifyTask.CleanupTask,
 ) *App {
-	// 注入离线消息推送器到 WS Handler
 	wsHandler.SetOfflinePusher(offlinePusher)
+	wsHandler.SetNotifyConnectHook(notifySvc)
 
 	return &App{
 		Config:                  cfg,
@@ -99,6 +108,9 @@ func NewApp(
 		OfflinePusher:           offlinePusher,
 		FileController:          fileCtrl,
 		GroupController:         groupCtrl,
+		NotifyService:           notifySvc,
+		NotifyController:        notifyCtrl,
+		NotifyCleanupTask:       notifyCleanup,
 	}
 }
 

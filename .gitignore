@@ -59,6 +59,8 @@ build/
 coverage/
 *.coverprofile
 
-# --- Playwright 截图 ---
+# --- Playwright 截图与 MCP 快照 ---
 *.png
 !design-system/**/*.png
+.playwright-mcp/
+!.playwright-mcp/.gitkeep

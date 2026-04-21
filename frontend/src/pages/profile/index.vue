@@ -15,6 +15,17 @@
 -->
 <template>
   <view class="page-wrapper">
+    <!-- 顶部栏（铃铛入口 + 徽标） -->
+    <view class="top-bar">
+      <text class="top-title">我的</text>
+      <view class="bell-btn" @tap="goNotifyCenter">
+        <text class="bell-icon">&#128276;</text>
+        <view v-if="notifyStore.unreadTotal > 0" class="bell-badge">
+          {{ notifyStore.unreadTotal > 99 ? '99+' : notifyStore.unreadTotal }}
+        </view>
+      </view>
+    </view>
+
     <!-- 用户信息头部 -->
     <view class="profile-header">
       <view class="avatar-box">
@@ -26,6 +37,16 @@
 
     <!-- 功能菜单 -->
     <view class="menu-card">
+      <view class="menu-item" @tap="goNotifyCenter">
+        <text class="menu-label">通知中心</text>
+        <view class="menu-right">
+          <view v-if="notifyStore.unreadTotal > 0" class="menu-badge">
+            {{ notifyStore.unreadTotal > 99 ? '99+' : notifyStore.unreadTotal }}
+          </view>
+          <text class="menu-arrow">›</text>
+        </view>
+      </view>
+      <view class="menu-divider"></view>
       <view class="menu-item" @tap="goEditProfile">
         <text class="menu-label">编辑资料</text>
         <text class="menu-arrow">›</text>
@@ -56,6 +77,7 @@
  * 退出登录时调用 store.logout()，清除 Redis Token + 本地缓存
  */
 import { useUserStore } from '@/store/user'
+import { useNotifyStore } from '@/store/notify'
 import CustomTabBar from '@/components/CustomTabBar.vue'
 
 export default {
@@ -67,13 +89,28 @@ export default {
       const store = useUserStore()
       return store.userInfo || {}
     },
+    /** 通知 Store（用于读取未读数并驱动铃铛徽标） */
+    notifyStore() {
+      return useNotifyStore()
+    },
     /** 头像占位字母（取昵称或用户名首字符） */
     avatarLetter() {
       const name = this.userInfo.nickname || this.userInfo.username || '?'
       return name.charAt(0).toUpperCase()
     }
   },
+  onShow() {
+    // 每次进入「我的」页面时刷新未读数，保证徽标实时
+    const store = useNotifyStore()
+    store.initWsListeners()
+    store.fetchUnreadCount().catch(() => {})
+  },
   methods: {
+    /** 跳转到通知中心页 */
+    goNotifyCenter() {
+      uni.navigateTo({ url: '/pages/notify/index' })
+    },
+
     /** 编辑资料（后续实现，当前提示开发中） */
     goEditProfile() {
       uni.showToast({ title: '功能开发中', icon: 'none' })
@@ -112,6 +149,82 @@ export default {
   min-height: 100vh;
   background-color: #F8FAFC;
   padding-bottom: 120rpx;
+}
+
+/* ---- 顶部栏（铃铛入口） ---- */
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 32rpx;
+  background-color: #FFFFFF;
+}
+
+.top-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #1E293B;
+}
+
+.bell-btn {
+  position: relative;
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: #F1F5F9;
+  cursor: pointer;
+  transition: background-color 200ms ease;
+}
+
+.bell-btn:active {
+  background-color: #E2E8F0;
+}
+
+.bell-icon {
+  font-size: 36rpx;
+  color: #1E293B;
+  line-height: 1;
+}
+
+.bell-badge {
+  position: absolute;
+  top: 4rpx;
+  right: 4rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  padding: 0 8rpx;
+  border-radius: 16rpx;
+  background-color: #EF4444;
+  color: #FFFFFF;
+  font-size: 20rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid #FFFFFF;
+}
+
+.menu-right {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.menu-badge {
+  min-width: 36rpx;
+  height: 36rpx;
+  padding: 0 10rpx;
+  border-radius: 18rpx;
+  background-color: #EF4444;
+  color: #FFFFFF;
+  font-size: 22rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ---- 用户信息头部 ---- */

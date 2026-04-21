@@ -6,10 +6,11 @@ import (
 	"errors"
 	"sort"
 
+	"github.com/echochat/backend/app/constants"
 	"github.com/echochat/backend/app/contact/dao"
 	"github.com/echochat/backend/app/dto"
+	notifyService "github.com/echochat/backend/app/notify/service"
 	"github.com/echochat/backend/pkg/logs"
-	"github.com/echochat/backend/pkg/ws"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -30,26 +31,33 @@ type OnlineChecker interface {
 	BatchCheckOnline(ctx context.Context, userIDs []int64) map[int64]bool
 }
 
+// NotifyPusher 通知推送接口
+// 由 notify.service.NotifyService 隐式实现；contact → notify 单向依赖
+// 此处以接口形式注入，便于测试替换并明确调用契约
+type NotifyPusher interface {
+	Push(ctx context.Context, payload *notifyService.PushPayload)
+}
+
 // ContactService 联系人业务服务
 type ContactService struct {
 	friendshipDAO  *dao.FriendshipDAO
 	friendGroupDAO *dao.FriendGroupDAO
-	pubsub         *ws.PubSub
 	onlineChecker  OnlineChecker
+	notifyPusher   NotifyPusher
 }
 
 // NewContactService 创建 ContactService 实例
 func NewContactService(
 	friendshipDAO *dao.FriendshipDAO,
 	friendGroupDAO *dao.FriendGroupDAO,
-	pubsub *ws.PubSub,
 	onlineChecker OnlineChecker,
+	notifyPusher NotifyPusher,
 ) *ContactService {
 	return &ContactService{
 		friendshipDAO:  friendshipDAO,
 		friendGroupDAO: friendGroupDAO,
-		pubsub:         pubsub,
 		onlineChecker:  onlineChecker,
+		notifyPusher:   notifyPusher,
 	}
 }
 
@@ -99,12 +107,20 @@ func (s *ContactService) SendFriendRequest(ctx context.Context, userID, targetID
 		}
 	}
 
-	push := ws.NewPushMessage("notify.friend.request", map[string]interface{}{
-		"from_user_id": userID,
-		"message":      message,
-	})
-	if pubErr := s.pubsub.PublishToUser(ctx, targetID, push); pubErr != nil {
-		logs.Warn(ctx, funcName, "推送好友申请通知失败", zap.Error(pubErr))
+	if s.notifyPusher != nil {
+		actorID := userID
+		targetUser := targetID
+		s.notifyPusher.Push(ctx, &notifyService.PushPayload{
+			UserID:     targetID,
+			Type:       constants.NotifyTypeFriendRequest,
+			Content:    message,
+			ActorID:    &actorID,
+			TargetType: constants.NotifyTargetUser,
+			TargetID:   &targetUser,
+			Extra: map[string]interface{}{
+				"message": message,
+			},
+		})
 	}
 
 	return nil
@@ -132,11 +148,20 @@ func (s *ContactService) AcceptFriendRequest(ctx context.Context, requestID, use
 		return err
 	}
 
-	push := ws.NewPushMessage("contact.request.accepted", map[string]interface{}{
-		"user_id": userID,
-	})
-	if pubErr := s.pubsub.PublishToUser(ctx, req.UserID, push); pubErr != nil {
-		logs.Warn(ctx, funcName, "推送申请接受通知失败", zap.Error(pubErr))
+	if s.notifyPusher != nil {
+		actorID := userID
+		targetUser := userID
+		s.notifyPusher.Push(ctx, &notifyService.PushPayload{
+			UserID:     req.UserID,
+			Type:       constants.NotifyTypeFriendAccepted,
+			Content:    "对方已接受你的好友申请",
+			ActorID:    &actorID,
+			TargetType: constants.NotifyTargetUser,
+			TargetID:   &targetUser,
+			Extra: map[string]interface{}{
+				"request_id": requestID,
+			},
+		})
 	}
 
 	return nil
@@ -148,11 +173,41 @@ func (s *ContactService) RejectFriendRequest(ctx context.Context, requestID, use
 	logs.Info(ctx, funcName, "拒绝好友申请",
 		zap.Int64("request_id", requestID), zap.Int64("user_id", userID))
 
-	err := s.friendshipDAO.RejectRequest(ctx, requestID, userID)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	req, err := s.friendshipDAO.GetRequestByID(ctx, requestID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrRequestNotFound
+		}
+		return err
+	}
+	if req.FriendID != userID {
 		return ErrRequestNotFound
 	}
-	return err
+
+	if err := s.friendshipDAO.RejectRequest(ctx, requestID, userID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrRequestNotFound
+		}
+		return err
+	}
+
+	if s.notifyPusher != nil {
+		actorID := userID
+		targetUser := userID
+		s.notifyPusher.Push(ctx, &notifyService.PushPayload{
+			UserID:     req.UserID,
+			Type:       constants.NotifyTypeFriendRejected,
+			Content:    "对方拒绝了你的好友申请",
+			ActorID:    &actorID,
+			TargetType: constants.NotifyTargetUser,
+			TargetID:   &targetUser,
+			Extra: map[string]interface{}{
+				"request_id": requestID,
+			},
+		})
+	}
+
+	return nil
 }
 
 // GetFriendList 获取好友列表（包含在线状态）

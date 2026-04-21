@@ -126,6 +126,11 @@ export const useUserStore = defineStore('user', () => {
       const { useChatStore } = await import('@/store/chat')
       useChatStore().resetVoicePlayedState()
     } catch (_) { /* ignore */ }
+    // 清空通知中心缓存，避免账号切换后看到前一个用户的通知
+    try {
+      const { useNotifyStore } = await import('@/store/notify')
+      useNotifyStore().reset()
+    } catch (_) { /* ignore */ }
     token.value = ''
     userInfo.value = null
     clearAll()

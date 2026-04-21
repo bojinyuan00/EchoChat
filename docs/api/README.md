@@ -18,7 +18,7 @@
 | [frontend/im.md](frontend/im.md) | 即时通讯 | ✅ Phase 2b | 7 个 API：会话列表/置顶/删除/清空、历史消息、全局搜索、未读数 |
 | [frontend/group.md](frontend/group.md) | 群聊管理 | ✅ Phase 2c | 16 个 API：建群/管理/成员/角色/禁言/公告/搜索/入群审批 |
 | [frontend/meeting.md](frontend/meeting.md) | 会议 | 📋 后续 | 即时会议、预约会议、加入/离开、会议列表 |
-| [frontend/notify.md](frontend/notify.md) | 通知 | 📋 后续 | 通知列表、标记已读 |
+| [frontend/notify.md](frontend/notify.md) | 通知中心 | ✅ Phase 2e-1 | 5 个 API：通知列表（游标分页）/未读数/标记已读/全部已读/管理员广播 + 2 个 WS 事件（notify.new/notify.unread.total） |
 
 ### 后台管理端 (`admin/`)
 

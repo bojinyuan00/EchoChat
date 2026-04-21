@@ -17,6 +17,8 @@ import (
 	imApp "github.com/echochat/backend/app/im"
 	imDAO "github.com/echochat/backend/app/im/dao"
 	imService "github.com/echochat/backend/app/im/service"
+	notifyApp "github.com/echochat/backend/app/notify"
+	notifyService "github.com/echochat/backend/app/notify/service"
 	wsApp "github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
 	"github.com/google/wire"
@@ -33,6 +35,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		imApp.IMSet,
 		fileApp.FileSet,
 		groupApp.GroupSet,
+		notifyApp.NotifySet,
 		wire.Bind(new(wsApp.FriendIDsGetter), new(*contactDAO.FriendshipDAO)),
 		wire.Bind(new(groupService.UserInfoProvider), new(*contactDAO.FriendshipDAO)),
 		wire.Bind(new(imService.GroupInfoGetter), new(*groupDAO.GroupDAO)),
@@ -42,6 +45,9 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		wire.Bind(new(imService.UserInfoGetter), new(*contactDAO.FriendshipDAO)),
 		wire.Bind(new(contactService.OnlineChecker), new(*wsApp.OnlineService)),
 		wire.Bind(new(groupService.MessageWriter), new(*imDAO.MessageDAO)),
+		wire.Bind(new(notifyService.UserInfoResolver), new(*contactDAO.FriendshipDAO)),
+		wire.Bind(new(contactService.NotifyPusher), new(*notifyService.NotifyService)),
+		wire.Bind(new(groupService.NotifyPusher), new(*notifyService.NotifyService)),
 	)
 	return nil, nil
 }

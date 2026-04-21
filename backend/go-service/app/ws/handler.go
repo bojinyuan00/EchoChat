@@ -27,6 +27,14 @@ type OfflineMessagePusher interface {
 	PushOfflineMessages(ctx context.Context, userID int64)
 }
 
+// NotifyConnectHook 通知未读补偿钩子接口
+// 由 notify.service.NotifyService 隐式实现
+// WebSocket 连接建立后触发，向客户端推送 notify.unread.total 事件
+// 用于断线重连场景下的徽标状态同步
+type NotifyConnectHook interface {
+	PushUnreadTotalOnConnect(ctx context.Context, userID int64)
+}
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -37,12 +45,13 @@ var upgrader = websocket.Upgrader{
 
 // Handler WebSocket 连接处理器
 type Handler struct {
-	hub            *ws.Hub
-	pubsub         *ws.PubSub
-	jwtCfg         *config.JWTConfig
-	onlineService  *OnlineService
-	tokenValidator TokenValidator
-	offlinePusher  OfflineMessagePusher
+	hub              *ws.Hub
+	pubsub           *ws.PubSub
+	jwtCfg           *config.JWTConfig
+	onlineService    *OnlineService
+	tokenValidator   TokenValidator
+	offlinePusher    OfflineMessagePusher
+	notifyConnectHook NotifyConnectHook
 }
 
 // NewHandler 创建 WebSocket Handler 实例
@@ -59,6 +68,11 @@ func NewHandler(hub *ws.Hub, pubsub *ws.PubSub, jwtCfg *config.JWTConfig, online
 // SetOfflinePusher 设置离线消息推送器（由 IM 模块在初始化时注入）
 func (h *Handler) SetOfflinePusher(pusher OfflineMessagePusher) {
 	h.offlinePusher = pusher
+}
+
+// SetNotifyConnectHook 设置通知未读补偿钩子（由 notify 模块在初始化时注入）
+func (h *Handler) SetNotifyConnectHook(hook NotifyConnectHook) {
+	h.notifyConnectHook = hook
 }
 
 // Upgrade 处理 WebSocket 升级请求
@@ -120,6 +134,10 @@ func (h *Handler) Upgrade(c *gin.Context) {
 
 	if h.offlinePusher != nil {
 		go h.offlinePusher.PushOfflineMessages(context.Background(), claims.UserID)
+	}
+
+	if h.notifyConnectHook != nil {
+		go h.notifyConnectHook.PushUnreadTotalOnConnect(context.Background(), claims.UserID)
 	}
 }
 
