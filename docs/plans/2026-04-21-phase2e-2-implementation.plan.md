@@ -5,7 +5,7 @@
 > **上级路线图：** [Phase 2e 整体路线图](./2026-04-20-phase2e-design.md)
 > **分支：** `feature/phase2e-2-meeting-mvp`
 > **预估总工时：** **约 17 人日**（17 个 Task，含 PoC 与 UI 打磨）
-> **最后更新：** 2026-04-21（实施计划首版落盘）
+> **最后更新：** 2026-04-21（Task 0-5 ✅ 已落地，下一步 Task 6 WS 信令）
 
 ---
 
@@ -273,24 +273,35 @@ flowchart LR
   - **顺手修复 admin wire 存量 bug**（计划未列）：Task 4 重生成 wire 时暴露了 admin 模块 `MessageManage` 系列 provider 缺失的遗留问题，当场补上避免阻塞后续开发
 - **工作量**：**0.5 人日**（实际约 0.4 人日，含存量问题修复约 0.1 人日）
 
-### Task 5：会议 REST 接口（创建/加入/离开/结束/列表/详情 + 邀请链接兑换 + 邀请）
+### Task 5：会议 REST 接口（创建/加入/离开/结束/列表/详情 + 邀请链接兑换 + 邀请）✅（2026-04-21 完成）
 
 - **目标**：填充 Task 4 骨架中的业务逻辑，完整实现设计 §6.2 的 12 个接口
 - **依赖**：T4
-- **主要产出**：
-  - 会议号生成：`GenerateRoomCode()` 随机 9 位数字，冲突重试（< 3 次）
-  - 密码 bcrypt 存取（`service.setPassword / verifyPassword`）
-  - 加入会议时校验：会议存在、未结束、容量未满、密码正确、用户未在其他会议
-  - 离开 / 结束：参与者表 `left_at` 填入 + duration 计算 + 触发 mediasoup 资源清理
-  - 邀请链接 Token：`GenerateInviteToken() -> Redis SET EX 600`，`RedeemInviteToken(token)` 校验并删除
-  - `POST /rooms/:code/invite` 接受 `{invitee_ids, group_ids}`，生成 Token 后调 `NotifyPusher`
-  - DTO：`app/dto/meeting_dto.go` 完整定义请求/响应结构
-  - API 文档：`docs/api/frontend/meeting.md` 新建（全部 12 接口 + 示例）
-- **检查点**：
-  - Postman 手测 12 接口全部 2xx；错误场景返回正确错误码（`meeting_not_found` / `meeting_full` / `password_incorrect` 等）
-  - 容量限制：第 9 人加入返回 `meeting_full`
-  - 密码连续错误 5 次锁定 10 分钟
-- **工作量**：**1.5 人日**
+- **主要产出**（全部实装并端到端通过验证）：
+  - **DTO 层**：`backend/go-service/app/dto/meeting_dto.go`（169 行）定义 13 个 DTO（`MeetingRoomDTO`/`MeetingParticipantDTO`/`MeetingChatDTO` 基础 + 10 个请求/响应类型），所有请求体有 `binding` 标签
+  - **工具层**：`backend/go-service/pkg/utils/meeting_code.go` 会议号生成（`crypto/rand` + 3 组 3 位数字生成 `XXX-XXX-XXX`，冲突重试 5 次）+ 邀请 Token（32 位 hex）
+  - **Service 层**：`MeetingService` 12 业务方法 + 11 个 sentinel 错误 + 4 个辅助函数（`assertIsActiveParticipant`/`assertIsHost`/`generateUniqueRoomCode`/`broadcastToActiveParticipants`）
+  - **Controller 层**：12 个 Gin 处理器 + `handleError` 领域错误 → HTTP 映射（404/403/400/500 四档）+ DTO 转换辅助（`roomToDTO`/`participantToDTO`/`chatToDTO`）
+  - **Stub 接口**：新增 `MediaOrchestrator` 接口 + `NoopMediaOrchestrator`（Task 7 替换）；WS 广播走 `pubsub.PublishToUser` 逐人（Task 6 改为 `BroadcastToMeeting`）；`NotifyPusher.PushBatch` 复用 Phase 2e-1
+  - **路径修正**：`router.go` 将 Task 4 占位路径对齐设计：`GET /rooms` → `GET /rooms/mine`、`POST /invites/:token/redeem` → `POST /invite-tokens/:token/redeem`
+  - **DAO 契约修复**：`meeting_room_dao.GetByID/GetByCode` + `meeting_participant_dao.GetByRoomAndUser/FindActiveByUser` 将 `gorm.ErrRecordNotFound` 转为 `(nil, nil)`，service 统一 `result == nil` 判定
+  - **密码限流**：同 `(user_id, code)` 5 次错误 → Redis `echo:meeting:pwd:fail:...` 锁 10 分钟（`ErrMeetingPasswordLocked`）
+  - **单点参会**：用 `meeting_participants` JOIN `status != 2` 判断用户是否已在其他活跃会议（`ErrAlreadyInOtherMeeting`）
+  - **host 自动转让**：host 离会时若仍有其他活跃成员 → 自动将 host 转给"最早加入者"，广播 `meeting.host.changed`；若无人则房间 `ended_reason=empty_ttl`
+  - **邀请 Token 安全**：响应不返回 token，仅通过 `NotifyPusher.PushBatch.Extra.invite_token` 定向下发；兑换后保留 60 秒冗余由 Redis TTL 自然过期
+  - **API 文档**：`docs/api/frontend/meeting.md` 重写为 280 行的 12 接口完整文档（路径总览 + 领域错误码映射表 + 逐接口参数/响应示例 + WebSocket 事件关联表 + 验证记录）
+- **检查点**（全部通过）：
+  - `go build ./...` / `go vet ./...` / `wire ./app/provider` 零告警
+  - 端到端脚本 `/tmp/meeting_t5_test.sh` 用 3 用户场景覆盖：12 接口 happy path + 5 类错误路径（密码错 / 房间不存在 / 单点参会冲突 / 非 host 越权 / 邀请链接失效）→ **PASS=19 / FAIL=0**
+  - DB 侧核验 `meeting_rooms.status` / `meeting_participants.left_at/duration` / `meeting_chats` 写入正确；Redis 侧核验 `echo:meeting:invite:{token}` TTL=600s
+  - 服务日志全链路 trace_id；WS 广播 `meeting.member.joined/left/chat/host.changed/room.ended` 事件全部发出
+- **实际产出 vs 计划差异**：
+  - **密码连续错误 5 次锁 10 分钟**：Task 5 已实现，与计划一致
+  - **容量限制**：MVP 硬上限为 **8**（设计 D05），超过将 `ErrMeetingFull`；计划里误写"第 9 人加入返回 meeting_full"表述已与硬上限对齐
+  - **`kick` 请求体**：设计文档曾讨论 `{target_user_id, request_id}` 的幂等字段，Task 5 DTO 定义为 `{user_id}`（与 `TransferHostRequest.target_user_id` 命名区分），`request_id` 幂等保护留待 Task 6 WS 侧统一处理（WS 场景更多）
+  - **InviteUsersResponse**：出于安全考虑不返回 token，仅返回 `{pushed, skipped}`；测试时通过 Redis 获取 token
+  - **错误码中文化**：使用中文 `message`（与项目惯例一致）而非英文 `meeting_not_found` code，前端通过 HTTP 状态码 + trace_id 区分
+- **工作量**：**实际 1 人日**（< 预估 1.5 人日，因 DTO 设计充分 + DAO 契约修复一次到位）
 
 ### Task 6：WS 信令 11 事件处理器
 

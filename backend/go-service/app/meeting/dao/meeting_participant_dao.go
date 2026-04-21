@@ -143,6 +143,9 @@ func (d *MeetingParticipantDAO) GetByRoomAndUser(ctx context.Context, roomID, us
 		Where("room_id = ? AND user_id = ?", roomID, userID).
 		First(&p).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &p, nil
@@ -196,6 +199,9 @@ func (d *MeetingParticipantDAO) FindActiveByUser(ctx context.Context, userID int
 			userID, constants.MeetingStatusEnded).
 		First(&p).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &p, nil

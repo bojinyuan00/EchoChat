@@ -15,21 +15,18 @@ func RegisterRoutes(r *gin.Engine, ctrl *controller.MeetingController, jwtAuth g
 	{
 		// 会议房间生命周期
 		authed.POST("/rooms", ctrl.CreateRoom)
-		authed.GET("/rooms", ctrl.ListMyMeetings)
+		authed.GET("/rooms/mine", ctrl.ListMyMeetings)
 		authed.GET("/rooms/:code", ctrl.GetRoom)
 		authed.POST("/rooms/:code/join", ctrl.JoinRoom)
 		authed.POST("/rooms/:code/leave", ctrl.LeaveRoom)
 		authed.POST("/rooms/:code/end", ctrl.EndRoom)
 
-		// 主持人四件套（Task 7）
 		authed.POST("/rooms/:code/transfer-host", ctrl.TransferHost)
 		authed.POST("/rooms/:code/kick", ctrl.KickMember)
 
-		// 邀请（Task 5）
 		authed.POST("/rooms/:code/invite", ctrl.InviteUsers)
-		authed.POST("/invites/:token/redeem", ctrl.RedeemInvite)
+		authed.POST("/invite-tokens/:token/redeem", ctrl.RedeemInvite)
 
-		// 会议内聊天（Task 6）
 		authed.POST("/rooms/:code/chats", ctrl.SendChat)
 		authed.GET("/rooms/:code/chats", ctrl.ListChats)
 	}

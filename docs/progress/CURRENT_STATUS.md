@@ -1,7 +1,7 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-21（Phase 2e-2 Task 4 Go meeting 模块 service/controller/router 骨架完成，12 条 `/api/v1/meeting/*` 路由全部注册并通过 JWT 鉴权验证）
-> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-4 ✅ / Task 5-16 待执行）
+> **最后更新**：2026-04-21（Phase 2e-2 Task 5 Go meeting 模块 12 个 REST 接口业务逻辑全量落地，端到端 19/19 PASS）
+> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-5 ✅ / Task 6-16 待执行）
 > **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
 > **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（✅ 已完成）
@@ -167,6 +167,55 @@
 ### 下一步
 
 - **Task 5**（1.5 人日）：`MeetingService.CreateRoom` + `JoinRoom` + `LeaveRoom` + `EndRoom` 核心业务逻辑（6 位会议号生成 + bcrypt 密码校验 + 人数上限 + Redis host 宽限期 Timer 骨架），替换当前 `ErrNotImplemented` 占位。
+
+---
+
+## 🚀 2026-04-21 Phase 2e-2 Task 5 Go meeting 模块 12 个 REST 接口业务逻辑全量落地
+
+**交付**：`MeetingService` 12 个业务方法 + `MeetingController` 12 个 Gin 处理器从 501 占位升级为真实实现，完整的领域错误码映射、DTO 绑定、DAO 契约修复、权限辅助函数；端到端验证脚本 `/tmp/meeting_t5_test.sh` **19/19 PASS**，覆盖 12 接口 happy path + 5 类错误路径；`go build ./...` / `go vet ./...` / `wire ./app/provider` 全绿。
+
+### 产出文件
+
+| 文件 | 行数 | 作用 |
+|---|---|---|
+| `backend/go-service/app/dto/meeting_dto.go` | 169 | 13 个 DTO：`MeetingRoomDTO`/`MeetingParticipantDTO`/`MeetingChatDTO` 基础 + 10 个请求/响应类型（`CreateMeetingRoomRequest`/`JoinMeetingRoomRequest`/`InviteUsersRequest`/`KickMemberRequest`/`TransferHostRequest`/`SendMeetingChatRequest`/`ListMyMeetingsRequest`/`ListMeetingChatsRequest`/`RedeemInviteTokenResponse` 等） |
+| `backend/go-service/pkg/utils/meeting_code.go` | 40 | `GenerateMeetingRoomCode()` 生成 9 位 `XXX-XXX-XXX` 会议号（crypto/rand + 3 组 3 位数字）；`GenerateMeetingInviteToken()` 生成 32 位 hex 邀请令牌 |
+| `backend/go-service/app/meeting/service/interfaces.go`（改） | +25 | 新增 `MediaOrchestrator` 接口 + `NoopMediaOrchestrator` 占位实现（Task 7 替换为真实 HTTP 客户端） |
+| `backend/go-service/app/meeting/service/meeting_service.go`（重写） | 800 | 12 个业务方法 + 11 个领域错误（`ErrMeetingPasswordLocked`/`ErrAlreadyInOtherMeeting` 等）+ `assertIsActiveParticipant`/`assertIsHost`/`generateUniqueRoomCode`/`broadcastToActiveParticipants` 辅助，注入 `MediaOrchestrator` + `ws.PubSub` 完成广播 |
+| `backend/go-service/app/meeting/controller/meeting_controller.go`（重写） | 420 | 12 个 Gin 处理器 + `handleError` 领域错误 → HTTP 状态码映射 + `roomToDTO`/`participantToDTO`/`chatToDTO` 转换 + `requireUserID` 统一鉴权辅助 |
+| `backend/go-service/app/meeting/router.go`（改） | ±5 | 路径对齐设计文档：`GET /rooms` → `GET /rooms/mine`；`POST /invites/:token/redeem` → `POST /invite-tokens/:token/redeem` |
+| `backend/go-service/app/meeting/provider.go`（改） | +4 | `MeetingSet` 加入 `NewNoopMediaOrchestrator` + `wire.Bind(MediaOrchestrator, NoopMediaOrchestrator)` |
+| `backend/go-service/app/meeting/dao/meeting_room_dao.go`（改） | ±8 | **DAO 契约修复**：`GetByID`/`GetByCode` 将 `gorm.ErrRecordNotFound` 转为 `(nil, nil)`，由 service 层用 `room == nil` 判定 |
+| `backend/go-service/app/meeting/dao/meeting_participant_dao.go`（改） | ±6 | **DAO 契约修复**：`GetByRoomAndUser`/`FindActiveByUser` 同上转换 |
+| `docs/api/frontend/meeting.md`（重写） | 280 | Phase 2e-2 MVP 的 12 接口完整 API 文档（路径总览 + 领域错误码映射表 + 12 接口详细参数/响应示例 + WebSocket 事件关联表） |
+
+### 验证执行（3 用户端到端）
+
+1. `go build ./...` / `go vet ./...` / `wire` 全绿
+2. 启动 server 并跑 `meeting_t5_test.sh`（A/B/C 三用户场景）：
+   - 12 接口 happy path：`CreateRoom`(带/不带密码)/`GetRoomByCode`/`JoinRoom`(含密码)/`LeaveRoom`/`EndRoom`/`TransferHost`/`KickMember`/`InviteUsers`/`RedeemInviteToken`/`SendChat`/`ListChats`/`ListMyMeetings`
+   - 5 类错误路径：密码错误(400) / 房间不存在(404) / 单点参会冲突(400) / 非 host 越权(403) / 邀请链接失效(400)
+   - 结果：**PASS=19 / FAIL=0**
+3. DB 侧核查 `meeting_rooms.status` / `meeting_participants.left_at/duration` / `meeting_chats` 记录写入正确；Redis 侧核查 `echo:meeting:invite:{token}` key 的 TTL=600s
+4. 服务端日志全链路 trace_id 串联，WS 广播 `meeting.member.joined/left/chat/host.changed/room.ended` 事件通过 `PubSub.PublishToUser` 逐人推送
+
+### 关键设计决策
+
+- **DAO 契约统一**：所有"按主键/唯一键查单条"的 DAO 方法一律将 `gorm.ErrRecordNotFound` 转换为 `(nil, nil)`，service 层统一以 `result == nil` 判定并返回领域错误（`ErrMeetingNotFound` 等）。消除此前 500 误报问题。
+- **Stub 策略**（Task 5 阶段）：
+  - `MediaOrchestrator.CreateRouter/CloseRouter` 当前为 Noop（返回占位字符串），Task 7 引入 HTTP 客户端调 Node media-server
+  - WS 广播暂用 `pubsub.PublishToUser` 逐人循环，Task 6 封装为 `BroadcastToMeeting` 后接口无感替换
+  - `NotifyPusher.PushBatch`（Phase 2e-1 成果）直接复用，`meeting_invite` 类型的通知已由 NotifyService 正确处理
+- **单点参会**：通过 `meeting_participants` 关联 `meeting_rooms.status != 2` 判断一个用户是否已在活跃会议中，避免同时多会议产生混乱（`ErrAlreadyInOtherMeeting`）
+- **密码限流**：同 `(user_id, code)` 5 次内错自动触发 Redis 锁 `echo:meeting:pwd:fail:{code}:{user_id}` TTL 10 分钟（`ErrMeetingPasswordLocked`），防止暴力破解
+- **host 离会自动转让**：host leave 时若仍有其他活跃成员，自动将 host 转移到"最早加入者"（`ORDER BY joined_at ASC LIMIT 1`），并广播 `meeting.host.changed`；若仅 host 一人则房间标记 `ended_reason=empty_ttl`
+- **邀请 token 安全**：响应体**不**返回 token，仅通过 `NotifyPusher.PushBatch` 的 `Extra.invite_token` 定向下发给被邀请者；兑换后保留 60 秒冗余（允许页面刷新），随后 Redis TTL 自然过期
+- **HTTP 状态码**：创建类接口（CreateRoom / SendChat）统一返回 **201 Created**；动作类接口（Join/Leave/End/Kick/TransferHost/Invite/Redeem）返回 **200 OK**；领域错误按"资源不存在=404 / 权限不足=403 / 业务规则=400"三档映射
+
+### 下一步
+
+- **Task 6**（2 人日）：WebSocket 信令协议落地 — `meeting.*` 事件帧 + mediasoup Transport/Producer/Consumer signaling 桥接 + `ws.BroadcastToMeeting` 替换 Task 5 的 `PublishToUser` 循环。
+- **Task 7**（1.5 人日）：Go → Node HTTP 客户端 `HTTPMediaOrchestrator`，接入真实 mediasoup Router，替换 `NoopMediaOrchestrator`。
 
 ---
 

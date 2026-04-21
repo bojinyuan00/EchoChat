@@ -39,27 +39,32 @@ func (d *MeetingRoomDAO) Create(ctx context.Context, room *model.MeetingRoom) er
 }
 
 // GetByID 按主键查询
+// 记录不存在时返回 (nil, nil)，便于上层直接用 room == nil 判空并返回业务错误
 func (d *MeetingRoomDAO) GetByID(ctx context.Context, id int64) (*model.MeetingRoom, error) {
 	var room model.MeetingRoom
 	err := d.db.WithContext(ctx).First(&room, id).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &room, nil
 }
 
 // GetByCode 按会议号查询（入会流程的主要入口）
-// 返回 gorm.ErrRecordNotFound 时上层应转换为业务错误 ErrMeetingNotFound
+// 记录不存在时返回 (nil, nil)，上层应通过 room == nil 判定并返回业务错误 ErrMeetingNotFound
 func (d *MeetingRoomDAO) GetByCode(ctx context.Context, code string) (*model.MeetingRoom, error) {
 	funcName := "dao.meeting_room_dao.GetByCode"
 
 	var room model.MeetingRoom
 	err := d.db.WithContext(ctx).Where("room_code = ?", code).First(&room).Error
 	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			logs.Error(ctx, funcName, "按会议号查询房间失败",
-				zap.String("room_code", code), zap.Error(err))
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
 		}
+		logs.Error(ctx, funcName, "按会议号查询房间失败",
+			zap.String("room_code", code), zap.Error(err))
 		return nil, err
 	}
 	return &room, nil

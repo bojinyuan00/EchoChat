@@ -101,7 +101,8 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	meetingRoomDAO := dao6.NewMeetingRoomDAO(gormDB)
 	meetingParticipantDAO := dao6.NewMeetingParticipantDAO(gormDB)
 	meetingChatDAO := dao6.NewMeetingChatDAO(gormDB)
-	meetingService := service7.NewMeetingService(meetingRoomDAO, meetingParticipantDAO, meetingChatDAO, gormDB, client, pubSub, notifyService, friendshipDAO, onlineService)
+	noopMediaOrchestrator := service7.NewNoopMediaOrchestrator()
+	meetingService := service7.NewMeetingService(meetingRoomDAO, meetingParticipantDAO, meetingChatDAO, gormDB, client, pubSub, notifyService, friendshipDAO, onlineService, noopMediaOrchestrator)
 	meetingController := controller7.NewMeetingController(meetingService)
 	app := NewApp(cfg, gormDB, client, minioClient, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, groupManageController, messageManageController, handler, hub, pubSub, onlineService, contactController, imController, eventHandler, offlinePusher, fileController, groupController, notifyService, notificationController, cleanupTask, meetingService, meetingController)
 	return app, nil

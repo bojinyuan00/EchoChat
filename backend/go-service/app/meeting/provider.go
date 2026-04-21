@@ -18,4 +18,8 @@ var MeetingSet = wire.NewSet(
 	dao.NewMeetingChatDAO,
 	service.NewMeetingService,
 	controller.NewMeetingController,
+
+	// MediaOrchestrator 目前使用 Noop 实现（Task 7 将替换为 node_client.NodeClient）
+	service.NewNoopMediaOrchestrator,
+	wire.Bind(new(service.MediaOrchestrator), new(*service.NoopMediaOrchestrator)),
 )
