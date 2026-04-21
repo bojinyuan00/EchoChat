@@ -69,7 +69,7 @@ type MeetingService struct {
 
 // NewMeetingService 创建 MeetingService 实例
 // 依赖通过构造函数注入；接口依赖由上游 Wire 绑定到具体实现
-// Task 7 之前 mediaOrchestrator 使用 NoopMediaOrchestrator
+// Task 7 (2026-04-21) 起 mediaOrchestrator 默认绑定 HTTPMediaOrchestrator
 func NewMeetingService(
 	roomDAO *dao.MeetingRoomDAO,
 	participantDAO *dao.MeetingParticipantDAO,

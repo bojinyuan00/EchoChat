@@ -60,7 +60,7 @@ EchoChat/
 │       ├── config/        # 配置文件
 │       ├── pkg/           # 公共包 (db / logs / middleware / utils)
 │       └── router/        # 路由聚合
-├── media-server/          # mediasoup Node 媒体服务 (Phase 3)
+├── media-server/          # mediasoup Node 媒体服务 (Phase 2e-2 Task 0-2 已落地 9 REST API，Task 7 起 Go 通过 HTTPMediaOrchestrator 接入)
 ├── deploy/                # 部署配置 (Docker Compose)
 ├── design-system/         # UI 设计系统 (ui-ux-pro-max 生成)
 ├── docs/                  # 项目文档

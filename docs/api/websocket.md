@@ -203,7 +203,7 @@
 
 ---
 
-## 会议信令事件（Phase 2e-2 Task 6 已落地）
+## 会议信令事件（Phase 2e-2 Task 6 已落地；Task 7 起 mediasoup 返回值为真实值）
 
 > **SSOT**：会议相关的全部 WS 事件详细契约（请求/ACK/广播载荷、权限、错误处理、资源追踪）见 [`docs/api/frontend/meeting.md`](./frontend/meeting.md) §WebSocket 信令协议。本节仅列事件总览。
 
@@ -232,6 +232,7 @@
 - **ACK 规则**：每个 C→S 事件服务端必回 `<event>.ack`；成功 `code=0`，业务失败 `code=-1` + 中文 `message`（与 REST 领域错误口径一致）。
 - **错误码示例**：`会议不存在` / `你当前未在会议中` / `仅主持人可执行此操作` / `会议已结束`。
 - **资源追踪**：服务端对每用户在每会议的 transport/producer/consumer 用 Redis Set `echo:meeting:resources:{room_id}:{user_id}` 记录，WS 断开或 `room.leave` 时自动清理。
+- **真实 mediasoup（Task 7 起）**：`meeting.transport.create` ACK 的 `id` / `iceParameters` / `iceCandidates` / `dtlsParameters`，以及 `meeting.produce.start` / `meeting.consume.start` 的 ID 均来自 Node media-server 真实 mediasoup Worker；Node 404（如关闭不存在 producer）在 Go 侧幂等转 `code=0`。
 
 ---
 

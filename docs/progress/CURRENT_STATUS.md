@@ -1,7 +1,7 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-21（Phase 2e-2 Task 6 WebSocket 信令协议落地，13 个 meeting.* 事件全量打通，端到端 18/18 PASS）
-> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-6 ✅ / Task 7-16 待执行）
+> **最后更新**：2026-04-21（Phase 2e-2 Task 7 HTTPMediaOrchestrator 落地，Go↔Node media-server HTTP 链路真实打通，端到端 16/16 PASS）
+> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-7 ✅ / Task 8-16 待执行）
 > **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
 > **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（✅ 已完成）
@@ -167,6 +167,73 @@
 ### 下一步
 
 - **Task 5**（1.5 人日）：`MeetingService.CreateRoom` + `JoinRoom` + `LeaveRoom` + `EndRoom` 核心业务逻辑（6 位会议号生成 + bcrypt 密码校验 + 人数上限 + Redis host 宽限期 Timer 骨架），替换当前 `ErrNotImplemented` 占位。
+
+---
+
+## 🎯 2026-04-21 Phase 2e-2 Task 7 HTTPMediaOrchestrator 落地（Go↔Node 真实媒体链路打通）
+
+**交付**：将 `NoopMediaOrchestrator` 替换为真实的 `HTTPMediaOrchestrator`，`MeetingService` / `MeetingSignalService` 的 9 个 media 调用全部走 HTTP 到 Node `media-server` 的 `/internal/v1/*` API；端到端验证脚本 `docs/verify/meeting_t7_verify.mjs` **16/16 PASS**，日志确认 Go 真正触发 mediasoup 真实 `router created` / `webrtc transport created` / `router closed explicitly` 事件。
+
+### 产出文件
+
+| 文件 | 行数 | 作用 |
+|---|---|---|
+| `backend/go-service/config/config.go`（改） | +15 | 新增 `MediaServerConfig{BaseURL, InternalToken, TimeoutMS, CloseTimeoutMS, CloseRetry}`，挂接到 `Config.MediaServer` |
+| `backend/go-service/config/config.dev.yaml`（改） | +8 | 新增 `media_server` 配置段（`http://localhost:3300` + 与 `media-server/.env` 一致的共享密钥） |
+| `backend/go-service/config/config.docker.yaml`（改） | +8 | 同上，`base_url` 改为 Docker 网络内 `http://media-server:3300` |
+| `backend/go-service/app/meeting/service/http_media_orchestrator.go`（新） | 340 | 实现 `MediaOrchestrator` 8 方法；`net/http` 标准库 + `context` 驱动超时；创建类 5s 超时无重试，关闭类 2s 超时 + 最多 2 次指数退避（200/500ms）；`roomCode → routerID` `sync.Map` 本地缓存满足 §6.6 的 `CloseRouter(roomCode)` 契约；错误统一映射为 `ErrMediaResourceNotFound`（Node 404）或 `ErrMediaServerError`（5xx/超时/网络错） |
+| `backend/go-service/app/meeting/provider.go`（改） | ±4 | `MeetingSet` 的 `NewNoopMediaOrchestrator` 替换为 `NewHTTPMediaOrchestrator`，`wire.Bind` 指向新实现 |
+| `backend/go-service/app/provider/wire_gen.go`（改） | ±3 | wire 自动图里 `noopMediaOrchestrator := NewNoopMediaOrchestrator()` 改为 `httpMediaOrchestrator := NewHTTPMediaOrchestrator(cfg)`，两个消费点同步替换 |
+| `docs/verify/meeting_t7_verify.mjs`（新） | 140 | E2E 验证脚本：健康检查 + 错 token 401 兜底 + REST 创建/加入/结束会议 + WS room.join + 真实 mediasoup transport.create（断言 `transport.id` 非 `noop-` 前缀 + `iceCandidates[]` 非空 + `dtlsParameters.fingerprints[]` 存在）+ 404 幂等关闭 producer |
+
+### 关键设计决策
+
+1. **关闭类幂等重试 vs 创建类一次性透传**：设计 §6.6 明确要求关闭类"失败重试 2 次（仅幂等的关闭类操作）"。HTTP 实现里通过独立的 `doCloseRequest` 函数与 `attempts = CloseRetry + 1` 循环实现；创建类直接走 `doRequest` 不重试，避免产生"客户端以为没创建成功但 Node 侧已创建"的孤儿资源。
+2. **`roomCode ↔ routerID` 本地缓存**：设计 §6.6 规定 `CloseRouter(ctx, roomCode)` 入参为 `roomCode`，但 Node 的 `DELETE /routers/:routerId` 以 `routerID` 为主键。`HTTPMediaOrchestrator` 在 `CreateRouter` 成功后把映射存入 `sync.Map`，`CloseRouter` / `CreateTransport` / `CreateConsumer` 都从缓存反查。go-service 重启后缓存丢失，此时 Node 也已随进程重启释放 Router，状态自然同步。
+3. **错误语义区分**：`ErrMediaResourceNotFound` 用于 404（资源已不存在，`CloseProducer` / `CloseConsumer` / `CloseRouter` 幂等转 nil），`ErrMediaServerError` 用于其它异常（5xx / 网络错 / 超时 / 序列化错），上层 `MeetingSignalService` 可通过 `errors.Is` 精准区分并在 WS ACK 里给出差异化提示。
+4. **配置分层**：`media_server.internal_token` 在开发环境写 yaml 方便联调；生产环境通过 `ECHOCHAT_MEDIA_SERVER_INTERNAL_TOKEN` 环境变量覆盖。`base_url` 也按环境差异化（dev 走 `localhost`，docker 走服务名 `media-server`）。
+5. **接口保持 8 方法（未落地 `ResumeConsumer`）**：设计 §6.6 的 `NodeClient` 第 9 方法 `ResumeConsumer` 在 Node 已实现（`POST /consumers/:id/resume`），但当前 WS 契约未暴露对应 C→S 事件；为保持 Task 7 最小侵入，暂不在 `MediaOrchestrator` 接口增加该方法，留待 Task 9 前端 mediasoup-client 接入时按需补齐（前端拉取 Consumer 后通常需要 resume 解除 Node 侧的默认 paused）。
+
+### E2E 验证（16/16 PASS）
+
+```text
+PASS: media-server healthz
+PASS: media-server /internal/info (token ok)
+PASS: media-server rejects wrong token (401)
+PASS: register + login 2 users
+PASS: POST /meeting/rooms returns 201            ← Go 内部调 CreateRouter 成功
+PASS: room_code returned
+PASS: user B join success                         ← JoinRoom 内部再次调 CreateRouter
+PASS: A WS room.join ok
+PASS: B WS room.join ok
+PASS: A transport.create returned ok              ← WS 信令经 Go 透传到 Node
+PASS: transport.id is real (not noop-)            ← 证明非占位，真实 mediasoup transport id
+PASS: iceParameters is an object (non-empty from Node)
+PASS: iceCandidates[] non-empty (proves real mediasoup transport)
+PASS: dtlsParameters.fingerprints[] present       ← 真实 DTLS 指纹
+PASS: 404 mapped to ok (idempotent close)         ← 关闭不存在的 producer 幂等 ok
+PASS: host end meeting ok                         ← 触发 CloseRouter
+```
+
+media-server 日志同步确认：
+```
+[17:35:51.641] INFO: router created
+[17:35:51.647] INFO: router created
+[17:35:51.660] INFO: webrtc transport created
+[17:35:51.669] INFO: transport closed and removed from map
+[17:35:51.670] INFO: router closed and removed from map
+[17:35:51.670] INFO: router closed explicitly
+```
+
+### 已知待改进项（留给后续 Task）
+
+1. **`CreateRoom` 与 `JoinRoom` 各自调一次 `CreateRouter`**（Task 5 遗留行为）：当前每次有用户加入都会尝试重新创建 Router，Node 没做去重，最新一次会覆盖本地缓存指向新 Router。Task 8（生命周期状态机）需修复为"仅在房间第一次被创建时调 CreateRouter"，并在 Task 5 的 `JoinRoom` 里改为查 Router 复用。
+2. **`ResumeConsumer` 未暴露**：见上面决策 5。Task 9 前端集成前需在 `MediaOrchestrator` 补齐并加 WS `meeting.consume.resume` 事件（或直接在 `CreateConsumer` 后端自动 resume）。
+3. **Transport 状态心跳拉取**：设计 §10.4 提到 Go 每 30s 拉 `/internal/v1/transports/:id/stats`，当前 Node 未实现该接口；Task 10（可观测性）统一补齐。
+
+### 下一步
+
+进入 **Task 8：会议生命周期状态机**（host 宽限期 + 自动转让 + 空房 TTL），依赖 Task 5/7 已落地的 DAO 与 HTTPMediaOrchestrator；预估 0.5 人日。
 
 ---
 

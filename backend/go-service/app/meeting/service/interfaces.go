@@ -79,9 +79,10 @@ type CreateConsumerReq struct {
 }
 
 // MediaOrchestrator 媒体服务器编排接口（设计 §6.6 NodeClient）
-// Task 7 落地 Go → Node media-server HTTP Client 后由 node_client.NodeClient 实现
-// Task 5/6 阶段使用 NoopMediaOrchestrator 占位：
-//   - CreateRouter 返回 "noop-router-{code}"；其他方法返回可解析的占位数据，用于 WS 信令链路自测
+// Task 7 (2026-04-21) 起默认实现为 HTTPMediaOrchestrator（通过 X-Internal-Token
+// 调用 Node media-server 的 /internal/v1/* REST API）。
+// NoopMediaOrchestrator 仅保留用于本地调试（无 Node 服务时可临时切换）：
+//   - CreateRouter 返回 "noop-router-{code}"；其他方法返回可解析的占位数据
 //   - 所有方法均幂等：重复调用不报错，符合 WS 信令重试语义
 type MediaOrchestrator interface {
 	// CreateRouter 为会议房间创建 mediasoup Router
@@ -105,9 +106,10 @@ type MediaOrchestrator interface {
 	CloseConsumer(ctx context.Context, consumerID string) error
 }
 
-// NoopMediaOrchestrator 占位实现：Task 7 完成前使用
+// NoopMediaOrchestrator 本地调试占位实现（Task 7 后默认不再使用）
 // 返回伪造的 ID 与固定占位数据（JSON：空对象 / 空数组），所有操作仅写日志不调用 Node
-// Task 7 完成后全局 wire 切换到真实 NodeClient 实现
+// Task 7 已将全局 wire 绑定切换为 HTTPMediaOrchestrator，此类型仅作为无 Node 服务时
+// 的临时回退（需手动修改 provider.go 的 wire.Bind 才会生效）
 type NoopMediaOrchestrator struct{}
 
 // NewNoopMediaOrchestrator 构造占位的 MediaOrchestrator

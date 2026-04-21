@@ -124,4 +124,6 @@ docker run --rm \
 
 ## 后续任务
 
-Task 2 起将在此骨架上继续落地：`/internal/routers`、`/transports`、`/produce`、`/consume` 等 API，以及与 Go backend 的协同。详见实施计划。
+- **Task 2 ✅**：`/internal/v1/routers`、`/transports`、`/produce`、`/consume` 等 9 个内部 REST API 全部落地（58 单元/集成测试，覆盖率 80.89%）。
+- **Task 7 ✅**（2026-04-21）：Go 侧 `HTTPMediaOrchestrator` 通过 `X-Internal-Token` 已完整接入本服务的 `/internal/v1/*`；Go↔Node 媒体链路在端到端脚本 `docs/verify/meeting_t7_verify.mjs` 中 **16/16 PASS**，媒体 Router/Transport/Producer/Consumer 生命周期均由 Go 驱动。
+- 后续：Task 9（前端 mediasoup-client）接入时若暴露 `meeting.consume.resume` 事件，需由 Go 侧调用本服务 `POST /internal/v1/consumers/:id/resume`（已实现）。Task 10 将新增 `GET /internal/v1/transports/:id/stats` 供 Go 定时拉取。

@@ -3,7 +3,7 @@
 > 通用规范（认证、响应包络、通用错误码）见 [README.md](../README.md)
 > 会议内实时信令（Transport / Producer / Consumer / 控制事件）通过 WebSocket 完成，见 [websocket.md](../websocket.md)
 
-**实施状态**：本文档对应 Phase 2e-2 Task 5 / Task 6 已落地的 12 个 REST 接口 + 13 个 WebSocket 信令事件，统一前缀 `/api/v1/meeting`（REST）与 `/ws`（WebSocket），全部需要 JWT 认证。Task 5 完成时间：2026-04-21；Task 6 完成时间：2026-04-21。
+**实施状态**：本文档对应 Phase 2e-2 Task 5 / Task 6 / Task 7 已落地的 12 个 REST 接口 + 13 个 WebSocket 信令事件，统一前缀 `/api/v1/meeting`（REST）与 `/ws`（WebSocket），全部需要 JWT 认证。Task 5/6/7 完成时间：2026-04-21。自 Task 7 起 **Go 后端直连 Node media-server**，`transport.id` / `iceCandidates` / `dtlsParameters.fingerprints` 等字段均由真实 mediasoup 返回（不再是 stub 占位）。
 
 **设计口径**：以 [`docs/plans/2026-04-21-phase2e-2-design.md`](../../plans/2026-04-21-phase2e-2-design.md) §6.2 为单一事实来源（SSOT）。
 
@@ -198,7 +198,7 @@
 }
 ```
 
-`router_id` 当前为 Noop 占位，Task 7 接入 Node media-server 后改为真实 mediasoup Router ID，前端据此建立 WebSocket 订阅。
+`router_id` 自 Task 7 起为 Node media-server 返回的真实 mediasoup Router ID（Phase 2e-2 Task 7 完成，2026-04-21）。前端可据此建立 WebSocket 订阅，也可忽略，仅依赖 WS `meeting.transport.create` 的返回值创建 mediasoup-client Transport。
 
 ---
 
@@ -606,7 +606,7 @@
 - **MeetingWSHandler**（controller 层）：thin adapter，仅负责 ws.Hub 事件注册 + JSON 反序列化 + ACK 回写；位于 `app/meeting/controller/meeting_ws_handler.go`。
 - **MeetingSignalService**（service 层）：承载 8 个 C→S 事件的业务逻辑（活跃参会校验、host 权限校验、mediaOrchestrator 调用、Redis 资源追踪、广播），位于 `app/meeting/service/meeting_signal_service.go`。
 - **MeetingBroadcaster**（service 层）：封装 `BroadcastToMeeting`（查询活跃 participant 列表 → 逐个 `PubSub.PublishToUser`）与 `PublishToUser`，供 REST / WS 两个入口统一使用，位于 `app/meeting/service/meeting_broadcaster.go`。
-- **MediaOrchestrator**（interface）：定义 9 个 mediasoup 操作方法；Task 6 使用 `NoopMediaOrchestrator` 占位（返回 stub IDs），Task 7 替换为 `HTTPMediaOrchestrator` 对接 Node media-server。
+- **MediaOrchestrator**（interface）：定义 8 个 mediasoup 操作方法（第 9 个 `ResumeConsumer` 推迟到 Task 9）；Task 6 曾用 `NoopMediaOrchestrator` 占位，**Task 7 (2026-04-21) 已替换为 `HTTPMediaOrchestrator`**，通过 `X-Internal-Token` 鉴权直连 Node media-server 的 `/internal/v1/*` 接口；错误类型 `ErrMediaResourceNotFound`（Node 404 → 关闭类幂等转 nil）与 `ErrMediaServerError`（5xx / 超时 / 网络错）可供上层 `errors.Is` 区分；关闭类操作指数退避 200ms→500ms 最多 `CloseRetry+1` 次。
 
 ### 错误处理
 
@@ -632,11 +632,18 @@
   - `meeting.producer.close` + `meeting.member.producer.new closed=true` 广播
   - `meeting.room.leave` + `meeting.member.left` 广播
   - 不存在会议号 `meeting.room.join` → ACK `code=-1`
+- **Task 7** 端到端验证脚本（`docs/verify/meeting_t7_verify.mjs`）结果：**16/16 PASS**，覆盖：
+  - media-server `/healthz` + `/internal/info`（正确 token 200、错误 token 401）
+  - 注册登录 2 用户 → host 创建会议（HTTP 201 + 内部调 `CreateRouter`）→ 第二用户 REST 加入（再次 `CreateRouter`）
+  - 双端 WS `meeting.room.join`
+  - `meeting.transport.create`（direction=send）返回**真实** mediasoup `id`（非 `noop-` 前缀）+ `iceParameters` 对象 + `iceCandidates[]` 非空 + `dtlsParameters.fingerprints[]` 非空
+  - 虚构 producer_id 调 `meeting.producer.close` → Node 返回 404 → Go 幂等转 `code=0`
+  - host `POST /rooms/:code/end` 触发 `CloseRouter`，media-server 日志确认 `router closed explicitly`
 
 ---
 
 ## 后续任务关联
 
-- **Task 7**：Go → Node HTTP 客户端，将 `NoopMediaOrchestrator` 替换为 `HTTPMediaOrchestrator`，接入真实 mediasoup Router，此时 WS 白名单事件契约与本文档完全不变，仅 `iceParameters / producer_id` 等字段由 stub 变为真实值。
-- **Task 8**：Vue 前端 mediasoup-client 接入，按本文 WS 契约实现 `mediasoup.Transport` 的 `connect / produce` 回调。
+- **Task 8**：会议生命周期状态机（host 宽限期 + 自动转让 + 空房 TTL），同时修复"CreateRoom + JoinRoom 重复调 `CreateRouter`"遗留行为。
+- **Task 9**：Vue 前端 mediasoup-client 接入，按本文 WS 契约实现 `mediasoup.Transport` 的 `connect / produce` 回调；补齐 `ResumeConsumer`（Node REST 已就绪）或在 Go 侧改为创建 Consumer 后自动 resume。
 - **Task 13**：通知卡片 UI 补齐 `meeting_invite` 内联按钮。

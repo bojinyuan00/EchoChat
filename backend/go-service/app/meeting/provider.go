@@ -25,7 +25,9 @@ var MeetingSet = wire.NewSet(
 	controller.NewMeetingController,
 	controller.NewMeetingWSHandler,
 
-	// MediaOrchestrator 目前使用 Noop 实现（Task 7 将替换为 node_client.NodeClient）
-	service.NewNoopMediaOrchestrator,
-	wire.Bind(new(service.MediaOrchestrator), new(*service.NoopMediaOrchestrator)),
+	// MediaOrchestrator 使用真实 HTTP 实现（Task 7 落地）
+	// 注入 *config.Config，通过 cfg.MediaServer 获取 base_url / internal_token / timeout 等配置
+	// 如需回退到本地 stub 调试，可临时改为 service.NewNoopMediaOrchestrator 并调整 wire.Bind
+	service.NewHTTPMediaOrchestrator,
+	wire.Bind(new(service.MediaOrchestrator), new(*service.HTTPMediaOrchestrator)),
 )

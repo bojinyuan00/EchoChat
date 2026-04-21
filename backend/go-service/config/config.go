@@ -11,12 +11,24 @@ import (
 
 // Config 应用全局配置结构体
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	JWT      JWTConfig      `mapstructure:"jwt"`
-	Log      LogConfig      `mapstructure:"log"`
-	Minio    MinioConfig    `mapstructure:"minio"`
+	Server      ServerConfig      `mapstructure:"server"`
+	Database    DatabaseConfig    `mapstructure:"database"`
+	Redis       RedisConfig       `mapstructure:"redis"`
+	JWT         JWTConfig         `mapstructure:"jwt"`
+	Log         LogConfig         `mapstructure:"log"`
+	Minio       MinioConfig       `mapstructure:"minio"`
+	MediaServer MediaServerConfig `mapstructure:"media_server"`
+}
+
+// MediaServerConfig Node media-server 接入配置（Phase 2e-2 Task 7）
+// 与 media-server/.env 中的 MEDIA_INTERNAL_TOKEN / HTTP_PORT 成对使用
+// BaseURL 需精确到协议与端口：http://host:port，不含末尾斜杠
+type MediaServerConfig struct {
+	BaseURL        string `mapstructure:"base_url"`         // 如 http://localhost:3300
+	InternalToken  string `mapstructure:"internal_token"`   // 与 Node 共享密钥
+	TimeoutMS      int    `mapstructure:"timeout_ms"`       // 创建类接口超时（毫秒），默认 5000
+	CloseTimeoutMS int    `mapstructure:"close_timeout_ms"` // 关闭类接口超时（毫秒），默认 2000
+	CloseRetry     int    `mapstructure:"close_retry"`      // 关闭类接口失败重试次数，默认 2
 }
 
 // MinioConfig MinIO 对象存储配置

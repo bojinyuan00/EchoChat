@@ -47,3 +47,11 @@ minio:
   secret_key: "echochat123456"
   bucket: "echochat"
   use_ssl: false
+
+# Node media-server 接入配置（Phase 2e-2 Task 7）
+media_server:
+  base_url: "http://media-server:3300"            # Docker 网络内服务名
+  internal_token: "dev-internal-token-change-me"  # 生产环境通过 ECHOCHAT_MEDIA_SERVER_INTERNAL_TOKEN 覆盖
+  timeout_ms: 5000
+  close_timeout_ms: 2000
+  close_retry: 2

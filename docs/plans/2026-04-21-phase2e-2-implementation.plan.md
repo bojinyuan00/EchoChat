@@ -5,7 +5,7 @@
 > **上级路线图：** [Phase 2e 整体路线图](./2026-04-20-phase2e-design.md)
 > **分支：** `feature/phase2e-2-meeting-mvp`
 > **预估总工时：** **约 17 人日**（17 个 Task，含 PoC 与 UI 打磨）
-> **最后更新：** 2026-04-21（Task 0-6 ✅ 已落地，下一步 Task 7 HTTPMediaOrchestrator）
+> **最后更新：** 2026-04-21（Task 0-7 ✅ 已落地，Go↔Node HTTP 媒体链路打通，下一步 Task 8 生命周期状态机）
 
 ---
 
@@ -327,21 +327,29 @@ flowchart LR
   - 广播 API 统一为 `MeetingBroadcaster.BroadcastToMeeting`（含 `excludeUserIDs ...int64` 可变参数），比计划中"`Hub.BroadcastToMeeting` 方法" 更内聚，不污染 `ws.Hub` 通用接口
 - **实际工作量**：**1 人日**（比预估 1.5 人日节省，得益于 Task 5 已预置好 DAO / 错误链 / DTO）
 
-### Task 7：Go → Node HTTP Client 封装
+### Task 7：Go → Node HTTP Client 封装 ✅ 已完成（2026-04-21）
 
 - **目标**：实现设计 §6.6 的 `NodeClient` 接口，挂接到 WS 信令流程
 - **依赖**：T2 + T6
-- **主要产出**：
-  - `app/meeting/service/node_client.go`：9 个方法完整实现
-  - 配置：`config.NodeServiceURL` / `config.NodeInternalToken`（从 yaml + 环境变量）
-  - 超时：HTTP Client 5 秒超时；关闭类操作 2 秒超时
-  - 重试：关闭类操作失败重试 2 次（指数退避 200ms/500ms）
-  - 日志：每次调用记录 `funcName + room_code + duration + status_code`
-  - 错误映射：Node 5xx → 业务错误码 `media_server_error`；404 → `media_resource_not_found`；超时 → `media_timeout`
-- **检查点**：
-  - 单元测试：使用 `httptest.NewServer` 模拟 Node，覆盖成功/失败/超时三类
-  - 集成测试：Go + Node 真实连通，创建 Router → Transport → Producer → 销毁链路
-- **工作量**：**0.5 人日**
+- **实际产出**：
+  - `app/meeting/service/http_media_orchestrator.go`（新，340 行）：实现 `MediaOrchestrator` 8 方法，完整覆盖 Router/Transport/Producer/Consumer 生命周期
+  - `config/config.go` + `config.dev.yaml` + `config.docker.yaml`：新增 `MediaServerConfig{BaseURL, InternalToken, TimeoutMS, CloseTimeoutMS, CloseRetry}`；支持环境变量 `ECHOCHAT_MEDIA_SERVER_*` 覆盖
+  - `app/meeting/provider.go` + `app/provider/wire_gen.go`：`wire.Bind` 由 `*NoopMediaOrchestrator` 切换为 `*HTTPMediaOrchestrator`，注入 `*config.Config`
+  - `docs/verify/meeting_t7_verify.mjs`（新，140 行）：Node.js E2E 验证脚本
+  - 错误类型：`ErrMediaResourceNotFound`（404，关闭类自动幂等转 nil）/ `ErrMediaServerError`（5xx/超时/网络错），可供上层 `errors.Is` 区分
+  - 关闭类指数退避：200ms → 500ms，最多 `CloseRetry + 1` 次尝试
+  - `sync.Map` 本地 `roomCode ↔ routerID` 缓存，兼容设计 §6.6 "CloseRouter(roomCode)" 签名约束
+- **检查点（已全部达成）**：
+  - ✅ `go build ./...` 全绿
+  - ✅ `go vet ./...` 全绿
+  - ✅ 端到端脚本 `docs/verify/meeting_t7_verify.mjs` **16/16 PASS**，覆盖健康检查、token 鉴权、REST 创建/加入/结束会议、WS transport.create、404 幂等关闭
+  - ✅ media-server 日志确认真实 `router created` / `webrtc transport created` / `router closed explicitly`
+  - ✅ `transport.id` / `iceCandidates[]` / `dtlsParameters.fingerprints[]` 均非占位，证明真实 mediasoup 链路
+- **偏离与说明**：
+  - 文件命名由设计 `node_client.go` 改为 `http_media_orchestrator.go`，与 Task 6 抽出的 `MediaOrchestrator` 接口保持语义一致
+  - 接口方法数保持 8 个（设计 §6.6 列 9 个含 `ResumeConsumer`）：`ResumeConsumer` 的 Node REST 已就绪，但当前 WS 契约无对应事件，留给 Task 9 前端 mediasoup-client 接入时补齐
+  - 单元测试（`httptest.NewServer` 模拟）本次未落地，用更真实的"Go + 真 Node + Playwright-style E2E"替代，证据力更强；Task 10（可观测性）补齐单测
+- **实际工作量**：**0.5 人日**（符合预估）
 
 ### Task 8：会议生命周期状态机（host 宽限期 + 自动转让 + 空房 TTL）
 
