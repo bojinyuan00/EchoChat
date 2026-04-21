@@ -3,7 +3,7 @@
 > 通用规范（认证、响应包络、通用错误码）见 [README.md](../README.md)
 > 会议内实时信令（Transport / Producer / Consumer / 控制事件）通过 WebSocket 完成，见 [websocket.md](../websocket.md)
 
-**实施状态**：本文档对应 Phase 2e-2 Task 5 已落地的 12 个 REST 接口，统一前缀 `/api/v1/meeting`，全部需要 JWT 认证。Task 5 完成时间：2026-04-21。
+**实施状态**：本文档对应 Phase 2e-2 Task 5 / Task 6 已落地的 12 个 REST 接口 + 13 个 WebSocket 信令事件，统一前缀 `/api/v1/meeting`（REST）与 `/ws`（WebSocket），全部需要 JWT 认证。Task 5 完成时间：2026-04-21；Task 6 完成时间：2026-04-21。
 
 **设计口径**：以 [`docs/plans/2026-04-21-phase2e-2-design.md`](../../plans/2026-04-21-phase2e-2-design.md) §6.2 为单一事实来源（SSOT）。
 
@@ -371,29 +371,272 @@
 
 ---
 
-## WebSocket 事件关联
+## WebSocket 信令协议（Task 6）
 
-参考 [websocket.md](../websocket.md) 的 `meeting.*` 事件族。Task 5 内部当前使用 `ws.PubSub.PublishToUser` 对活跃参会者逐个推送（Task 6 将封装为 `BroadcastToMeeting`，接口无感替换）：
+全部会议相关实时信令走 `/ws?token=<access_token>` 统一通道，共 **13 个 `meeting.*` 事件**：8 个客户端→服务端（C→S）操作事件 + 5 个服务端→客户端（S→C）广播事件 + 2 个补充业务事件（聊天 + 被踢定向推送，与 REST 广播复用）。
 
-| 事件 | 触发 REST | 载荷关键字段 |
-|------|-----------|-------------|
-| `meeting.member.joined` | JoinRoom | room_code / participant |
-| `meeting.member.left`   | LeaveRoom / KickMember | room_code / user_id / reason |
-| `meeting.member.kicked` | KickMember（仅发给被踢者） | room_code |
-| `meeting.host.changed`  | TransferHost / 隐式（host 离会后自动转让） | room_code / old_host_id / new_host_id |
-| `meeting.room.ended`    | EndRoom / 空房 TTL | room_code / reason |
-| `meeting.chat`          | SendChat | message 对象 |
+### 帧格式
+
+所有消息使用 `ws.Message` 统一信封（JSON）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| event | string | 事件名，如 `meeting.room.join` |
+| seq | int64 | 客户端自增序号；服务端 ACK 原样回传，用于客户端匹配请求-响应 |
+| data | object | 业务载荷 |
+| code | int | 仅 ACK / 广播带：0=成功，-1=业务失败 |
+| message | string | 仅 ACK：失败时的人类可读原因（与 REST 领域错误口径一致） |
+| time | string | ISO8601 时间戳 |
+
+**ACK 约定**：每一个 C→S 事件服务端都会回发 `<event>.ack`，`seq` 与请求一致；成功时 `code=0`，失败时 `code=-1` 且 `message` 含中文原因（如 `仅主持人可执行此操作`、`会议不存在`、`你当前未在会议中`）。
+
+**连接级鉴权**：Token 校验见 [websocket.md](websocket.md) 连接管理；会议内事件额外在每次调用时校验 `(user_id, room_code)` 是否为当前活跃参会者，非法请求全部以 ACK 形式返回 `-1`，不会触发 401/403 HTTP 错误。
+
+### 事件总览
+
+| # | 方向 | 事件 | 用途 | 服务端动作 |
+|---|------|------|------|-----------|
+| 1 | C→S | `meeting.room.join` | 前端建立 WS 后声明加入某会议房间频道 | 验证活跃参会，记录 WS 会话 |
+| 2 | C→S | `meeting.room.leave` | 前端主动离开 WS 会议频道 | 清理媒体资源（transport / producer / consumer） |
+| 3 | C→S | `meeting.member.state.changed` | 成员更新自己的麦克风/摄像头；host 可指定 `target_user_id` 强制静音他人 | 广播 S→C 同名事件，权限不符返回 ACK `code=-1` |
+| 4 | C→S | `meeting.transport.create` | 请求创建 mediasoup WebRtcTransport（send/recv） | 调用 `mediaOrchestrator.CreateTransport`，返回 `id/iceParameters/iceCandidates/dtlsParameters` |
+| 5 | C→S | `meeting.transport.connect` | 提交 DTLS Parameters 完成 transport 连接 | `mediaOrchestrator.ConnectTransport` |
+| 6 | C→S | `meeting.produce.start` | 创建 Producer（上行流） | `mediaOrchestrator.CreateProducer`，成功后广播 `meeting.member.producer.new` |
+| 7 | C→S | `meeting.consume.start` | 创建 Consumer（订阅对端 Producer） | `mediaOrchestrator.CreateConsumer` |
+| 8 | C→S | `meeting.producer.close` | 关闭自己的 Producer | `mediaOrchestrator.CloseProducer`，广播 `meeting.member.producer.new` (closed=true) |
+| 9 | S→C | `meeting.member.joined` | 新成员加入广播（复用 REST /join） | 房间广播 |
+| 10 | S→C | `meeting.member.left` | 成员离开广播（REST /leave /kick 或 WS leave） | 房间广播 |
+| 11 | S→C | `meeting.member.kicked` | 定向通知被踢者（REST /kick） | `PublishToUser` |
+| 12 | S→C | `meeting.host.changed` | 主持人变更 | 房间广播 |
+| 13 | S→C | `meeting.room.ended` | 会议被结束（REST /end 或空房 TTL） | 房间广播 |
+| 14 | S→C | `meeting.member.state.changed` | 成员状态变化（静音/关摄像头/举手） | 房间广播 |
+| 15 | S→C | `meeting.member.producer.new` | 成员开启/关闭媒体流 | 房间广播，`closed=true` 表示关闭 |
+| 16 | S→C | `meeting.chat` | 会议内聊天（REST /chats） | 房间广播 |
+
+> 说明：客户端仅注册 **C→S 白名单**中的 8 个事件（见 `app/constants/meeting.go:MeetingWSClientEvents`），其余 `meeting.*` 事件若由客户端发送均被静默丢弃，防止恶意客户端伪造广播。
+
+### 客户端白名单（C→S）详细契约
+
+#### 1. `meeting.room.join`
+
+**请求载荷**
+
+```json
+{ "room_code": "835-000-036" }
+```
+
+**ACK** `code=0`：`data` 为空对象；失败原因：`会议不存在` / `你当前未在会议中`。
+
+**说明**：WS 加入仅用于开启该房间的事件推送通道，REST `/join` 已将 participant 写入 DB，此事件**不会再次修改 participant 表**。
+
+#### 2. `meeting.room.leave`
+
+**请求载荷**
+
+```json
+{ "room_code": "835-000-036" }
+```
+
+**ACK** `code=0`：`data` 为空对象；服务端同时发起媒体资源清理：按 Redis key `echo:meeting:resources:{room_id}:{user_id}` 中记录的 transport / producer / consumer 依次调用 `mediaOrchestrator.CloseTransport/CloseProducer/CloseConsumer`，随后删除该 key。
+
+**说明**：此事件**不会**将 `participant.left_at` 置空，若用户希望真正离会仍需调用 REST `POST /rooms/:code/leave`。此设计允许客户端在 WS 重连时调用 leave + join 刷新资源而不退出会议。
+
+#### 3. `meeting.member.state.changed`
+
+**请求载荷**
+
+```json
+{
+  "room_code": "835-000-036",
+  "target_user_id": 17,
+  "audio_enabled": false,
+  "video_enabled": true,
+  "hand_raised": false
+}
+```
+
+- `target_user_id` 可选：省略或等于自己时为自我操作，任何人均可；指定为他人时需调用方为 host，否则 ACK `code=-1 message=仅主持人可执行此操作`。
+- `audio_enabled / video_enabled / hand_raised` 均为可选布尔字段，至少传一个。
+
+**ACK** `code=0`：`data` 为空。**广播** `meeting.member.state.changed`：
+
+```json
+{
+  "room_code": "835-000-036",
+  "user_id": 17,
+  "audio_enabled": false,
+  "video_enabled": true,
+  "hand_raised": false,
+  "actor_id": 16
+}
+```
+
+`actor_id` 为触发变更的 user_id（host 强制静音场景下与 `user_id` 不同）。
+
+#### 4. `meeting.transport.create`
+
+**请求载荷**
+
+```json
+{ "room_code": "835-000-036", "direction": "send" }
+```
+
+`direction`：`"send"` 或 `"recv"`。
+
+**ACK** `code=0` `data`：
+
+```json
+{
+  "id": "transport-abc",
+  "iceParameters": { ... },
+  "iceCandidates": [ ... ],
+  "dtlsParameters": { ... }
+}
+```
+
+**资源追踪**：服务端将 `transport-id` 按 `echo:meeting:resources:{room_id}:{user_id}` 的 Redis Set 记录，TTL 1 小时。
+
+#### 5. `meeting.transport.connect`
+
+**请求载荷**
+
+```json
+{
+  "room_code": "835-000-036",
+  "transport_id": "transport-abc",
+  "dtls_parameters": { ... }
+}
+```
+
+**ACK** `code=0`：`data` 为空。
+
+#### 6. `meeting.produce.start`
+
+**请求载荷**
+
+```json
+{
+  "room_code": "835-000-036",
+  "transport_id": "transport-abc",
+  "kind": "audio",
+  "rtp_parameters": { ... }
+}
+```
+
+`kind`: `"audio"` | `"video"`。
+
+**ACK** `code=0` `data`：
+
+```json
+{ "producer_id": "producer-xyz" }
+```
+
+**同时广播** `meeting.member.producer.new`：
+
+```json
+{
+  "room_code": "835-000-036",
+  "user_id": 16,
+  "producer_id": "producer-xyz",
+  "kind": "audio",
+  "closed": false
+}
+```
+
+#### 7. `meeting.consume.start`
+
+**请求载荷**
+
+```json
+{
+  "room_code": "835-000-036",
+  "transport_id": "transport-recv",
+  "producer_id": "producer-xyz",
+  "rtp_capabilities": { ... }
+}
+```
+
+**ACK** `code=0` `data`：
+
+```json
+{
+  "id": "consumer-def",
+  "producerId": "producer-xyz",
+  "kind": "audio",
+  "rtpParameters": { ... }
+}
+```
+
+**资源追踪**：consumer-id 也会进入 Redis resources Set。
+
+#### 8. `meeting.producer.close`
+
+**请求载荷**
+
+```json
+{ "room_code": "835-000-036", "producer_id": "producer-xyz" }
+```
+
+**ACK** `code=0`：`data` 为空。**广播** `meeting.member.producer.new` `closed=true`：
+
+```json
+{
+  "room_code": "835-000-036",
+  "user_id": 16,
+  "producer_id": "producer-xyz",
+  "closed": true
+}
+```
+
+### 服务端广播（S→C）详细契约
+
+| 事件 | 载荷字段 | 说明 |
+|------|---------|------|
+| `meeting.member.joined` | room_code / participant 对象 | REST /join 触发 |
+| `meeting.member.left` | room_code / user_id / reason | REST /leave /kick 或 WS 资源清理 |
+| `meeting.member.kicked` | room_code / reason | 仅发给被踢者本人，对应 REST /kick |
+| `meeting.host.changed` | room_code / old_host_id / new_host_id | REST /transfer-host 或 host 离会自动转让 |
+| `meeting.room.ended` | room_code / reason（`host_ended` / `empty_ttl`） | REST /end 或空房 TTL |
+| `meeting.member.state.changed` | 见白名单 #3 | WS `meeting.member.state.changed` 触发 |
+| `meeting.member.producer.new` | 见白名单 #6 / #8 | WS `meeting.produce.start` / `meeting.producer.close` 触发 |
+| `meeting.chat` | message 对象 | REST /chats 触发 |
+
+### 架构
+
+- **MeetingWSHandler**（controller 层）：thin adapter，仅负责 ws.Hub 事件注册 + JSON 反序列化 + ACK 回写；位于 `app/meeting/controller/meeting_ws_handler.go`。
+- **MeetingSignalService**（service 层）：承载 8 个 C→S 事件的业务逻辑（活跃参会校验、host 权限校验、mediaOrchestrator 调用、Redis 资源追踪、广播），位于 `app/meeting/service/meeting_signal_service.go`。
+- **MeetingBroadcaster**（service 层）：封装 `BroadcastToMeeting`（查询活跃 participant 列表 → 逐个 `PubSub.PublishToUser`）与 `PublishToUser`，供 REST / WS 两个入口统一使用，位于 `app/meeting/service/meeting_broadcaster.go`。
+- **MediaOrchestrator**（interface）：定义 9 个 mediasoup 操作方法；Task 6 使用 `NoopMediaOrchestrator` 占位（返回 stub IDs），Task 7 替换为 `HTTPMediaOrchestrator` 对接 Node media-server。
+
+### 错误处理
+
+- 鉴权失败（token 无效 / 未传）：WS 握手时直接 4001 关闭，不进入业务层。
+- 业务失败（非参会者 / 非 host / 会议已结束）：ACK `code=-1` + 中文 `message`，与 REST 领域错误口径完全一致。
+- mediasoup 调用失败：`message` 形如 `mediaOrchestrator error: <原始错误>`，前端可据此降级。
+- WS 连接断开：服务端 `OnDisconnect` 钩子会对该用户所有活跃会议调用 `cleanupUserResources`（遍历 Redis `echo:meeting:resources:*:{user_id}` 完成 transport / producer / consumer 关闭），防止服务端资源泄漏。
 
 ---
 
 ## 验证记录
 
-Task 5 端到端验证脚本（`/tmp/meeting_t5_test.sh`）结果：**19/19 PASS**，覆盖 12 接口的 happy path 与 5 类错误路径（密码错误 / 房间不存在 / 单点参会冲突 / 非 host 越权 / 邀请链接失效）。
+- **Task 5** 端到端验证脚本（`/tmp/meeting_t5_test.sh`）结果：**19/19 PASS**，覆盖 12 接口的 happy path 与 5 类错误路径（密码错误 / 房间不存在 / 单点参会冲突 / 非 host 越权 / 邀请链接失效）。
+- **Task 6** 端到端 WS 测试脚本（`/tmp/meeting_ws_t6_test.mjs`）结果：**18/18 PASS**，覆盖：
+  - `meeting.room.join` 双端 ACK
+  - `meeting.member.state.changed` 自我静音（ACK + 对端广播）
+  - host 强制静音他人（ACK）
+  - 非 host 强制静音他人 → ACK `code=-1 message=仅主持人可执行此操作`
+  - `meeting.transport.create` 双方向（send / recv）
+  - `meeting.transport.connect`
+  - `meeting.produce.start` + `meeting.member.producer.new` 广播
+  - `meeting.consume.start`
+  - `meeting.producer.close` + `meeting.member.producer.new closed=true` 广播
+  - `meeting.room.leave` + `meeting.member.left` 广播
+  - 不存在会议号 `meeting.room.join` → ACK `code=-1`
 
 ---
 
 ## 后续任务关联
 
-- **Task 6**：WebSocket 信令协议（`meeting.*` 事件、mediasoup transport/producer/consumer 流转）
-- **Task 7**：Go → Node HTTP 客户端，将 `NoopMediaOrchestrator` 替换为 `HTTPMediaOrchestrator`，接入真实 mediasoup Router
-- **Task 13**：通知卡片 UI 补齐 `meeting_invite` 内联按钮
+- **Task 7**：Go → Node HTTP 客户端，将 `NoopMediaOrchestrator` 替换为 `HTTPMediaOrchestrator`，接入真实 mediasoup Router，此时 WS 白名单事件契约与本文档完全不变，仅 `iceParameters / producer_id` 等字段由 stub 变为真实值。
+- **Task 8**：Vue 前端 mediasoup-client 接入，按本文 WS 契约实现 `mediasoup.Transport` 的 `connect / produce` 回调。
+- **Task 13**：通知卡片 UI 补齐 `meeting_invite` 内联按钮。

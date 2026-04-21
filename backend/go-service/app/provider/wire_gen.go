@@ -101,9 +101,12 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	meetingRoomDAO := dao6.NewMeetingRoomDAO(gormDB)
 	meetingParticipantDAO := dao6.NewMeetingParticipantDAO(gormDB)
 	meetingChatDAO := dao6.NewMeetingChatDAO(gormDB)
+	meetingBroadcaster := service7.NewMeetingBroadcaster(meetingParticipantDAO, pubSub)
 	noopMediaOrchestrator := service7.NewNoopMediaOrchestrator()
-	meetingService := service7.NewMeetingService(meetingRoomDAO, meetingParticipantDAO, meetingChatDAO, gormDB, client, pubSub, notifyService, friendshipDAO, onlineService, noopMediaOrchestrator)
+	meetingService := service7.NewMeetingService(meetingRoomDAO, meetingParticipantDAO, meetingChatDAO, gormDB, client, meetingBroadcaster, notifyService, friendshipDAO, onlineService, noopMediaOrchestrator)
+	meetingSignalService := service7.NewMeetingSignalService(meetingRoomDAO, meetingParticipantDAO, client, meetingBroadcaster, noopMediaOrchestrator)
 	meetingController := controller7.NewMeetingController(meetingService)
-	app := NewApp(cfg, gormDB, client, minioClient, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, groupManageController, messageManageController, handler, hub, pubSub, onlineService, contactController, imController, eventHandler, offlinePusher, fileController, groupController, notifyService, notificationController, cleanupTask, meetingService, meetingController)
+	meetingWSHandler := controller7.NewMeetingWSHandler(meetingSignalService, hub)
+	app := NewApp(cfg, gormDB, client, minioClient, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, groupManageController, messageManageController, handler, hub, pubSub, onlineService, contactController, imController, eventHandler, offlinePusher, fileController, groupController, notifyService, notificationController, cleanupTask, meetingService, meetingSignalService, meetingController, meetingWSHandler)
 	return app, nil
 }

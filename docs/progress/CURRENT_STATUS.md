@@ -1,7 +1,7 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-21（Phase 2e-2 Task 5 Go meeting 模块 12 个 REST 接口业务逻辑全量落地，端到端 19/19 PASS）
-> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-5 ✅ / Task 6-16 待执行）
+> **最后更新**：2026-04-21（Phase 2e-2 Task 6 WebSocket 信令协议落地，13 个 meeting.* 事件全量打通，端到端 18/18 PASS）
+> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-6 ✅ / Task 7-16 待执行）
 > **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
 > **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（✅ 已完成）
@@ -167,6 +167,63 @@
 ### 下一步
 
 - **Task 5**（1.5 人日）：`MeetingService.CreateRoom` + `JoinRoom` + `LeaveRoom` + `EndRoom` 核心业务逻辑（6 位会议号生成 + bcrypt 密码校验 + 人数上限 + Redis host 宽限期 Timer 骨架），替换当前 `ErrNotImplemented` 占位。
+
+---
+
+## 🚀 2026-04-21 Phase 2e-2 Task 6 WebSocket 信令协议（13 事件）落地
+
+**交付**：`meeting.*` 事件族从 Task 5 的 `PublishToUser` 循环升级为完整的 WS 信令协议；新建 `MeetingBroadcaster`（统一广播层）、`MeetingSignalService`（8 个 C→S 事件业务逻辑 + 资源追踪）、`MeetingWSHandler`（controller 薄层），`MediaOrchestrator` 接口扩容至 9 个方法覆盖 mediasoup 全生命周期（Task 7 真实实现前由 `NoopMediaOrchestrator` 占位）；端到端 WS 冒烟脚本 `/tmp/meeting_ws_t6_test.mjs` **18/18 PASS**，覆盖 8 C→S 白名单事件 + 3 S→C 广播 + 3 类错误路径。
+
+### 产出文件
+
+| 文件 | 行数 | 作用 |
+|---|---|---|
+| `backend/go-service/app/constants/meeting.go`（改） | +25 | WS 事件常量与设计 §6.3 对齐（3 房间 + 5 成员 + 5 媒体 + 1 聊天），新增 `MeetingWSClientEvents` 白名单切片限制客户端只能发起 8 个 C→S 事件 |
+| `backend/go-service/app/meeting/service/interfaces.go`（重构） | 180 | `MediaOrchestrator` 扩容到 9 方法（Router/Transport/Producer/Consumer 全生命周期）+ 配套 DTO（`TransportInfo` / `ConsumerInfo` / `CreateTransportReq` / `CreateProducerReq` / `CreateConsumerReq`）+ `NoopMediaOrchestrator` 9 个占位实现（stub ID + 最小 JSON） |
+| `backend/go-service/app/meeting/service/meeting_broadcaster.go`（新） | 75 | `MeetingBroadcaster`：`BroadcastToMeeting`（查询活跃 participant → 批量 `PubSub.PublishToUser` + 可选 exclude）+ `PublishToUser`（定向推送）+ 并发安全的错误汇集 |
+| `backend/go-service/app/meeting/service/meeting_service.go`（改） | ±30 | 12 个 REST 方法重构：统一改为调用 `broadcaster.BroadcastToMeeting` / `broadcaster.PublishToUser`，移除直连 `ws.PubSub` 依赖，代码量精简约 15% |
+| `backend/go-service/app/meeting/service/meeting_signal_service.go`（新） | 430 | `MeetingSignalService` 8 个 C→S 事件（`OnRoomJoin`/`OnRoomLeave`/`OnMemberStateChanged`/`OnTransportCreate`/`OnTransportConnect`/`OnProduceStart`/`OnConsumeStart`/`OnProducerClose`）+ Redis 资源追踪 `echo:meeting:resources:{room_id}:{user_id}`（Set 结构，TTL 1 小时）+ `cleanupUserResources`（WS 断开钩子调用）+ host 权限校验（非 host 改他人状态返回 `仅主持人可执行此操作`） |
+| `backend/go-service/app/meeting/controller/meeting_ws_handler.go`（新） | 200 | `MeetingWSHandler` 薄层：构造时调用 `hub.RegisterEvent` 注册 8 C→S 事件，每个 handler 仅负责 JSON 反序列化 + 调 `signalSvc.On*` + 构造 ACK（`code=0/-1` + `message`）|
+| `backend/go-service/app/meeting/provider.go`（改） | +4 | `MeetingSet` 补全 `NewMeetingBroadcaster` / `NewMeetingSignalService` / `NewMeetingWSHandler` |
+| `backend/go-service/app/provider/{provider,wire_gen}.go`（改） | +8 | `App` 结构体新增 `MeetingSignalService` / `MeetingWSHandler` 字段，`wire` 重新生成 |
+| `docs/api/frontend/meeting.md`（追加 2 节） | +200 | 新增 §WebSocket 信令协议（Task 6）：16 事件总览表 + 8 C→S 事件完整请求/ACK/广播契约 + S→C 广播契约 + 架构说明 + 错误处理表；§验证记录补充 Task 6 结果 |
+
+### 8 C→S 白名单事件契约
+
+| 事件 | 入参关键字段 | ACK data | 副作用 |
+|------|-------------|---------|--------|
+| `meeting.room.join` | room_code | `{}` | 校验活跃参会记录 |
+| `meeting.room.leave` | room_code | `{}` | 清理该用户所有 transport/producer/consumer |
+| `meeting.member.state.changed` | room_code, [target_user_id], audio_enabled?, video_enabled?, hand_raised? | `{}` | 广播 `meeting.member.state.changed`；非 host 改他人 → `-1` |
+| `meeting.transport.create` | room_code, direction(send/recv) | `{id, iceParameters, iceCandidates, dtlsParameters}` | 资源追踪 Redis set |
+| `meeting.transport.connect` | room_code, transport_id, dtls_parameters | `{}` | mediasoup connect |
+| `meeting.produce.start` | room_code, transport_id, kind, rtp_parameters | `{producer_id}` | 广播 `meeting.member.producer.new`；资源追踪 |
+| `meeting.consume.start` | room_code, transport_id, producer_id, rtp_capabilities | `{id, producerId, kind, rtpParameters}` | 资源追踪 |
+| `meeting.producer.close` | room_code, producer_id | `{}` | 广播 `meeting.member.producer.new closed=true` |
+
+### 验证执行（Node.js + ws）
+
+1. `go build ./...` / `go vet ./...` / `wire ./app/provider` 全绿
+2. 启动 server，跑 `/tmp/meeting_ws_t6_test.mjs`（双用户 + WS_TRACE 模式）
+3. 用例清单（18 个全部 PASS）：
+   - 房间/成员：`room.join` 双端 ACK、`state.changed` 自我静音 ACK + 对端广播、host 强制静音 ACK、**非 host 强制静音他人 → `-1 仅主持人可执行此操作`**
+   - 媒体：`transport.create` send/recv 双向、`transport.connect`、`produce.start` ACK + `producer.new` 广播、`consume.start`、`producer.close` ACK + `producer.new closed=true` 广播
+   - 离会/错误：`room.leave` + `member.left` 对端广播、不存在会议号 `room.join` → `-1`
+4. 测试期间修复 waitEvent 死循环 bug（msgQueue pop→push 自循环导致 ack 永远等不到）→ 改为 stash 临时缓冲区，完成后统一归还
+
+### 关键设计决策
+
+1. **Broadcaster 单独抽层**：避免 service 方法散落直接 `PubSub.PublishToUser`，后续接入 Redis Cluster / 切换广播实现只需改一个文件；同时 Task 5 的 REST 广播与 Task 6 的 WS 事件广播完全复用同一个对象。
+2. **C→S 白名单机制**：`app/constants/meeting.go:MeetingWSClientEvents` 列出 8 个允许客户端发起的事件，`ws.Hub` 在分发前先过滤，防止恶意客户端直接发 `meeting.room.ended` 伪造房间结束。
+3. **资源追踪用 Redis Set**：每创建一个 transport/producer/consumer 都 `SADD echo:meeting:resources:{room_id}:{user_id} <resource_id>`，WS 断开或 room.leave 时 `SMEMBERS` 遍历清理；TTL 1 小时防止遗留占用，即使 Go 进程崩溃也不会泄漏 mediasoup 资源。
+4. **MediaOrchestrator 先抽 9 方法再实现**：Task 6 仍用 `Noop` 占位，但接口已完整定义 `CreateRouter / CloseRouter / CreateTransport / ConnectTransport / CreateProducer / CloseProducer / CreateConsumer / CloseConsumer`（外加 DTO 型号），Task 7 只需替换绑定即可让 WS 端变为真实 mediasoup，**无需修改 signal service / handler 代码**。
+5. **ACK `code` 语义统一**：成功 `0`、业务失败 `-1`（+ 中文 message），与 REST 领域错误口径完全一致，前端可直接复用一套 error toast 组件。
+6. **`meeting.room.leave` 只清 WS 资源不改 participant 表**：真正离会需 REST `/leave`（会影响 duration / host 自动转让）；此设计允许客户端 WS 重连时发 leave+join 刷新 transport 而不退会。
+
+### 下一步
+
+- **Task 7**（1.5 人日）：`HTTPMediaOrchestrator` 实现 — Go 调 Node media-server 9 个内部 REST API（Task 2 已全部跑通），替换 `NoopMediaOrchestrator`，前后端 WS 契约完全不变。
+- **Task 8**（2 人日）：Vue 前端 mediasoup-client 接入 + 会议室页面骨架，按本次 §WebSocket 信令协议契约实现 `Transport.connect / produce` 回调。
 
 ---
 

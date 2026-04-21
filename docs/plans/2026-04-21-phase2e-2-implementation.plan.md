@@ -5,7 +5,7 @@
 > **上级路线图：** [Phase 2e 整体路线图](./2026-04-20-phase2e-design.md)
 > **分支：** `feature/phase2e-2-meeting-mvp`
 > **预估总工时：** **约 17 人日**（17 个 Task，含 PoC 与 UI 打磨）
-> **最后更新：** 2026-04-21（Task 0-5 ✅ 已落地，下一步 Task 6 WS 信令）
+> **最后更新：** 2026-04-21（Task 0-6 ✅ 已落地，下一步 Task 7 HTTPMediaOrchestrator）
 
 ---
 
@@ -303,22 +303,29 @@ flowchart LR
   - **错误码中文化**：使用中文 `message`（与项目惯例一致）而非英文 `meeting_not_found` code，前端通过 HTTP 状态码 + trace_id 区分
 - **工作量**：**实际 1 人日**（< 预估 1.5 人日，因 DTO 设计充分 + DAO 契约修复一次到位）
 
-### Task 6：WS 信令 11 事件处理器
+### Task 6：WS 信令 13 事件处理器 ✅ **已完成（2026-04-21）**
 
-- **目标**：实现设计 §6.3 的 11 个 WS 事件，完整对接到 `ws.Hub`
-- **依赖**：T4
-- **主要产出**：
-  - `app/meeting/controller/meeting_ws_handler.go`：注册事件回调到 Hub
-  - `app/meeting/service/meeting_signal_service.go`：3 组事件（房间 / 成员 / 媒体）的业务逻辑
-  - `app/ws/hub.go` 接口扩展：`MeetingSignalDispatcher` 接口注入 + `DispatchMeeting(event, payload)` 方法
-  - `app/meeting/constants/ws_events.go`：11 个事件名常量
-  - 权限校验：所有事件 handler 入口调用 `assertIsParticipant` / `assertIsHost`
-  - 广播：`Hub.BroadcastToMeeting(roomCode, event, payload, excludeUserID)` 辅助方法
-- **检查点**：
-  - 通过 `wscat` 或临时前端脚本连入 WS，逐个事件手测
-  - 未授权事件（非参与者发 `meeting.member.state.changed`）被拒绝
-  - 事件广播覆盖正确（excludeUserID 生效）
-- **工作量**：**1.5 人日**
+- **目标**：实现设计 §6.3 的 WS 事件族（最终落地 13 个 = 3 房间 + 5 成员 + 5 媒体），完整对接到 `ws.Hub`
+- **依赖**：T4 ✅
+- **实际产出**：
+  - `app/constants/meeting.go`（改）：WS 事件常量与设计 §6.3 对齐 + `MeetingWSClientEvents` 白名单切片（8 个 C→S 事件）
+  - `app/meeting/service/interfaces.go`（重构）：`MediaOrchestrator` 扩容至 9 方法 + 5 DTO + `NoopMediaOrchestrator` 9 占位实现
+  - `app/meeting/service/meeting_broadcaster.go`（新建，75 行）：统一广播层 `BroadcastToMeeting` + `PublishToUser`，REST / WS 共用
+  - `app/meeting/service/meeting_service.go`（重构）：12 REST 方法改调 `broadcaster.*`，不再直连 `ws.PubSub`
+  - `app/meeting/service/meeting_signal_service.go`（新建，430 行）：8 C→S 事件业务 + Redis 资源追踪 + 资源清理 + host 权限校验
+  - `app/meeting/controller/meeting_ws_handler.go`（新建，200 行）：薄层 controller，`hub.RegisterEvent` 注册 + JSON 反序列化 + ACK
+  - `app/meeting/provider.go` + `app/provider/provider.go`（改）：Wire 挂入新 3 个 provider
+  - `docs/api/frontend/meeting.md`（追加 2 节 +200 行）：§WebSocket 信令协议（Task 6） + 验证记录
+- **实际检查点**：
+  - `/tmp/meeting_ws_t6_test.mjs` 端到端 **18/18 PASS**：8 C→S 白名单事件 + 3 S→C 广播 + 3 类错误路径（非 host 越权/不存在会议号/WS leave 资源清理）
+  - 非 host 尝试 `meeting.member.state.changed` 修改他人 → ACK `code=-1 message=仅主持人可执行此操作`
+  - `meeting.room.leave` → 自动触发 `mediaOrchestrator.Close*` 清理 Redis 资源 Set
+  - `go build` / `go vet` / `wire` 全绿
+- **偏离与说明**：
+  - 最终事件数从实施计划的 11 个扩展为 13 个（+ 2 个业务补充事件：`meeting.chat.message` + `meeting.member.producer.new`），与设计文档 §6.3 一致
+  - 权限校验入口改为在 `MeetingSignalService.On*` 方法内部调用 `assertIsActiveParticipant` / `assertIsHost`，不再依赖 handler 层前置断言，代码更易测试
+  - 广播 API 统一为 `MeetingBroadcaster.BroadcastToMeeting`（含 `excludeUserIDs ...int64` 可变参数），比计划中"`Hub.BroadcastToMeeting` 方法" 更内聚，不污染 `ws.Hub` 通用接口
+- **实际工作量**：**1 人日**（比预估 1.5 人日节省，得益于 Task 5 已预置好 DAO / 错误链 / DTO）
 
 ### Task 7：Go → Node HTTP Client 封装
 

@@ -16,7 +16,6 @@ import (
 	notifyService "github.com/echochat/backend/app/notify/service"
 	"github.com/echochat/backend/pkg/logs"
 	"github.com/echochat/backend/pkg/utils"
-	"github.com/echochat/backend/pkg/ws"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -51,16 +50,17 @@ const (
 
 // MeetingService 会议业务服务
 // Task 5 完成：会议生命周期、主持人管理、邀请、会议内聊天 12 个 REST API 全部落地
-// Task 6 会在此基础上追加 WS 信令事件处理器；Task 7 会把 mediaOrchestrator 的 Noop 实现替换为真实 Node HTTP Client
+// Task 6 新增：广播能力抽离到 MeetingBroadcaster；后续 WS 信令事件由 MeetingSignalService 处理
+// Task 7 会把 mediaOrchestrator 的 Noop 实现替换为真实 Node HTTP Client
 type MeetingService struct {
 	roomDAO        *dao.MeetingRoomDAO
 	participantDAO *dao.MeetingParticipantDAO
 	chatDAO        *dao.MeetingChatDAO
 
-	db     *gorm.DB
-	redis  *redis.Client
-	pubsub *ws.PubSub
+	db    *gorm.DB
+	redis *redis.Client
 
+	broadcaster       *MeetingBroadcaster
 	notifyPusher      NotifyPusher
 	userResolver      UserInfoResolver
 	onlineChecker     OnlineChecker
@@ -68,14 +68,15 @@ type MeetingService struct {
 }
 
 // NewMeetingService 创建 MeetingService 实例
-// 依赖通过构造函数注入；接口依赖由上游 Wire 绑定到具体实现（Task 7 之前 mediaOrchestrator 使用 NoopMediaOrchestrator）
+// 依赖通过构造函数注入；接口依赖由上游 Wire 绑定到具体实现
+// Task 7 之前 mediaOrchestrator 使用 NoopMediaOrchestrator
 func NewMeetingService(
 	roomDAO *dao.MeetingRoomDAO,
 	participantDAO *dao.MeetingParticipantDAO,
 	chatDAO *dao.MeetingChatDAO,
 	db *gorm.DB,
 	redis *redis.Client,
-	pubsub *ws.PubSub,
+	broadcaster *MeetingBroadcaster,
 	notifyPusher NotifyPusher,
 	userResolver UserInfoResolver,
 	onlineChecker OnlineChecker,
@@ -87,7 +88,7 @@ func NewMeetingService(
 		chatDAO:           chatDAO,
 		db:                db,
 		redis:             redis,
-		pubsub:            pubsub,
+		broadcaster:       broadcaster,
 		notifyPusher:      notifyPusher,
 		userResolver:      userResolver,
 		onlineChecker:     onlineChecker,
@@ -139,28 +140,10 @@ func (s *MeetingService) generateUniqueRoomCode(ctx context.Context) (string, er
 }
 
 // broadcastToActiveParticipants 向房间内所有活跃参会者广播 WS 事件
-// 调用 PubSub.Publish 支持多实例；可选排除发送者自身（excludeUserIDs）
-// 该辅助作为 Task 6 BroadcastToMeeting 的临时等效实现，签名保持兼容便于后续替换
+// Task 6 起实现已迁移至 MeetingBroadcaster.BroadcastToMeeting，本方法作为兼容壳保留
+// 以减少调用侧改动；未来可逐步替换为直接调用 s.broadcaster.BroadcastToMeeting
 func (s *MeetingService) broadcastToActiveParticipants(ctx context.Context, roomID int64, event string, data interface{}, excludeUserIDs ...int64) {
-	funcName := "service.meeting_service.broadcastToActiveParticipants"
-	participants, err := s.participantDAO.ListActiveByRoom(ctx, roomID)
-	if err != nil {
-		logs.Warn(ctx, funcName, "拉取活跃参会者失败", zap.Int64("room_id", roomID), zap.Error(err))
-		return
-	}
-	exclude := make(map[int64]struct{}, len(excludeUserIDs))
-	for _, id := range excludeUserIDs {
-		exclude[id] = struct{}{}
-	}
-	msg := ws.NewPushMessage(event, data)
-	for _, p := range participants {
-		if _, skip := exclude[p.UserID]; skip {
-			continue
-		}
-		if err := s.pubsub.PublishToUser(ctx, p.UserID, msg); err != nil {
-			logs.Warn(ctx, funcName, "WS 广播失败", zap.Int64("user_id", p.UserID), zap.String("event", event), zap.Error(err))
-		}
-	}
+	s.broadcaster.BroadcastToMeeting(ctx, roomID, event, data, excludeUserIDs...)
 }
 
 // ====== 会议生命周期 ======
@@ -386,7 +369,7 @@ func (s *MeetingService) LeaveRoom(ctx context.Context, userID int64, code strin
 			if uErr := s.roomDAO.UpdateHost(ctx, room.ID, newHost.UserID); uErr != nil {
 				logs.Warn(ctx, funcName, "UpdateHost 失败", zap.Error(uErr))
 			}
-			go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventRoomHostChange, map[string]interface{}{
+			go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventHostChanged, map[string]interface{}{
 				"room_code":    code,
 				"old_host_id":  userID,
 				"new_host_id":  newHost.UserID,
@@ -441,15 +424,14 @@ func (s *MeetingService) EndRoom(ctx context.Context, userID int64, code string)
 	}
 
 	payload := map[string]interface{}{
-		"room_code": code,
+		"room_code":    code,
 		"ended_reason": constants.MeetingEndedReasonHostEnded,
-		"ended_at":  now.Format("2006-01-02 15:04:05"),
+		"ended_at":     now.Format("2006-01-02 15:04:05"),
 	}
-	msg := ws.NewPushMessage(constants.MeetingWSEventRoomEnded, payload)
+	// activesBefore 已经是结束前的活跃成员快照，此时 participantDAO.ListActiveByRoom 查会返回空集合
+	// 因此使用 broadcaster.PublishToUser 逐人定向推送（而非 BroadcastToMeeting 基于当前状态查库）
 	for _, p := range activesBefore {
-		if err := s.pubsub.PublishToUser(ctx, p.UserID, msg); err != nil {
-			logs.Warn(ctx, funcName, "meeting.room.ended 广播失败", zap.Int64("user_id", p.UserID), zap.Error(err))
-		}
+		_ = s.broadcaster.PublishToUser(ctx, p.UserID, constants.MeetingWSEventRoomEnded, payload)
 	}
 
 	if err := s.mediaOrchestrator.CloseRouter(ctx, code); err != nil {
@@ -498,7 +480,7 @@ func (s *MeetingService) TransferHost(ctx context.Context, operatorID int64, cod
 		return err
 	}
 
-	go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventRoomHostChange, map[string]interface{}{
+	go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventHostChanged, map[string]interface{}{
 		"room_code":   code,
 		"old_host_id": operatorID,
 		"new_host_id": target.UserID,
@@ -542,12 +524,11 @@ func (s *MeetingService) KickMember(ctx context.Context, operatorID int64, code 
 		return ErrNotInMeeting
 	}
 
-	kickMsg := ws.NewPushMessage(constants.MeetingWSEventMemberKicked, map[string]interface{}{
+	_ = s.broadcaster.PublishToUser(ctx, targetUserID, constants.MeetingWSEventMemberKicked, map[string]interface{}{
 		"room_code": code,
 		"user_id":   targetUserID,
 		"by":        operatorID,
 	})
-	_ = s.pubsub.PublishToUser(ctx, targetUserID, kickMsg)
 	go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventMemberLeft, map[string]interface{}{
 		"room_code": code,
 		"user_id":   targetUserID,

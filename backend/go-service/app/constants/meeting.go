@@ -92,23 +92,43 @@ const (
 	MeetingChatRetentionHours  = 24  // 会议聊天保留时长（会议结束后）
 )
 
-// 会议 WS 事件常量（设计文档 §6.3，11 个事件）
+// 会议 WS 事件常量（设计文档 §6.3）
 // 命名格式：meeting.{domain}.{action}
+// 方向说明：C→S（客户端发往服务端，需 ACK）；S→C（服务端广播/定向推送，不需 ACK）
 const (
-	// 房间级事件
-	MeetingWSEventRoomEnded      = "meeting.room.ended"      // 会议已结束
-	MeetingWSEventRoomLocked     = "meeting.room.locked"     // 会议被锁定（等候室，Phase 2e-3）
-	MeetingWSEventRoomHostChange = "meeting.room.host.changed" // 主持人变更
+	// ====== 房间组（3 个）======
+	MeetingWSEventRoomJoin  = "meeting.room.join"  // C→S：加入会议后的"宣告在线"，绑定 WS 连接 ↔ roomCode
+	MeetingWSEventRoomLeave = "meeting.room.leave" // C→S：主动离会（等价 REST leave，但保留信令触发入口）
+	MeetingWSEventRoomEnded = "meeting.room.ended" // S→C：会议已结束（广播全员）
 
-	// 成员级事件
-	MeetingWSEventMemberJoined      = "meeting.member.joined"       // 新成员加入
-	MeetingWSEventMemberLeft        = "meeting.member.left"         // 成员离开
-	MeetingWSEventMemberStateChange = "meeting.member.state.changed" // 麦克风 / 摄像头状态变化
-	MeetingWSEventMemberKicked      = "meeting.member.kicked"       // 被移出
+	// ====== 成员组（5 个）======
+	MeetingWSEventMemberJoined      = "meeting.member.joined"        // S→C：新成员加入
+	MeetingWSEventMemberLeft        = "meeting.member.left"          // S→C：成员离开
+	MeetingWSEventMemberStateChange = "meeting.member.state.changed" // 双向：麦克风 / 摄像头状态变化（host 可带 target_user_id 强制静音他人）
+	MeetingWSEventMemberKicked      = "meeting.member.kicked"        // S→C：被移出会议（定向发给被踢者）
+	MeetingWSEventMemberProducerNew = "meeting.member.producer.new"  // S→C：有新 producer 可订阅（produce.start 成功后广播）
+	MeetingWSEventHostChanged       = "meeting.host.changed"         // S→C：主持人变更
 
-	// 媒体级事件（Go 发起，驱动客户端 mediasoup-client 订阅/取消）
-	MeetingWSEventProducerNew       = "meeting.producer.new"    // 有新 producer 可订阅
-	MeetingWSEventProducerClosed    = "meeting.producer.closed" // producer 已关闭
-	MeetingWSEventConsumerResumed   = "meeting.consumer.resumed" // consumer 已恢复（由服务端触发）
-	MeetingWSEventChatMessage       = "meeting.chat.message"    // 会议内文字聊天
+	// ====== 媒体组（5 个，mediasoup signaling 桥接）======
+	MeetingWSEventTransportCreate  = "meeting.transport.create"  // C→S→Node：创建 Transport
+	MeetingWSEventTransportConnect = "meeting.transport.connect" // C→S→Node：Transport DTLS 握手
+	MeetingWSEventProduceStart     = "meeting.produce.start"     // C→S→Node：创建 Producer（广播 producer.new）
+	MeetingWSEventConsumeStart     = "meeting.consume.start"     // C→S→Node：订阅远端 Producer，创建本地 Consumer
+	MeetingWSEventProducerClose    = "meeting.producer.close"    // C→S→Node：关闭自己的 Producer（推流停止）
+
+	// ====== 补充事件（非 §6.3 核心 11 事件，但业务必须）======
+	MeetingWSEventChatMessage = "meeting.chat.message" // S→C：会议内文字聊天广播（REST SendChat 触发）
 )
+
+// MeetingWSClientEvents 客户端可主动发起的 WS 事件（C→S）白名单
+// 用于 WS 消息路由时快速校验事件名合法性
+var MeetingWSClientEvents = []string{
+	MeetingWSEventRoomJoin,
+	MeetingWSEventRoomLeave,
+	MeetingWSEventMemberStateChange,
+	MeetingWSEventTransportCreate,
+	MeetingWSEventTransportConnect,
+	MeetingWSEventProduceStart,
+	MeetingWSEventConsumeStart,
+	MeetingWSEventProducerClose,
+}

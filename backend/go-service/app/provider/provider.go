@@ -54,8 +54,10 @@ type App struct {
 	NotifyService         *notifyService.NotifyService               // 通知业务服务（兼 Pusher、ConnectHook）
 	NotifyController      *notifyController.NotificationController   // 通知控制器
 	NotifyCleanupTask     *notifyTask.CleanupTask                    // 通知清理定时任务
-	MeetingService        *meetingService.MeetingService             // 会议业务服务（Task 4 骨架）
-	MeetingController     *meetingController.MeetingController       // 会议控制器（Task 4 骨架，handler 返回 501）
+	MeetingService        *meetingService.MeetingService             // 会议 REST 业务服务（Task 5 落地）
+	MeetingSignalService  *meetingService.MeetingSignalService       // 会议 WS 信令业务服务（Task 6 落地）
+	MeetingController     *meetingController.MeetingController       // 会议 REST 控制器
+	MeetingWSHandler      *meetingController.MeetingWSHandler        // 会议 WS 事件 Handler（构造时自动注册路由到 Hub）
 }
 
 // NewApp 创建应用实例
@@ -86,7 +88,9 @@ func NewApp(
 	notifyCtrl *notifyController.NotificationController,
 	notifyCleanup *notifyTask.CleanupTask,
 	meetingSvc *meetingService.MeetingService,
+	meetingSignalSvc *meetingService.MeetingSignalService,
 	meetingCtrl *meetingController.MeetingController,
+	meetingWSHandler *meetingController.MeetingWSHandler,
 ) *App {
 	wsHandler.SetOfflinePusher(offlinePusher)
 	wsHandler.SetNotifyConnectHook(notifySvc)
@@ -118,7 +122,9 @@ func NewApp(
 		NotifyController:        notifyCtrl,
 		NotifyCleanupTask:       notifyCleanup,
 		MeetingService:          meetingSvc,
+		MeetingSignalService:    meetingSignalSvc,
 		MeetingController:       meetingCtrl,
+		MeetingWSHandler:        meetingWSHandler,
 	}
 }
 
