@@ -20,4 +20,7 @@ var AdminSet = wire.NewSet(
 	controller.NewContactManageController,
 	service.NewGroupManageService,
 	controller.NewGroupManageController,
+	dao.NewMessageManageDAO,
+	service.NewMessageManageService,
+	controller.NewMessageManageController,
 )

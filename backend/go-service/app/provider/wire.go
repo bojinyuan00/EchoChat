@@ -17,6 +17,8 @@ import (
 	imApp "github.com/echochat/backend/app/im"
 	imDAO "github.com/echochat/backend/app/im/dao"
 	imService "github.com/echochat/backend/app/im/service"
+	meetingApp "github.com/echochat/backend/app/meeting"
+	meetingService "github.com/echochat/backend/app/meeting/service"
 	notifyApp "github.com/echochat/backend/app/notify"
 	notifyService "github.com/echochat/backend/app/notify/service"
 	wsApp "github.com/echochat/backend/app/ws"
@@ -36,6 +38,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		fileApp.FileSet,
 		groupApp.GroupSet,
 		notifyApp.NotifySet,
+		meetingApp.MeetingSet,
 		wire.Bind(new(wsApp.FriendIDsGetter), new(*contactDAO.FriendshipDAO)),
 		wire.Bind(new(groupService.UserInfoProvider), new(*contactDAO.FriendshipDAO)),
 		wire.Bind(new(imService.GroupInfoGetter), new(*groupDAO.GroupDAO)),
@@ -48,6 +51,9 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		wire.Bind(new(notifyService.UserInfoResolver), new(*contactDAO.FriendshipDAO)),
 		wire.Bind(new(contactService.NotifyPusher), new(*notifyService.NotifyService)),
 		wire.Bind(new(groupService.NotifyPusher), new(*notifyService.NotifyService)),
+		wire.Bind(new(meetingService.NotifyPusher), new(*notifyService.NotifyService)),
+		wire.Bind(new(meetingService.UserInfoResolver), new(*contactDAO.FriendshipDAO)),
+		wire.Bind(new(meetingService.OnlineChecker), new(*wsApp.OnlineService)),
 	)
 	return nil, nil
 }

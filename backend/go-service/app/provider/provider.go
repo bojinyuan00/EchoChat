@@ -11,6 +11,8 @@ import (
 	groupController "github.com/echochat/backend/app/group/controller"
 	imController "github.com/echochat/backend/app/im/controller"
 	imHandler "github.com/echochat/backend/app/im/handler"
+	meetingController "github.com/echochat/backend/app/meeting/controller"
+	meetingService "github.com/echochat/backend/app/meeting/service"
 	notifyController "github.com/echochat/backend/app/notify/controller"
 	notifyService "github.com/echochat/backend/app/notify/service"
 	notifyTask "github.com/echochat/backend/app/notify/task"
@@ -52,6 +54,8 @@ type App struct {
 	NotifyService         *notifyService.NotifyService               // 通知业务服务（兼 Pusher、ConnectHook）
 	NotifyController      *notifyController.NotificationController   // 通知控制器
 	NotifyCleanupTask     *notifyTask.CleanupTask                    // 通知清理定时任务
+	MeetingService        *meetingService.MeetingService             // 会议业务服务（Task 4 骨架）
+	MeetingController     *meetingController.MeetingController       // 会议控制器（Task 4 骨架，handler 返回 501）
 }
 
 // NewApp 创建应用实例
@@ -81,6 +85,8 @@ func NewApp(
 	notifySvc *notifyService.NotifyService,
 	notifyCtrl *notifyController.NotificationController,
 	notifyCleanup *notifyTask.CleanupTask,
+	meetingSvc *meetingService.MeetingService,
+	meetingCtrl *meetingController.MeetingController,
 ) *App {
 	wsHandler.SetOfflinePusher(offlinePusher)
 	wsHandler.SetNotifyConnectHook(notifySvc)
@@ -111,6 +117,8 @@ func NewApp(
 		NotifyService:           notifySvc,
 		NotifyController:        notifyCtrl,
 		NotifyCleanupTask:       notifyCleanup,
+		MeetingService:          meetingSvc,
+		MeetingController:       meetingCtrl,
 	}
 }
 

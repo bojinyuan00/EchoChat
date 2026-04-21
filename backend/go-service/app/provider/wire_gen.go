@@ -15,17 +15,20 @@ import (
 	"github.com/echochat/backend/app/auth/service"
 	controller3 "github.com/echochat/backend/app/contact/controller"
 	dao3 "github.com/echochat/backend/app/contact/dao"
-	service3 "github.com/echochat/backend/app/contact/service"
+	service4 "github.com/echochat/backend/app/contact/service"
 	controller4 "github.com/echochat/backend/app/file/controller"
-	service4 "github.com/echochat/backend/app/file/service"
+	service5 "github.com/echochat/backend/app/file/service"
 	controller5 "github.com/echochat/backend/app/group/controller"
 	dao4 "github.com/echochat/backend/app/group/dao"
-	service5 "github.com/echochat/backend/app/group/service"
-	imApp "github.com/echochat/backend/app/im"
+	service6 "github.com/echochat/backend/app/group/service"
+	"github.com/echochat/backend/app/im"
+	controller7 "github.com/echochat/backend/app/meeting/controller"
+	dao6 "github.com/echochat/backend/app/meeting/dao"
+	service7 "github.com/echochat/backend/app/meeting/service"
 	controller6 "github.com/echochat/backend/app/notify/controller"
 	dao5 "github.com/echochat/backend/app/notify/dao"
-	service6 "github.com/echochat/backend/app/notify/service"
-	task2 "github.com/echochat/backend/app/notify/task"
+	service3 "github.com/echochat/backend/app/notify/service"
+	"github.com/echochat/backend/app/notify/task"
 	"github.com/echochat/backend/app/ws"
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/db"
@@ -69,46 +72,37 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	onlineController := controller2.NewOnlineController(onlineManageService)
 	contactManageService := service2.NewContactManageService(gormDB)
 	contactManageController := controller2.NewContactManageController(contactManageService)
-	handler := ws.ProvideWSHandler(hub, pubSub, jwtConfig, onlineService, authService)
-	friendGroupDAO := dao3.NewFriendGroupDAO(gormDB)
-
-	// Notify 模块初始化（contact/group 依赖 NotifyPusher）
-	notificationDAO := dao5.NewNotificationDAO(gormDB)
-	notifyService := service6.NewNotifyService(notificationDAO, pubSub, friendshipDAO)
-	notificationController := controller6.NewNotificationController(notifyService)
-	notifyCleanupTask := task2.NewCleanupTask(notificationDAO)
-
-	contactService := service3.NewContactService(friendshipDAO, friendGroupDAO, onlineService, notifyService)
-	contactController := controller3.NewContactController(contactService)
-
-	// IM 模块初始化
-	conversationDAO := imApp.ProvideConversationDAO(gormDB)
-	messageDAO := imApp.ProvideMessageDAO(gormDB)
 	groupDAO := dao4.NewGroupDAO(gormDB)
-	messageReadDAO := dao4.NewMessageReadDAO(gormDB)
-	imService := imApp.ProvideIMService(conversationDAO, messageDAO, pubSub, client, friendshipDAO, friendshipDAO, groupDAO, messageReadDAO)
-	imEventHandler := imApp.ProvideIMEventHandler(imService, hub)
-	offlinePusher := imApp.ProvideOfflinePusher(imService, conversationDAO, pubSub)
-	imController := imApp.ProvideIMController(imService)
-
-	// File 模块初始化
-	fileService := service4.NewFileService(minioClient, minioConfig)
-	fileController := controller4.NewFileController(fileService)
-
-	// Group 模块初始化
-	joinRequestDAO := dao4.NewJoinRequestDAO(gormDB)
-	groupService := service5.NewGroupService(groupDAO, joinRequestDAO, friendshipDAO, pubSub, messageDAO, notifyService)
-	groupController := controller5.NewGroupController(groupService)
-
-	// Admin 群组管理初始化
 	groupManageService := service2.NewGroupManageService(gormDB, groupDAO)
 	groupManageController := controller2.NewGroupManageController(groupManageService)
-
-	// Admin 消息管理初始化
 	messageManageDAO := dao2.NewMessageManageDAO(gormDB)
+	conversationDAO := im.ProvideConversationDAO(gormDB)
 	messageManageService := service2.NewMessageManageService(messageManageDAO, userDAO, conversationDAO, pubSub)
 	messageManageController := controller2.NewMessageManageController(messageManageService)
-
-	app := NewApp(cfg, gormDB, client, minioClient, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, groupManageController, messageManageController, handler, hub, pubSub, onlineService, contactController, imController, imEventHandler, offlinePusher, fileController, groupController, notifyService, notificationController, notifyCleanupTask)
+	handler := ws.ProvideWSHandler(hub, pubSub, jwtConfig, onlineService, authService)
+	friendGroupDAO := dao3.NewFriendGroupDAO(gormDB)
+	notificationDAO := dao5.NewNotificationDAO(gormDB)
+	notifyService := service3.NewNotifyService(notificationDAO, pubSub, friendshipDAO)
+	contactService := service4.NewContactService(friendshipDAO, friendGroupDAO, onlineService, notifyService)
+	contactController := controller3.NewContactController(contactService)
+	messageDAO := im.ProvideMessageDAO(gormDB)
+	messageReadDAO := dao4.NewMessageReadDAO(gormDB)
+	imService := im.ProvideIMService(conversationDAO, messageDAO, pubSub, client, friendshipDAO, friendshipDAO, groupDAO, messageReadDAO)
+	imController := im.ProvideIMController(imService)
+	eventHandler := im.ProvideIMEventHandler(imService, hub)
+	offlinePusher := im.ProvideOfflinePusher(imService, conversationDAO, pubSub)
+	fileService := service5.NewFileService(minioClient, minioConfig)
+	fileController := controller4.NewFileController(fileService)
+	joinRequestDAO := dao4.NewJoinRequestDAO(gormDB)
+	groupService := service6.NewGroupService(groupDAO, joinRequestDAO, friendshipDAO, pubSub, messageDAO, notifyService)
+	groupController := controller5.NewGroupController(groupService)
+	notificationController := controller6.NewNotificationController(notifyService)
+	cleanupTask := task.NewCleanupTask(notificationDAO)
+	meetingRoomDAO := dao6.NewMeetingRoomDAO(gormDB)
+	meetingParticipantDAO := dao6.NewMeetingParticipantDAO(gormDB)
+	meetingChatDAO := dao6.NewMeetingChatDAO(gormDB)
+	meetingService := service7.NewMeetingService(meetingRoomDAO, meetingParticipantDAO, meetingChatDAO, gormDB, client, pubSub, notifyService, friendshipDAO, onlineService)
+	meetingController := controller7.NewMeetingController(meetingService)
+	app := NewApp(cfg, gormDB, client, minioClient, authService, authController, adminAuthController, userManageController, onlineController, contactManageController, groupManageController, messageManageController, handler, hub, pubSub, onlineService, contactController, imController, eventHandler, offlinePusher, fileController, groupController, notifyService, notificationController, cleanupTask, meetingService, meetingController)
 	return app, nil
 }

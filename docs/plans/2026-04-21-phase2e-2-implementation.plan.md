@@ -225,39 +225,53 @@ flowchart LR
   - 其余 Minor / Nits（m4/m6~m10、n1~n10）登记至 `CURRENT_STATUS.md` Task 16 收尾清单
 - **工作量**：**2 人日**（实际用时吻合估算；审查修复耗时 ~0.3 人日，已含在内）
 
-### Task 3：数据库 DDL + 模型 + DAO
+### Task 3：数据库 DDL + 模型 + DAO ✅
 
 - **目标**：PostgreSQL 3 张表落地 + Go 侧 model/dao 完整实现
 - **依赖**：T0
 - **主要产出**：
-  - `deploy/docker/postgres/init.sql` 追加 3 张表 + 索引 + COMMENT（对齐设计 §5.1）
-  - `app/meeting/model/{meeting_room,meeting_participant,meeting_chat}.go`
-  - `app/meeting/dao/*.go`（含 CRUD + 事务 + 按 code/user 查询 + 软删除等）
-  - `app/meeting/constants/meeting_status.go`（`StatusPending/Active/Ended` = 0/1/2）
-  - `app/meeting/constants/meeting_role.go`（`RoleParticipant/Host/CoHost` = 0/1/2，MVP 仅用 0/1）
+  - `deploy/docker/postgres/init.sql` 追加 3 张表 + 9 索引 + COMMENT（对齐设计 §5.1）
+  - `deploy/docker/postgres/phase2e2_migration.sql` 增量升级脚本（`IF NOT EXISTS` 幂等，用于已运行环境无损追加）
+  - `backend/go-service/app/meeting/model/{meeting_room,meeting_participant,meeting_chat}.go`（3 个 model + GORM 复合索引 tag + `IsActive()` 等辅助方法）
+  - `backend/go-service/app/meeting/dao/*.go`（24 个持久化方法：room 9 + participant 11 + chat 4，含 `JoinRoom` 重入复用事务、`TransferHost` 角色交接事务、`LeaveRoom` 基于 `EXTRACT(EPOCH ...)` 的 DB 端 duration 计算、`FindActiveByUser` 单点参会校验、`MarkEnded` 乐观锁、`ListExpiredForCleanup` 批量扫描）
+  - `backend/go-service/app/constants/meeting.go`（单文件承载会议类型/状态/角色/结束原因/离会原因/默认配置/WS 事件 8 组常量 + `*Map` 中文映射）
 - **检查点**：
-  - `docker compose up postgres -d` 后表结构正确；可手动 `INSERT` 测试数据
-  - DAO 单元测试：创建房间 + 参与者加入 + 主持人转让（事务）+ 列表查询
-  - 外键约束 `ON DELETE CASCADE` 正常工作（删除房间自动清理参与者/聊天）
-- **工作量**：**0.5 人日**
+  - `docker exec postgres psql < phase2e2_migration.sql` 幂等应用，3 表 + 9 索引 + 外键全部正确 ✅
+  - psql 集成脚本跑通 8 场景：CRUD、`room_code` UNIQUE、`(room_id,user_id)` UNIQUE、主持人转让事务（`role=1→0` + `role=0→1` + `host_id` 更新）、聊天写入、`duration=10s` 精确匹配、CASCADE 删除 room 后 participants/chats 残留 0 ✅
+  - `go build ./...` / `go vet ./...` / `ReadLints` 零错误 ✅
+- **实际产出 vs 计划差异**（关键风格修正）：
+  1. **常量目录**：草案写的 `app/meeting/constants/{meeting_status,meeting_role}.go` 与项目实际风格不符；按 `project-context.mdc` 第 11 条「代码风格全局一致（最高优先级）」，采用 `app/constants/meeting.go` 单文件承载所有会议常量（与 `group.go`/`notify.go` 同构）。
+  2. **时间字段**：草案写 `TIMESTAMPTZ`，项目所有表统一 `TIMESTAMP(0)`（见 init.sql），本次改为 `TIMESTAMP(0)` 对齐，Go model 配 `gorm:"type:timestamp(0)"`。
+  3. **冗余索引移除**：草案写 `idx_meeting_rooms_code`，但 `room_code UNIQUE` 已自动建 B-tree，冗余索引已移除。
+  4. **Go 单元测试**：项目 Go 侧 0 个 `_test.go`（沿用"代码审查 + Playwright E2E"验证模式），本次同样不新增 `_test.go`；改用 psql 真库集成脚本覆盖 DAO 核心路径，验证价值等价且避免破坏项目一致性。
+- **工作量**：**0.5 人日（实际 0.5，吻合估算）**
 
-### Task 4：Go 侧 meeting 模块骨架 + Wire
+### Task 4：Go 侧 meeting 模块骨架 + Wire ✅（2026-04-21 完成）
 
 - **目标**：controller/service/router/provider 空壳搭建 + Wire 绑定完成
 - **依赖**：T3
-- **主要产出**：
-  - `app/meeting/controller/*.go`（空 handler + 路由注册）
-  - `app/meeting/service/*.go`（空方法签名）
-  - `app/meeting/service/interfaces.go`（`NotifyPusher` / `UserInfoResolver` 接口）
-  - `app/meeting/router/meeting_router.go`
-  - `app/meeting/provider/provider.go` + `wire_gen.go`
-  - `app/provider/wire.go` 注册 `MeetingSet` + interface 绑定
-  - `app/provider/provider.go` `App` 结构体新增字段
-- **检查点**：
-  - `wire ./app/provider` 生成成功，编译通过
-  - `go run cmd/server/main.go` 启动无报错
-  - 路由打印包含 `/api/v1/meeting/rooms` 等前缀
-- **工作量**：**0.5 人日**
+- **实际产出**：
+  - `backend/go-service/app/meeting/service/interfaces.go`（25 行）：`NotifyPusher` / `UserInfoResolver` / `OnlineChecker` 三接口；`OnlineChecker.IsOnline` 对齐 `ws.OnlineService` 实际签名（单 `bool` 返回）
+  - `backend/go-service/app/meeting/service/meeting_service.go`（165 行）：`MeetingService` + 8 个 sentinel error + 17 个空方法占位（返回 `ErrNotImplemented`）
+  - `backend/go-service/app/meeting/controller/meeting_controller.go`（150 行）：12 个 Gin handler + `responseNotImplemented`（501）+ `requireUserID` 辅助
+  - `backend/go-service/app/meeting/router.go`（35 行，**扁平化：没有建 `router/` 子目录**）：12 条路由挂 `/api/v1/meeting/*` 并套 `jwtAuth`
+  - `backend/go-service/app/meeting/provider.go`（22 行）：`MeetingSet = wire.NewSet(DAO×3, Service, Controller)`
+  - `backend/go-service/app/provider/wire.go`（改 +10 行）：挂入 `MeetingSet` + 3 条 `wire.Bind`
+  - `backend/go-service/app/provider/provider.go`（改 +6 行）：`App` 加 `MeetingService/MeetingController` 字段
+  - `backend/go-service/app/provider/wire_gen.go`（自动重生成 +30 行）
+  - `backend/go-service/router/router.go`（改 +3 行）：`meetingApp.RegisterRoutes(engine, app.MeetingController, jwtAuth)`
+  - `backend/go-service/app/admin/provider.go`（改 +6 行）：**存量修复** 补齐 `MessageManage{DAO,Service,Controller}` provider
+- **实际检查点**：
+  - `go build ./...` / `go vet ./...` / `wire ./app/provider` 全部零错误
+  - `GIN_MODE=debug go run cmd/server/main.go` 启动无报错，`HTTP 服务启动` 日志出现在 `:8085`
+  - gin 启动日志打印全部 12 条 `[GIN-debug] ... meeting/controller.(*MeetingController).XxxRoom-fm (6 handlers)`
+  - 无 token curl `POST /api/v1/meeting/rooms` / `GET /api/v1/meeting/rooms` / `POST /api/v1/meeting/invites/:token/redeem` → 全部 401 `缺少认证信息`，JWT 中间件生效
+- **实际产出 vs 计划差异**：
+  - **路由目录扁平化**：计划写 `app/meeting/router/meeting_router.go`，实际为 `app/meeting/router.go`，与项目内 `app/group/router.go` / `app/notify/router.go` 命名一致；`RegisterRoutes(engine, controller, jwtAuth)` 签名保持
+  - **provider 目录扁平化**：计划写 `app/meeting/provider/provider.go`，实际为 `app/meeting/provider.go`，与其他模块一致
+  - **新增 `OnlineChecker` 接口**（计划未列）：未来业务逻辑需要判断被邀请者在线状态进行推送路由选择，提前抽象出来
+  - **顺手修复 admin wire 存量 bug**（计划未列）：Task 4 重生成 wire 时暴露了 admin 模块 `MessageManage` 系列 provider 缺失的遗留问题，当场补上避免阻塞后续开发
+- **工作量**：**0.5 人日**（实际约 0.4 人日，含存量问题修复约 0.1 人日）
 
 ### Task 5：会议 REST 接口（创建/加入/离开/结束/列表/详情 + 邀请链接兑换 + 邀请）
 

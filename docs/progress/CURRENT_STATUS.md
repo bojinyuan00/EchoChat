@@ -1,7 +1,7 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-21（Phase 2e-2 Task 2 media-server 9 个内部 REST API 完成 + 58 个单测 + 80.89% 覆盖率）
-> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-2 ✅ / Task 3-16 待执行）
+> **最后更新**：2026-04-21（Phase 2e-2 Task 4 Go meeting 模块 service/controller/router 骨架完成，12 条 `/api/v1/meeting/*` 路由全部注册并通过 JWT 鉴权验证）
+> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-4 ✅ / Task 5-16 待执行）
 > **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
 > **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（✅ 已完成）
@@ -57,6 +57,116 @@
 
 - **评审设计文档**：由用户 Review 两份新建文档
 - **进入代码开发**：评审通过后从 Task 0（mediasoup PoC Spike）启动，预计 17 人日完成 MVP
+
+---
+
+## 🚀 2026-04-21 Phase 2e-2 Task 3 Go meeting 模块数据库 DDL + Model + DAO 完成
+
+**交付**：Phase 2e-2 会议 MVP 的三张持久化表（`meeting_rooms` / `meeting_participants` / `meeting_chats`）完整落地到 PostgreSQL，配套 Go 侧 `app/meeting/{model,dao}` + 统一常量 `app/constants/meeting.go`；DDL 同时写入 `init.sql`（全量初始化）与 `phase2e2_migration.sql`（增量升级），在真实 postgres 容器跑通 CRUD + UNIQUE 约束 + CASCADE 级联删除 + 主持人转让事务。
+
+### 产出文件
+
+| 文件 | 行数 | 作用 |
+|---|---|---|
+| `deploy/docker/postgres/init.sql`（追加） | +119 | 3 张表 DDL + 9 个索引 + COMMENT 全量文档 |
+| `deploy/docker/postgres/phase2e2_migration.sql` | 90 | 增量升级脚本（`IF NOT EXISTS` 幂等），用于已运行环境无损追加 |
+| `backend/go-service/app/constants/meeting.go` | 110 | 8 组常量：会议类型/状态/角色/结束原因/离会原因/默认配置/WS 事件（与 group/notify 同构） |
+| `backend/go-service/app/meeting/model/meeting_room.go` | 30 | `MeetingRoom` 结构体 + GORM 复合索引 tag + `TableName()` |
+| `backend/go-service/app/meeting/model/meeting_participant.go` | 27 | `MeetingParticipant` 结构体 + `IsActive()` 辅助 + 联合唯一索引 tag |
+| `backend/go-service/app/meeting/model/meeting_chat.go` | 18 | `MeetingChat` 结构体，纯文本 content + 房间聚合索引 |
+| `backend/go-service/app/meeting/dao/meeting_room_dao.go` | 170 | 9 个方法：`Create/GetByID/GetByCode/ExistsCode/MarkStarted/MarkEnded/UpdateHost/UpdateSettings/ListByHost/ListExpiredForCleanup` |
+| `backend/go-service/app/meeting/dao/meeting_participant_dao.go` | 235 | 11 个方法：`JoinRoom`（含重入复用）、`LeaveRoom`、`LeaveAllActive`、`TransferHost`（事务）、`FindActiveByUser`（JOIN 校验单点参会）、各类列表/计数/角色更新 |
+| `backend/go-service/app/meeting/dao/meeting_chat_dao.go` | 85 | 4 个方法：`Create/ListByRoom`（游标分页）/`DeleteByRoomIDs`（清理任务）/`CountByRoom` |
+
+### 关键设计决策
+
+1. **常量目录对齐项目风格（偏离实施计划草案）**：实施计划草案写的是 `app/meeting/constants/{meeting_status,meeting_role}.go`，但项目现有风格是"模块级常量统一放在 `app/constants/<module>.go` 单文件"（见 `app/constants/group.go` / `notify.go`）。按 `project-context.mdc` 第 11 条「代码风格全局一致（最高优先级）」，本次采用 `app/constants/meeting.go` 单文件承载所有会议常量，同步修订实施计划。
+2. **时间字段统一 TIMESTAMP(0)**：设计文档草案用了 `TIMESTAMPTZ`，但项目所有表（`auth_users` / `im_messages` / `notify_notifications`）统一使用 `TIMESTAMP(0)`（见 init.sql），Go model 搭配 `gorm:"type:timestamp(0)"`。本次 DDL 改为 `TIMESTAMP(0)` 保持一致。
+3. **冗余索引移除**：设计文档草案写了 `idx_meeting_rooms_code`，但 `room_code UNIQUE NOT NULL` 已经自动建 B-tree 索引，冗余索引已移除避免双倍维护成本。
+4. **重入复用单条参与者记录**：`JoinRoom` 使用事务，若 (room_id, user_id) 已存在且 `left_at IS NOT NULL` → UPDATE 复用该行（`joined_at=NOW, left_at=NULL, duration=0`）；仍活跃则返回 `ErrAlreadyInMeeting` 供上层转 409。避免每次重入写新记录污染审计数据。
+5. **`duration` 使用 SQL 表达式计算**：`LeaveRoom` 用 `EXTRACT(EPOCH FROM (? - joined_at))::INT` 走数据库时间而非 Go 端 `time.Now()`，避免跨时区/NTP 漂移导致负 duration。
+6. **`MarkEnded` 乐观锁**：仅对 `status != ended` 的行 UPDATE，重复结束只保留首次原因，不被覆盖。
+7. **无 Go 单元测试（遵循项目现有风格）**：项目 Go 侧 0 个 `_test.go`，统一用"代码审查 + 真实 postgres psql 验证 + Playwright E2E"三层守护。本次 Task 3 验收用 psql 脚本跑通 8 类场景（创建、UNIQUE 约束 ×2、主持人转让事务、聊天写入、`duration` 精确匹配、CASCADE 清零），全部通过。
+
+### 验证记录
+
+- `go build ./...` ✅ 零报错
+- `go vet ./...` ✅ 零报错
+- `ReadLints app/meeting/ app/constants/meeting.go` ✅ 零 Lint 问题
+- `docker exec echochat-postgres psql ... < phase2e2_migration.sql` ✅ 全部 `CREATE TABLE/INDEX/COMMENT` 成功
+- `psql -c "\d meeting_*"` ✅ 3 张表结构、9 个索引、所有外键约束（含 `ON DELETE CASCADE`）正确生成
+- psql 集成测试 ✅ 场景汇总：
+  - `INSERT meeting_rooms` + 重复插 `room_code` → `unique_violation` 触发
+  - `INSERT meeting_participants` + 重复 `(room_id,user_id)` → `unique_violation` 触发
+  - `UPDATE role=0 WHERE role=1` / `UPDATE role=1 WHERE left_at IS NULL` 事务链 → 主持人转让成功
+  - `INSERT meeting_chats ×2` → 2 行写入
+  - `UPDATE left_at = NOW()+10s` + `duration = EXTRACT(EPOCH ...)` → `duration=10` 精确匹配
+  - `DELETE meeting_rooms` → `participants` 残留 0 / `chats` 残留 0（CASCADE 生效）
+
+### 下一步
+
+- **Task 4**（0.5 人日）：Go 侧 `meeting` 模块的 service / controller / router 骨架，完成依赖注入 + 空实现占位，建立 `POST /api/meeting/create` 等路由的握手层。
+
+---
+
+## 🚀 2026-04-21 Phase 2e-2 Task 4 Go meeting 模块骨架（service / controller / router / wire）完成
+
+**交付**：`app/meeting/` 模块 service 层 17 个空方法 + controller 层 12 个 Gin 处理器 + `/api/v1/meeting/*` 路由全局挂载 + Wire 依赖注入全局打通；附带修复 admin 模块 `MessageManageService/Controller` provider 缺失的存量问题；`go build ./...` / `go vet ./...` / `wire ./app/provider` 全绿；实机启动 server 确认 12 条路由全部注册并通过 JWT 鉴权（未授权返回 401 `缺少认证信息`）。
+
+### 产出文件
+
+| 文件 | 行数 | 作用 |
+|---|---|---|
+| `backend/go-service/app/meeting/service/interfaces.go` | 25 | 外部依赖接口抽象：`NotifyPusher` / `UserInfoResolver` / `OnlineChecker`，为后续 Task 5-15 解耦 notify/contact/ws 模块 |
+| `backend/go-service/app/meeting/service/meeting_service.go` | 165 | `MeetingService` 结构体 + 8 个 sentinel error（`ErrMeetingNotFound` 等）+ 17 个空方法占位（全部返回 `ErrNotImplemented`），为 Task 5-10 业务逻辑预留挂载点 |
+| `backend/go-service/app/meeting/controller/meeting_controller.go` | 150 | `MeetingController` + `responseNotImplemented`（返回 501）+ `requireUserID` 辅助 + 12 个 Gin 处理器，全部返回 501 占位 |
+| `backend/go-service/app/meeting/router.go` | 35 | `RegisterRoutes()` 将 12 条路由按设计文档挂到 `/api/v1/meeting/*`，统一套用 `jwtAuth` 中间件 |
+| `backend/go-service/app/meeting/provider.go` | 22 | `MeetingSet = wire.NewSet(DAO×3, Service, Controller)`，与其他模块 `Set` 命名一致 |
+| `backend/go-service/app/provider/wire.go`（改） | +10 | 挂入 `meetingApp.MeetingSet` + 3 条 `wire.Bind`：`NotifyPusher→NotifyService`、`UserInfoResolver→FriendshipDAO`、`OnlineChecker→ws.OnlineService` |
+| `backend/go-service/app/provider/provider.go`（改） | +6 | `App` struct 新增 `MeetingService` / `MeetingController` 字段 + `NewApp` 形参 |
+| `backend/go-service/app/provider/wire_gen.go`（自动生成） | +30 | `wire` 命令自动重生成，按拓扑序串联 meeting 模块依赖 |
+| `backend/go-service/router/router.go`（改） | +3 | `meetingApp.RegisterRoutes(engine, app.MeetingController, jwtAuth)` 挂载 |
+| `backend/go-service/app/admin/provider.go`（改） | +6 | **存量修复**：补齐 `MessageManageDAO/Service/Controller` 至 `AdminSet`，修复旧版 wire 未能发现 provider 的 bug |
+
+### 路由清单（12 条全部验证）
+
+| 方法 | 路径 | 处理器 | 当前行为 |
+|---|---|---|---|
+| POST | `/api/v1/meeting/rooms` | `CreateRoom` | 501 NotImplemented |
+| GET | `/api/v1/meeting/rooms` | `ListMyMeetings` | 501 |
+| GET | `/api/v1/meeting/rooms/:code` | `GetRoom` | 501 |
+| POST | `/api/v1/meeting/rooms/:code/join` | `JoinRoom` | 501 |
+| POST | `/api/v1/meeting/rooms/:code/leave` | `LeaveRoom` | 501 |
+| POST | `/api/v1/meeting/rooms/:code/end` | `EndRoom` | 501 |
+| POST | `/api/v1/meeting/rooms/:code/transfer-host` | `TransferHost` | 501 |
+| POST | `/api/v1/meeting/rooms/:code/kick` | `KickMember` | 501 |
+| POST | `/api/v1/meeting/rooms/:code/invite` | `InviteUsers` | 501 |
+| POST | `/api/v1/meeting/invites/:token/redeem` | `RedeemInvite` | 501 |
+| POST | `/api/v1/meeting/rooms/:code/chats` | `SendChat` | 501 |
+| GET | `/api/v1/meeting/rooms/:code/chats` | `ListChats` | 501 |
+
+### 关键设计决策
+
+- **接口隔离（`interfaces.go`）**：对 notify/contact/ws 只依赖接口而非具体类型，避免后续实现时出现循环依赖；`OnlineChecker.IsOnline` 签名与现存 `ws.OnlineService` 一致（返回单个 `bool`，内部吞噬 error），保持最小改动面。
+- **骨架返回 501（而非 404/200）**：`responseNotImplemented` 统一返回 501 + `ErrNotImplemented` 消息，前端联调/Postman 验证时能明确区分"未实现"与"路由缺失"；与 group/contact 模块骨架风格保持一致。
+- **存量问题一并修复**：`admin/provider.go` 漏注册 `MessageManage{DAO,Service,Controller}` 是一个跟 Task 4 无关的 wire 老 bug，本轮顺手修掉，使 `wire ./app/provider` 重生成不再报错；已在 commit 描述中注明。
+- **Wire Bind 方向**：`wire.Bind(new(Interface), new(*ConcreteType))` 遵循"接口依赖指向具体类型"的惯例，与 Phase 2e-1 notify 模块的 Bind 写法保持一致。
+- **路由顺序**：`RegisterRoutes` 中 12 条路由按"会议生命周期 → 成员管理 → 邀请 → 聊天"的业务流排列，与设计文档 §5.3 的清单逐一对应。
+
+### 验证执行
+
+1. `go build ./...` → 无任何 warning/error
+2. `go vet ./...` → 无提示
+3. `go run -mod=mod github.com/google/wire/cmd/wire ./app/provider` → `wire_gen.go` 成功重生成
+4. `GIN_MODE=debug go run cmd/server/main.go` 后台启动 → 日志打印 12 条 `[GIN-debug] ... meeting/controller.(*MeetingController).XxxRoom-fm (6 handlers)`，与路由表一一匹配
+5. `curl -X POST http://localhost:8085/api/v1/meeting/rooms`（无 token）→ **401** `{"code":401,"message":"缺少认证信息",...}`，JWT 中间件生效
+6. `curl -X GET http://localhost:8085/api/v1/meeting/rooms` → **401**
+7. `curl -X POST http://localhost:8085/api/v1/meeting/invites/abc/redeem` → **401**
+8. `pkill -f "go run cmd/server/main.go"` → 进程退出，端口 8085 释放
+
+### 下一步
+
+- **Task 5**（1.5 人日）：`MeetingService.CreateRoom` + `JoinRoom` + `LeaveRoom` + `EndRoom` 核心业务逻辑（6 位会议号生成 + bcrypt 密码校验 + 人数上限 + Redis host 宽限期 Timer 骨架），替换当前 `ErrNotImplemented` 占位。
 
 ---
 
