@@ -1088,6 +1088,8 @@ TabBar 「我的」红点逻辑不变（Phase 2e-1 已实现 `unreadTotal > 0` �
 | 日期 | 作者 | 变更内容 |
 |---|---|---|
 | 2026-04-21 | Agent | 首版落盘。16 章节完整撰写，16 章节含 4 张 mermaid 图、3 张 DDL、1 份 REST API 清单、11 项关键决策记录 |
+| 2026-04-21 | Agent | Task 5 落地偏离记录：`meeting_rooms.password` 字段改名为 `password_hash`（bcrypt 哈希）；DAO `GetByID/GetByCode` 对 `ErrRecordNotFound` 统一返回 `(nil, nil)`；路径微调 `GET /rooms/mine` + `POST /invite-tokens/:token/redeem`；`kick` 请求体字段统一为 `user_id`（而非 `target_user_id`）；新增 `MediaOrchestrator` 接口（Task 5 用 Noop 占位，Task 7 真实实现）；WS 广播 Task 5 阶段暂用 `PublishToUser` 循环（Task 6 已替换为 `BroadcastToMeeting`） |
+| 2026-04-21 | Agent | Task 6 落地偏离记录：§6.3 的 11 事件扩展为 **13 事件**（实际 16 含广播回包）：新增 `meeting.chat`（REST 聊天广播）+ `meeting.member.producer.new`（produce.start / producer.close 的统一广播）；`meeting.member.mute` + `meeting.member.video` 合并为 `meeting.member.state.changed`（加 `hand_raised` 举手字段 + `target_user_id` host 操作字段 + `actor_id`）；`meeting.produce.stop` 重命名为 `meeting.producer.close`；`meeting.consume.resume` 暂时不落地（Consumer 创建时 `paused=true`，前端自己调 `/resume` 内部 REST）；`meeting.room.info` 不落地（REST `/rooms/:code` 已覆盖）；C→S 事件引入白名单常量 `MeetingWSClientEvents` 防伪造；新增 Redis 资源追踪 `echo:meeting:resources:{room_id}:{user_id}`（Set, TTL 1h）用于 WS 断开时自动清理 mediasoup 资源；新增 `MeetingBroadcaster` 统一广播层供 REST / WS 共用 |
 
 ---
 

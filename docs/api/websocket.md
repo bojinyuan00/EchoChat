@@ -203,167 +203,35 @@
 
 ---
 
-## 会议信令事件
-
-### meeting.room.join
-
-**方向：** 客户端 → 服务端
-
-**说明：** 加入会议房间
-
-**data 参数：** `{ "room_code": "123-456-789" }`
-
-**ACK 响应 data：** 房间信息、参与者列表、RTP Capabilities
-
----
-
-### meeting.room.leave
-
-**方向：** 客户端 → 服务端
-
-**说明：** 离开会议房间
-
-**data 参数：** `{ "room_code": "123-456-789" }`
-
----
-
-### meeting.room.info
-
-**方向：** 服务端 → 客户端
-
-**说明：** 房间信息同步（成员变更、设置变更时推送）
-
----
-
-### meeting.member.join
-
-**方向：** 服务端 → 客户端（广播）
-
-**说明：** 有新成员加入会议
-
-**data 内容：**
-```json
-{
-    "room_code": "123-456-789",
-    "user_id": 3,
-    "nickname": "王五",
-    "avatar": "https://...",
-    "role": 0
-}
-```
-
----
-
-### meeting.member.leave
-
-**方向：** 服务端 → 客户端（广播）
-
-**说明：** 有成员离开会议
-
-**data 内容：** `{ "room_code": "...", "user_id": 3 }`
-
----
-
-### meeting.member.mute
-
-**方向：** 双向
-
-**说明：** 静音/解除静音
-
-**data 内容：** `{ "room_code": "...", "user_id": 1, "muted": true }`
-
----
-
-### meeting.member.video
-
-**方向：** 双向
-
-**说明：** 开关摄像头
-
-**data 内容：** `{ "room_code": "...", "user_id": 1, "video_enabled": false }`
-
----
-
-## mediasoup 信令事件
-
-### meeting.transport.create
-
-**方向：** 客户端 → 服务端
-
-**说明：** 请求创建 WebRTC Transport（发送端或接收端）
-
-**data 参数：** `{ "room_code": "...", "direction": "send" }` 或 `"recv"`
-
-**ACK 响应 data：** Transport 参数（id, iceParameters, iceCandidates, dtlsParameters）
-
----
-
-### meeting.transport.connect
-
-**方向：** 客户端 → 服务端
-
-**说明：** 完成 Transport DTLS 握手
-
-**data 参数：** `{ "transport_id": "...", "dtls_parameters": { ... } }`
-
----
-
-### meeting.produce.start
-
-**方向：** 客户端 → 服务端
-
-**说明：** 开始推流（音频或视频）
-
-**data 参数：**
-```json
-{
-    "transport_id": "...",
-    "kind": "video",
-    "rtp_parameters": { ... }
-}
-```
-
-**ACK 响应 data：** `{ "producer_id": "..." }`
-
----
-
-### meeting.produce.stop
-
-**方向：** 客户端 → 服务端
-
-**说明：** 停止推流
-
-**data 参数：** `{ "producer_id": "..." }`
-
----
-
-### meeting.consume.start
-
-**方向：** 服务端 → 客户端
-
-**说明：** 通知客户端可以开始接收某个参与者的流
-
-**data 内容：**
-```json
-{
-    "consumer_id": "...",
-    "producer_id": "...",
-    "kind": "video",
-    "rtp_parameters": { ... },
-    "user_id": 3,
-    "nickname": "王五"
-}
-```
-
----
-
-### meeting.consume.resume
-
-**方向：** 客户端 → 服务端
-
-**说明：** 恢复被暂停的 Consumer
-
-**data 参数：** `{ "consumer_id": "..." }`
+## 会议信令事件（Phase 2e-2 Task 6 已落地）
+
+> **SSOT**：会议相关的全部 WS 事件详细契约（请求/ACK/广播载荷、权限、错误处理、资源追踪）见 [`docs/api/frontend/meeting.md`](./frontend/meeting.md) §WebSocket 信令协议。本节仅列事件总览。
+
+| # | 方向 | 事件 | 用途 |
+|---|------|------|------|
+| 1 | C→S | `meeting.room.join` | 声明加入某会议 WS 频道（需已在 REST 层完成 `/join`）|
+| 2 | C→S | `meeting.room.leave` | 离开 WS 频道并清理媒体资源（不改 participant 表）|
+| 3 | C→S | `meeting.member.state.changed` | 更新自己的 audio/video/hand_raised；host 可指定 `target_user_id` 强制静音他人 |
+| 4 | C→S | `meeting.transport.create` | 创建 mediasoup WebRtcTransport（`direction: send/recv`）|
+| 5 | C→S | `meeting.transport.connect` | 提交 DTLS Parameters |
+| 6 | C→S | `meeting.produce.start` | 创建 Producer |
+| 7 | C→S | `meeting.consume.start` | 创建 Consumer |
+| 8 | C→S | `meeting.producer.close` | 关闭自己的 Producer |
+| 9 | S→C | `meeting.member.joined` | 新成员加入广播（REST /join 触发）|
+| 10 | S→C | `meeting.member.left` | 成员离开广播（REST /leave /kick 或 WS 资源清理）|
+| 11 | S→C | `meeting.member.kicked` | 定向通知被踢者 |
+| 12 | S→C | `meeting.host.changed` | 主持人变更 |
+| 13 | S→C | `meeting.room.ended` | 会议被结束 |
+| 14 | S→C | `meeting.member.state.changed` | 成员状态变化广播 |
+| 15 | S→C | `meeting.member.producer.new` | 成员开启/关闭媒体流（`closed=true` 表示关闭）|
+| 16 | S→C | `meeting.chat` | 会议内聊天（REST /chats 触发）|
+
+### 协议约定
+
+- **C→S 白名单**：客户端仅可发起上表 C→S 列的 8 个事件，其余 `meeting.*` 事件若由客户端发送被静默丢弃。
+- **ACK 规则**：每个 C→S 事件服务端必回 `<event>.ack`；成功 `code=0`，业务失败 `code=-1` + 中文 `message`（与 REST 领域错误口径一致）。
+- **错误码示例**：`会议不存在` / `你当前未在会议中` / `仅主持人可执行此操作` / `会议已结束`。
+- **资源追踪**：服务端对每用户在每会议的 transport/producer/consumer 用 Redis Set `echo:meeting:resources:{room_id}:{user_id}` 记录，WS 断开或 `room.leave` 时自动清理。
 
 ---
 
