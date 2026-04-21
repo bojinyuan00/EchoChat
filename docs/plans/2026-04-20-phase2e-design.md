@@ -1,9 +1,12 @@
 # Phase 2e 设计文档：会议与通知系统
 
-> **状态：** 🚧 进行中（2e-1 ✅ 已完成，2e-2/2e-3 📋 待开发）
-> **分支：** `feature/phase2e-meeting-notification`（基于 `origin/feature/phase2c-group-read-receipt`）
+> **状态：** 🚧 进行中（2e-1 ✅ 已完成，2e-2 📋 **设计阶段完成待进入编码**，2e-3 📋 待开发）
+> **分支：** `feature/phase2e-meeting-notification`（2e-1）；`feature/phase2e-2-meeting-mvp`（2e-2，基于 `origin/feature/phase2c-group-read-receipt`）
 > **前置依赖：** Phase 2a（联系人 + WS）、Phase 2b（即时通讯）、Phase 2c（群聊+已读）、Phase 2d（消息类型扩展）全部完成
-> **最后更新：** 2026-04-20（2e-1 完成 + 单端架构说明同步）
+> **最后更新：** 2026-04-21（§四精简为引用链 + §五缩小 2e-3 范围 + 2e-2 专用设计/实施计划落盘）
+> **子阶段专用文档：**
+> - 2e-1：`docs/plans/2026-04-20-phase2e-1-design.md` + `docs/plans/2026-04-20-phase2e-1-implementation.plan.md`（✅ 已完成，含 TabBar「我的」未读红点优化）
+> - 2e-2：`docs/plans/2026-04-21-phase2e-2-design.md`（16 章节）+ `docs/plans/2026-04-21-phase2e-2-implementation.plan.md`（17 个 Task，约 17 人日）
 
 ---
 
@@ -15,9 +18,9 @@
 2. **多人音视频会议**：基于 mediasoup SFU 架构，支持即时会议（MVP）→ 预约会议 + 邀请（增强）
 
 **核心交付物（按子阶段）：**
-- **Phase 2e-1 通知系统**（3-4 人日）：统一通知中心 + 11 种通知类型预留 + 跨模块 Pusher 接口
-- **Phase 2e-2 会议 MVP**（10-14 人日）：mediasoup Node 媒体服务 + 即时会议 + 基础音视频控制（≤8 人）
-- **Phase 2e-3 会议增强**（7-10 人日）：预约会议 + 会议邀请 + 会议提醒
+- **Phase 2e-1 通知系统**（3-4 人日）✅ 已完成：统一通知中心 + 11 种通知类型预留 + 跨模块 Pusher 接口 + TabBar「我的」未读红点
+- **Phase 2e-2 会议 MVP**（约 17 人日）📋 设计阶段完成：mediasoup Node 媒体服务 + 即时会议（≤8 人）+ 密码/邀请链接/通知邀请三合一 + 设备预览页 + 主持人四件套 + 会议内聊天 + 双态部署（本机/公网 coturn）+ 桌面/手机响应式
+- **Phase 2e-3 会议增强**（7-10 人日）：预约会议 + 定时提醒 + 等候室/锁定会议 + 设备预览高级参数（降噪/回声/虚拟背景）
 
 **不包含（明确推迟）：** 见 [§九 后续规划清单](#九后续规划清单必须留档)
 
@@ -228,43 +231,59 @@ export const useNotifyStore = defineStore('notify', () => {
 
 ---
 
-## 四、Phase 2e-2 会议 MVP 范围锁定（详细设计待 2e-1 完成后展开）
+## 四、Phase 2e-2 会议 MVP 范围锁定（摘要 + 引用专用设计）
 
-### 4.1 范围（硬边界）
-- ✅ 即时会议（无预约）、会议号自动生成（格式 `XXX-XXX-XXX`）
-- ✅ ≤ 8 人同时参会
-- ✅ 音频 + 视频 开关
-- ✅ 主持人控制：静音他人、移除成员、结束会议
-- ✅ 密码保护（可选）
-- ✅ **发起邀请**：仅发起方内嵌"复制会议号"（暂不接通知中心，通知邀请在 2e-3）
-- ❌ 不做：录制、屏幕共享、虚拟背景、预约、提醒
+> **📘 详细设计已独立出文档：**
+> - [Phase 2e-2 专用设计文档](./2026-04-21-phase2e-2-design.md) — 16 章节完整设计（架构 / 数据模型 / API / WS 信令 / UI/UX / 风险 / 验收）
+> - [Phase 2e-2 实施计划](./2026-04-21-phase2e-2-implementation.plan.md) — 17 个 Task 共约 17 人日
+>
+> 本节仅保留摘要，作为总路线图的衔接锚点。任何细节调整请以上述两份专用文档为准（本文不再跟随更新）。
+
+### 4.1 范围摘要（与专用设计 §2.2 一致）
+
+- ✅ 即时会议（`XXX-XXX-XXX` 会议号）+ 可选密码（bcrypt）+ 邀请链接 + **通知中心 `meeting_invite`**
+- ✅ ≤ 8 人音视频（mediasoup SFU + simulcast 三档）
+- ✅ **入会前设备预览页**（摄像头/麦克风/扬声器选择 + 本地预览 + 音量检测）
+- ✅ 主持人四件套：静音他人 / 移除成员 / **转让主持人** / 结束会议
+- ✅ 生命周期：host 掉线 2 分钟宽限 + 自动转让（最早加入者）+ 空房 5 分钟 TTL
+- ✅ **会议内文字聊天**（独立 `meeting_chats` 表，24 小时后清理）
+- ✅ **桌面 + 手机双端响应式**（3×3 / 2×2 / 单列+抽屉）
+- ✅ **双态部署**：本机 Docker Compose + 公网 `announcedIp` + coturn（`--profile public`）
+- ❌ 预约会议 / 提醒 / 等候室 / 锁定 → Phase 2e-3
+- ❌ 屏幕共享 / 录制 / 虚拟背景 → 第二期
+- ❌ 管理端会议列表 / 详情 / 强制关闭 → Phase 2f
 
 ### 4.2 技术选型（锁定）
 
 | 组件 | 选型 | 备注 |
 |---|---|---|
-| 媒体服务 | `media-server/` 独立 Node.js 进程 + mediasoup v3 | 严格遵循原系统设计 |
-| 客户端库 | `mediasoup-client` JS SDK | 与服务端强绑定 |
-| 信令通道 | **复用现有 WebSocket Hub** | 不开新通道，复用 `Hub.RegisterEvent/DispatchEvent` |
-| Go ↔ Node | HTTP REST（docker-compose 内网） | 9 个 API：Router/Transport/Producer/Consumer 生命周期 |
-| 数据库表 | `meeting_rooms` + `meeting_participants` | 已在总设计文档定义 |
-| Redis 键 | `echo:meeting:room:{code}` + `echo:meeting:members:{code}` + `echo:meeting:transport:{code}` | 已在总设计文档定义 |
+| 媒体服务目录 | `media-server/` 根级子项目（与 `backend/` / `frontend/` / `admin/` 并列） | TypeScript + Fastify + mediasoup v3 |
+| 客户端库 | `mediasoup-client` JS SDK | `markRaw` 包裹避免 Pinia 响应式代理 |
+| 信令通道 | **复用现有 WebSocket Hub** | 新增 `MeetingSignalDispatcher` 接口注入 |
+| Go ↔ Node | HTTP REST（容器内网，`X-Internal-Token` 鉴权） | 9 个 API：Router/Transport/Producer/Consumer 生命周期 |
+| 数据库表 | `meeting_rooms` + `meeting_participants` + `meeting_chats` | 在总设计基础上修订：`password_hash`（bcrypt） + `ended_reason` + `meeting_chats` 新表 |
+| Redis 键 | `echo:meeting:room:{code}` / `members:{code}` / `transport:{code}:{user_id}` / `invite:{token}` / `host_grace:{code}` | 后两个为新增 |
 
-### 4.3 WebSocket 信令事件（11 个）
+### 4.3 WS 信令事件（11 个，详见专用设计 §6.3）
 
-**房间事件**：`meeting.room.join / leave / info`
-**成员事件**：`meeting.member.join / leave / mute / video`
-**媒体事件**：`meeting.transport.create / connect`、`meeting.produce.start / stop`、`meeting.consume.start / resume`
+房间组 3 个 + 成员组 4 个 + 媒体组 5 个，命名统一 `meeting.*` 前缀。
+
+### 4.4 架构变化关键点（衔接 Phase 2e-1）
+
+- **Go 主控 + Node 无状态包装**：所有权威状态在 Go，Node 仅做 mediasoup HTTP 封装
+- **跨模块通信模式延续**：`meeting.service.NotifyPusher` 接口 ← 由 `notify.service.NotifyService` 实现，Wire 注入（与 Phase 2a 的 `ws.FriendIDsGetter` / Phase 2e-1 的 `contact.service.NotifyPusher` 完全同构）
+- **单端 WS 连接架构**：继续沿用，不因会议而改造；多端改造仍保留给 Phase 2f
 
 ---
 
 ## 五、Phase 2e-3 会议增强范围锁定
 
+> 注：原计划在 2e-3 的「会议邀请（`meeting_invite`）」与「入会前设备预览」已上移到 **Phase 2e-2**（见 [Phase 2e-2 专用设计 §2.2.1](./2026-04-21-phase2e-2-design.md) 与 §十）。Phase 2e-3 聚焦「预约 / 提醒 / 等候室 / 锁定」。
+
 - 预约会议（`meeting_rooms.type=2`）+ 前端预约表单
 - 定时器：到预约时间前 N 分钟触发 `meeting_reminder` 通知
-- 会议邀请：从联系人/群聊发起 → 走 `meeting_invite` 通知类型
-- 入会前设备预览（本地摄像头/麦克风测试页）
-- 可选：等候室 / 锁定会议（视时间余量决定）
+- 等候室（waiting room）+ 锁定会议（lock）
+- 设备预览高级参数：降噪 / 回声消除 / 虚拟背景（若浏览器支持）
 
 ---
 

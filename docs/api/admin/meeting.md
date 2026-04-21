@@ -5,6 +5,14 @@
 
 ---
 
+## ⚠️ 文档状态说明（2026-04-21 更新）
+
+**本模块整体推迟到 Phase 2f 实施**，Phase 2e-2（会议 MVP）不含管理端功能。以下旧占位接口清单会在 Phase 2f 启动时重新对齐 Phase 2e-2 的实际数据模型（如 `password_hash` / `ended_reason` / `role` 枚举等）再落地。
+
+临时性参考：Phase 2e-2 专用设计 [`docs/plans/2026-04-21-phase2e-2-design.md`](../../plans/2026-04-21-phase2e-2-design.md) §6.2 已为管理端接口预留命名（`/api/v1/admin/meetings` / `/:id` / `/:id/force-close`）。
+
+---
+
 ## 接口列表
 
 | 方法 | 路径 | 权限 | 说明 |

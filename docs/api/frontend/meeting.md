@@ -5,6 +5,29 @@
 
 ---
 
+## ⚠️ 文档状态说明（2026-04-21 更新）
+
+**本文档为系统总设计阶段的占位版本，下方所列接口清单尚未落地实现。**
+
+Phase 2e-2 已进入设计阶段，专用设计文档 [`docs/plans/2026-04-21-phase2e-2-design.md`](../../plans/2026-04-21-phase2e-2-design.md) §6.2 锁定了 **MVP 最终 12 个接口**的路径与行为。与本文旧版接口清单的关键差异：
+
+| 维度 | 本文档旧版（总设计） | Phase 2e-2 MVP（即将实施） |
+|---|---|---|
+| 路径前缀 | `/api/v1/meetings/*` | `/api/v1/meeting/rooms/*`（更符合 REST 语义） |
+| 范围 | 含预约会议 + 即将开始/历史会议 | MVP 仅即时会议；预约推迟到 Phase 2e-3 |
+| 密码存储 | 明文 `password` | bcrypt `password_hash` |
+| 主持人控制 | 仅 join/leave | 新增 `kick` / `transfer-host` / 结束会议 / 邀请 |
+| 会议内聊天 | 无 | 新增 `POST /:code/chats` + `GET /:code/chats` |
+| 邀请链接 | 无 | 新增 `POST /invite-tokens/:token/redeem` |
+
+**实施指引**：
+- **Phase 2e-2 开发时**：请以 Phase 2e-2 专用设计文档 §6.2 为唯一实现口径；Task 5（会议 REST 接口）完成后**全量重写**本文档
+- **其他模块集成时**：请勿照搬本文旧接口路径；若需调用 meeting 模块 API 请先阅读 Phase 2e-2 设计文档
+
+以下旧版占位内容保留供历史对照，直到 Phase 2e-2 实施完成后整体替换。
+
+---
+
 ## 接口列表
 
 | 方法 | 路径 | 权限 | 说明 |

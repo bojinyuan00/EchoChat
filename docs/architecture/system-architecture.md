@@ -94,8 +94,8 @@ EchoChat 采用 **「精简单体 + 媒体微服务」** 架构，核心思想�
 | im | 即时消息收发（单聊）、会话管理、消息存储、撤回、搜索、离线推送 | ✅ Phase 2b |
 | group | 群聊管理（建群/加入/退出/角色/禁言/@提醒/群公告/入群审批） | ✅ Phase 2c |
 | file | 文件上传（MinIO 对象存储 + 通用上传 API） | ✅ Phase 2c |
-| meeting | 会议创建/管理、信令转发、mediasoup 资源编排 | 📋 后续 |
-| notify | 通知推送、会议邀请、好友申请通知 | 📋 后续 |
+| meeting | 会议创建/管理、信令转发、mediasoup 资源编排、会议内聊天、主持人控制 | 📋 Phase 2e-2 设计阶段（专用设计：`docs/plans/2026-04-21-phase2e-2-design.md`） |
+| notify | 统一通知中心、好友/群聊事件 + 系统广播推送、11 种类型枚举、跨模块 Pusher 接口注入 | ✅ Phase 2e-1（10 种落地 + 2 种预留 `meeting_invite` / `meeting_reminder`） |
 | admin | 后台管理（用户管理 + 角色权限管理 + 在线监控 + 好友关系管理 + 群聊管理、会议监控、系统配置） | ✅ Phase 1/2a/2c |
 
 **不负责的事情：** 不处理 RTP 媒体数据、不参与音视频转发、不做 WebRTC 协议协商。
@@ -241,11 +241,12 @@ mediasoup C++ SFU 的 **"遥控器"**，不懂业务、不懂用户、只懂媒�
 
 ```yaml
 services:
-  go-service:      # Go 后端         → :8085  ✅ 已实现（多阶段构建 Dockerfile）
-  media-server:    # mediasoup Node  → :3000 + :40000-40100/udp（Phase 3）
-  postgres:        # PostgreSQL 17   → :5432  ✅ 已实现
-  redis:           # Redis 7         → :6379  ✅ 已实现
-  nginx:           # 反向代理         → :80/:443（生产环境部署）
+  go-service:      # Go 后端         → :8085                         ✅ 已实现（多阶段构建 Dockerfile）
+  media-server:    # mediasoup Node  → :3300 + :40000-40199/udp     📋 Phase 2e-2 Task 1/14（TypeScript + Fastify + mediasoup v3）
+  coturn:          # TURN 服务（可选） → :3478/:5349                  📋 Phase 2e-2 公网部署 profile=public
+  postgres:        # PostgreSQL 17   → :5432                        ✅ 已实现
+  redis:           # Redis 7         → :6379                        ✅ 已实现
+  nginx:           # 反向代理         → :80/:443                     📋 生产环境部署
 ```
 
 > Docker Compose 配置文件：`deploy/docker-compose.dev.yml`

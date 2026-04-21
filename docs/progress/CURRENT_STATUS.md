@@ -1,12 +1,62 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-21（Phase 2e-1 通知系统 + TabBar 聚合红点 UX 完善）
-> **当前阶段**：Phase 2e-1 通知系统 ✅ 已完成；下一步进入 Phase 2e-2 会议 MVP
-> **当前分支**：`feature/phase2e-meeting-notification`
+> **最后更新**：2026-04-21（Phase 2e-2 设计阶段：专用设计文档 + 实施计划落盘）
+> **当前阶段**：Phase 2e-2 会议 MVP **设计阶段** 📋（设计文档已完成，待评审后进入代码开发）
+> **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
-> **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（子阶段详细设计 + 实施后修订 + 审查记录）
-> **Phase 2e-1 实施计划**：`docs/plans/2026-04-20-phase2e-1-implementation.plan.md`（11 个 Task 全部完成；原 `.cursor/plans/*` Cursor 临时文件已归档至本位置）
+> **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（✅ 已完成）
+> **Phase 2e-1 实施计划**：`docs/plans/2026-04-20-phase2e-1-implementation.plan.md`（✅ 11 个 Task 全部完成）
 > **Phase 2e-1 验证报告**：`test-report-phase2e-1-notification.md`
+> **Phase 2e-2 专用设计**：`docs/plans/2026-04-21-phase2e-2-design.md`（📋 设计阶段，16 章节）
+> **Phase 2e-2 实施计划**：`docs/plans/2026-04-21-phase2e-2-implementation.plan.md`（📋 17 个 Task 共约 17 人日）
+
+---
+
+## 📋 2026-04-21 Phase 2e-2 设计阶段启动
+
+**交付物**：两份新建文档 + 三份上游文档同步更新，已锁定 Phase 2e-2 会议 MVP 的全部架构决策与实施拆分。
+
+### 新建文档
+
+| 文档 | 规模 | 核心内容 |
+|---|---|---|
+| `docs/plans/2026-04-21-phase2e-2-design.md` | 16 章节 | 文档定位 / 范围边界 / 11 项关键决策 / 架构 mermaid 3 张 / 数据模型 DDL 3 张 / Go 后端 / Node media-server / 前端 / UI/UX / 通知对接 / 安全性能 / 风险 / 验收 / 衔接 / 关联 / 变更记录 |
+| `docs/plans/2026-04-21-phase2e-2-implementation.plan.md` | 17 个 Task | Task 0 PoC → Task 16 E2E + 文档同步，共约 17 人日，含依赖拓扑 mermaid |
+
+### 11 项关键决策（Plan 模式 5 轮澄清锁定）
+
+| 编号 | 决策 | 选择 |
+|---|---|---|
+| D01 | 部署形态 | 本机 + 公网双态（环境变量切换） |
+| D02 | 前端端形 | 仅 H5 浏览器 |
+| D03 | Go-Node 协同 | Go 主控 + Node 无状态包装（权威状态在 Go） |
+| D04 | 入会前设备预览 | MVP 纳入（独立预览页） |
+| D05 | 加入体验 | 套餐 C：会议号 + 密码 + 邀请链接 + 通知中心 `meeting_invite` |
+| D06 | 会议生命周期 | host 掉线 2 分钟宽限 + 自动转让（最早加入者）+ 空房 5 分钟 TTL |
+| D07 | UI 风格 | 飞书简洁框架 + EchoChat 原创（流光轮廓 / 柔性网格 / 静音氛围色） |
+| D08 | 主持人权限 | 四件套（静音他人 / 移除 / 转让 / 结束） |
+| D09 | 媒体服务目录 | `media-server/` 根级子项目 |
+| D10 | 移动端适配 | 桌面 + 手机双端响应式 |
+| D11 | 会议内聊天 | MVP 纳入（独立 `meeting_chats` 表，24 小时后清理） |
+
+### 数据模型修订（相对总设计）
+
+- `meeting_rooms.password` → `password_hash VARCHAR(255)`（bcrypt 哈希替换明文）
+- `meeting_rooms` 新增 `ended_reason`（结束原因：host_ended/empty_ttl/admin_force/system_error）
+- `meeting_participants` 新增 `left_reason`
+- 新表 `meeting_chats`（独立于 `im_messages`，24 小时 TTL）
+- 新增 Redis key：`echo:meeting:invite:{token}`（邀请链接）、`echo:meeting:host_grace:{code}`（主持人宽限期）
+
+### 上游文档同步
+
+- `docs/plans/2026-04-20-phase2e-design.md` §四 精简为引用（指向 2e-2 专用设计 + 实施计划），§五 从 2e-3 范围里移除「会议邀请」（已上移 2e-2）
+- `.cursor/rules/project-context.mdc` 当前进度追加 Phase 2e-2 设计阶段条目
+- 本文件（CURRENT_STATUS.md）更新头部 + 新增本段
+
+### 下一步
+
+- **评审设计文档**：由用户 Review 两份新建文档
+- **进入代码开发**：评审通过后从 Task 0（mediasoup PoC Spike）启动，预计 17 人日完成 MVP
 
 ---
 

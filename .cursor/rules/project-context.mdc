@@ -27,9 +27,12 @@ alwaysApply: true
     * 单端 WS 连接架构（沿用），不做多端已读同步（设计文档 §3.1/§3.5/§九 已修订，多端改造推迟到 Phase 2f/二期）
     * 专用设计：`docs/plans/2026-04-20-phase2e-1-design.md`；实施计划：`docs/plans/2026-04-20-phase2e-1-implementation.plan.md`；验证报告：`test-report-phase2e-1-notification.md`
     * API 文档：`docs/api/frontend/notify.md`
-  - 2e-2 会议 MVP（10-14 天）📋 待开发：mediasoup Node.js 独立服务 + 即时会议（≤8 人）+ 音视频控制
-  - 2e-3 会议增强（7-10 天）📋 待开发：预约会议 + 定时提醒 + 会议邀请（复用 2e-1）
-  - 分支：`feature/phase2e-meeting-notification`（基于 `origin/feature/phase2c-group-read-receipt`）
+  - 2e-2 会议 MVP（约 17 天）📋 **设计阶段完成，待进入代码开发**：mediasoup Node.js 独立 `media-server/` + 即时会议（≤8 人）+ 密码/邀请链接/通知邀请三合一 + 设备预览页 + 主持人四件套 + 会议内聊天 + 双态部署（本机 + 公网 coturn）+ 响应式（桌面/手机）
+    * 专用设计：`docs/plans/2026-04-21-phase2e-2-design.md`（16 章节）；实施计划：`docs/plans/2026-04-21-phase2e-2-implementation.plan.md`（17 个 Task）
+    * 11 项关键决策已锁定（D01-D11），详见设计文档 §三
+    * **重要修订**：`meeting_rooms.password` → `password_hash`（bcrypt），新增 `meeting_chats` 表 + `ended_reason` / `left_reason` 字段，新增 `echo:meeting:invite:{token}` / `host_grace:{code}` Redis key
+  - 2e-3 会议增强（7-10 天）📋 待开发：预约会议（`type=2`）+ 定时提醒（`meeting_reminder`）+ 等候室/锁定会议 + 设备预览高级参数（降噪/回声/虚拟背景）
+  - 分支：`feature/phase2e-2-meeting-mvp`（Phase 2e-2 专用，从 `feature/phase2c-group-read-receipt` 衍生）
   - **关键技术锁定**：维持 mediasoup SFU 架构（非 Mesh），前端用 mediasoup-client，信令复用现有 WS Hub
   - **显式推迟清单**（必须留档，见设计文档 §九）：
     * → Phase 2f：WS Hub 多端连接改造、会议管理后台、通知广播发布 UI、管理端仪表板、操作日志页、系统配置管理、通知分类开关
