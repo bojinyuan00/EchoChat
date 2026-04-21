@@ -140,58 +140,90 @@ flowchart LR
 
 ## 四、Task 明细
 
-### Task 0：mediasoup PoC Spike
+### Task 0：mediasoup PoC Spike ✅
 
+- **状态**：✅ 已完成（2026-04-21）
 - **目标**：在正式动工前用最小代码跑通"2 个浏览器 ↔ Node ↔ mediasoup ↔ 互相看见视频"，验证技术栈可用性与关键参数
 - **依赖**：无（起点）
-- **主要产出**：
-  - `media-server/poc/`（临时目录，PoC 结束后删除或保留为 tests/examples）
-  - Node 侧 Fastify + mediasoup 单 Router + 2 Transport + 2 Producer + 2 Consumer 跑通
-  - 浏览器侧极简 HTML + mediasoup-client + 原生 WebSocket（不走 uni-app）
-  - 压测记录：1 Worker 下 4/6/8 人会议的 CPU / 带宽 baseline
-- **检查点**：
-  - 本机 Chrome + Firefox 两个窗口可互相看见对方摄像头视频
-  - 记录关键坑：`announcedIp` 在 localhost 的处理、DTLS 握手超时的排查方式
-  - 输出 `media-server/docs/poc-notes.md`（含启动步骤 + 压测截图）
-- **工作量**：**1 人日**
-- **风险缓解**：若 PoC 过程中发现 mediasoup 学习曲线超预期，评估是否改用 `livekit-server`（本 Task 为决策关卡）
+- **实际产出**：
+  - [`media-server/poc/`](../../media-server/poc/)：Fastify + WS 信令 + mediasoup Worker/Router 约 500 行代码
+  - `server.mjs`（248 行）+ `public/client.mjs`（215 行）+ `public/index.html`
+  - 依赖固定版本：`mediasoup@3.14.11` / `fastify@4.28.1` / `@fastify/websocket@10.0.1` / `pino@9.3.2`，Node 24 下 C++ 编译 53 秒完成
+  - PoC 结论文档：[`media-server/docs/poc-notes.md`](../../media-server/docs/poc-notes.md)（9 章节：架构图 / 实测数据 / 7 项关键坑 / 技术栈判定 / 复用映射 / 启动步骤）
+- **实测数据（Playwright 双 tab 自动化验证）**：
+  - 2 人会议：4 transports / 4 producers / 4 consumers / RSS 61MB
+  - 线性外推 8 人会议：16 transports / 16 producers / 112 consumers / 约 200MB RSS（Node 单进程毫无压力）
+  - peer 关闭后资源自动清理（consumers 从 4 → 0），无泄漏
+- **已锁定的关键坑**：
+  - 本机 Demo `MEDIASOUP_ANNOUNCED_IP` 必须留空（非 `127.0.0.1`），让 Chromium 自动替换 `0.0.0.0` 为可用地址
+  - mediasoup-client 无 UMD bundle，PoC 走 `esm.sh` CDN；Task 9 正式前端改用 `npm + vite`
+  - Consumer 必须以 `paused:true` 创建，客户端 `transport.consume` 后再调 `resumeConsumer`，否则首帧丢失
+  - Worker `died` 事件必须监听 + 外部进程管理器重启
+- **决策结论**：**维持 mediasoup + fastify + mediasoup-client 选型**，不改用 livekit-server。技术栈可用性已满足 MVP 需求。
+- **工作量**：1 人日（实际用时吻合估算）
 
 ### Task 1：media-server 项目骨架
 
+- **状态**：✅ **已完成（2026-04-21）**
 - **目标**：创建正式 `media-server/` 目录，包含 TS 配置、Fastify 入口、日志、中间件、Dockerfile
 - **依赖**：T0
-- **主要产出**：
-  - `media-server/package.json`（固定版本号，不做动态解析）
-  - `media-server/tsconfig.json`、`.eslintrc`、`.prettierrc`
-  - `media-server/src/app.ts`（Fastify 实例 + `/healthz` 端点）
-  - `media-server/src/config.ts`（zod 校验 + 环境变量加载）
-  - `media-server/src/mediasoup/worker.ts`（单 Worker 启动 + die 自动重启）
-  - `media-server/src/middlewares/internal-auth.ts`（`X-Internal-Token`）
-  - `media-server/src/utils/logger.ts`（pino）
-  - `media-server/Dockerfile`（多阶段构建）
-  - `media-server/.env.example`
-- **检查点**：
-  - `pnpm install && pnpm dev` 本地可启动，`curl /healthz` 返回 `{ok: true, workerPid}`
-  - Docker 镜像构建成功，运行时打印 Worker PID
-- **工作量**：**0.5 人日**
+- **实际产出**：
+  - `media-server/package.json` — 锁定（已在同日升级至 v5 生态）mediasoup@3.19.0 / **fastify@5.8.5** / **fastify-plugin@5.1.0** / **@fastify/sensible@6.0.4** / **@fastify/websocket@11.2.0** / pino@9.3.2 / zod@3.23.8；开发链：tsx / typescript@5.5 / eslint / prettier / vitest
+  - `media-server/tsconfig.json` + `tsconfig.build.json` — TS 5.5 严格模式、ES2022 + Bundler 解析
+  - `media-server/.eslintrc.json` + `.prettierrc` — @typescript-eslint + prettier 协同，强制 `consistent-type-imports`
+  - `media-server/.env.example` + `.gitignore` + `.dockerignore` — 双态部署环境变量模板
+  - `media-server/src/config.ts`（110 行）— dotenv 加载 + zod 严格校验 + 端口区间交叉校验 + 校验失败 `process.exit(1)`
+  - `media-server/src/utils/logger.ts`（45 行）— pino + pino-pretty（dev 可选）+ token redact + `childLogger`
+  - `media-server/src/mediasoup/worker.ts`（115 行）— Worker 单例 + `died` 事件指数退避重启（1s → 30s 封顶）
+  - `media-server/src/middlewares/internal-auth.ts`（55 行）— `fastify-plugin` 包装 onRequest hook + `timingSafeEqual` 防侧信道 + `/healthz`/`/readyz` 白名单
+  - `media-server/src/app.ts`（125 行）— Fastify 入口 + `/healthz` + `/readyz`（未就绪 503）+ `/internal/info` + 优雅停机（SIGINT/SIGTERM/unhandledRejection/uncaughtException）
+  - `media-server/Dockerfile` — 多阶段（node:20-bookworm-slim），builder 装 python3 + build-essential 编译 mediasoup worker，runtime 裁 dev deps + 非 root 用户 + curl HEALTHCHECK + 显式暴露 `40000-40199/UDP+TCP`
+  - `media-server/README.md` — 目录结构 / 快速开始 / 鉴权校验 / Docker 构建 / 配置说明 / Task 1 验收清单
+- **实测验收**（已通过）：
+  - `npm install` 成功（315 包，mediasoup C++ worker 编译通过）
+  - `npm run typecheck` 0 错误、`npm run lint` 0 错误
+  - `npm run dev` → 2s 内 "media-server listening"
+  - `curl /healthz` → `{"ok":true,"mediasoupVersion":"3.19.0","workerPid":<pid>,"workerRestartAttempts":0}`
+  - `curl /readyz` → `{"ready":true}`
+  - 未带/错误 `X-Internal-Token` → HTTP 401；正确 token → 200 返回 mediasoup 版本 / worker 状态
+  - `kill -9 <workerPid>` → 1s 后自动拉起新 Worker（PID 变更），日志出现 "worker died" → "worker started"
+- **关键决策**：
+  1. **Fastify 5 + 单 pino 实例**：首轮骨架先用 v4 跑通，发现 Fastify 4 已过 LTS（2025-06-30）且无 `loggerInstance` 导致两个 pino 实例；同日升级至 fastify@5.8.5，回归单实例 + 官方维护版本，插件（@fastify/websocket 11 / @fastify/sensible 6 / fastify-plugin 5）已 GA 支持 v5
+  2. mediasoup 3.19 类型从 `mediasoup/types` 子路径引入（`Worker` / `WorkerLogLevel`）
+  3. 内部鉴权使用 `timingSafeEqual` 替代 `===`，对长度不等先拉齐再比，防 token 长度时序探测
+  4. Worker 指数退避 `1s → 2s → 4s → 8s → 16s → 30s`（封顶），重启成功后 `restartAttempts` 归零
+  5. Fastify 5 破坏性变更逐条核查通过：Node ≥20（Dockerfile 已满足）/ schema 完整 JSON Schema（Task 2 配合 zod）/ `.listen()` 对象签名 / plugin 纯 async
+- **工作量**：**0.5 人日**（实际用时吻合估算，含 Fastify 4→5 升级 30 分钟）
 
-### Task 2：Node 侧 9 个 REST API
+### Task 2：Node 侧 9 个 REST API ✅（2026-04-21 完成）
 
 - **目标**：实现设计文档 §7.2 的 9 个接口，mediasoup 资源完整生命周期
 - **依赖**：T1
-- **主要产出**：
-  - `src/routes/router.route.ts`（POST/DELETE）
-  - `src/routes/transport.route.ts`（POST / POST connect）
-  - `src/routes/producer.route.ts`（POST / DELETE）
-  - `src/routes/consumer.route.ts`（POST / POST resume / DELETE）
-  - `src/services/*.service.ts`（对应的资源管理类，使用 `Map<id, Resource>`）
-  - `tests/router.spec.ts` / `tests/transport.spec.ts`（vitest，覆盖创建+释放）
-- **检查点**：
-  - 所有接口走 zod 请求 Schema 校验，非法参数返回 400 带字段错误
-  - 缺 `X-Internal-Token` 返回 401
-  - 资源释放：DELETE router 后，内部 `routerMap.size === 0` 且 mediasoup `router.closed === true`
-  - 单元测试覆盖率 ≥ 60%
-- **工作量**：**2 人日**
+- **实际产出**：
+  - `src/schemas/{common,router,transport,producer,consumer}.schema.ts`（5 文件，zod schema 全覆盖 body/params/DTLS fingerprints）
+  - `src/utils/errors.ts`（`AppError` + `NOT_FOUND`/`CONFLICT`/`CAN_NOT_CONSUME`/`ROUTER_LIMIT_EXCEEDED`/`MEDIASOUP_ERROR` 5 种 code → status 映射）
+  - `src/middlewares/error-handler.ts`（ZodError → 400 VALIDATION_ERROR / AppError → 对应 status / Fastify 4xx 透传 / 未知 → 500 INTERNAL_ERROR）
+  - `src/mediasoup/codecs.ts`（opus + VP8 + H264 三种 `RouterRtpCodecCapability`）
+  - `src/services/{router,transport,producer,consumer}.service.ts`（4 文件，Map + observer-close 自清理；Consumer 还监听 `producerclose` 级联关闭）
+  - `src/routes/{router,transport,producer,consumer}.route.ts`（4 文件，9 接口均手动调 `.parse()` + 调用对应 service）
+  - `src/app.ts` 注册 errorHandler + 以 `/internal/v1` 前缀挂载路由
+  - `vitest.config.ts` + `tests/setup.ts` + `tests/{schemas,errors,app}.spec.ts` + `tests/services/{router,transport,producer,consumer}.service.spec.ts`（7 个 spec 共 58 个测试）
+- **检查点实测通过**：
+  - ✅ `typecheck` / `lint` 0 错误
+  - ✅ `npm test`：58/58 passed（约 900ms）；覆盖率 **stmts 80.89% / branches 76.03% / funcs 90.9% / lines 80.89%**（>> 60% 目标）
+  - ✅ 9 接口 happy path：`curl` 依次 POST /routers → POST /transports（send+recv）→ DELETE /routers/:id 全部 201/200
+  - ✅ 错误路径：unknown router→404 NOT_FOUND / produce on recv transport→409 CONFLICT / delete unknown producer→404 / resume unknown consumer→404 / lowercase roomCode→400 VALIDATION_ERROR（含 fieldErrors）/ 缺 token→401 UNAUTHORIZED
+  - ✅ 资源释放：DELETE router 后 `routerMap.size === 0`，observer.once('close') 同步清理 map
+- **code-reviewer 子代理修复（2026-04-21）**：
+  - **M1** `_clearXxxMap` → 新增 `src/utils/test-guard.ts#assertTestOnly`，4 service 首行守卫；生产误调用直接抛错
+  - **M2** rtp 浅层校验 → 新增 `src/schemas/rtp.ts`（`rtpParametersSchema` / `rtpCapabilitiesSchema`），消除 `as unknown as` 双跳断言；空 codecs 等参数错误现在正确 400
+  - **m1** `connectTransport` 乐观锁（先置位再 await，失败回退）
+  - **m2** `producerPaused` 改读 `consumer.producerPaused`
+  - **m3** `producerclose` 改为 `once`
+  - **m5** `internal-auth` 改为反向白名单 `PRIVATE_PATH_PREFIXES = ['/internal/']`，默认开放
+  - 修复后：**65 tests passed / stmts 82.87% / branches 75.83% / funcs 91.3%**；`internal-auth.ts` 覆盖率 100%；`schemas/rtp.ts` 覆盖率 100%
+  - 其余 Minor / Nits（m4/m6~m10、n1~n10）登记至 `CURRENT_STATUS.md` Task 16 收尾清单
+- **工作量**：**2 人日**（实际用时吻合估算；审查修复耗时 ~0.3 人日，已含在内）
 
 ### Task 3：数据库 DDL + 模型 + DAO
 
@@ -533,6 +565,9 @@ flowchart LR
 | 日期 | 作者 | 变更 |
 |---|---|---|
 | 2026-04-21 | Agent | 首版落盘，17 个 Task 共 17 人日，含 PoC / UI 打磨 / E2E |
+| 2026-04-21 | Agent | Task 0 mediasoup PoC Spike 完成：`media-server/poc/` 跑通 2 浏览器互通，`media-server/docs/poc-notes.md` 归档压测数据与 7 项关键坑，技术栈选型锁定 |
+| 2026-04-21 | Agent | Task 1 media-server 项目骨架完成：src 五件套（app/config/logger/worker/internal-auth）落盘；`/healthz` + `/readyz` + `/internal/info` 全部验收通过；Worker died 自动重启通过 `kill -9` 实测；Dockerfile 多阶段 + 非 root + HEALTHCHECK |
+| 2026-04-21 | Agent | Task 1 Fastify 4 → 5 同日升级：fastify@4.28.1→5.8.5、fastify-plugin@4→5.1.0、@fastify/sensible@5→6.0.4、@fastify/websocket@10→11.2.0；`src/app.ts` 改用 `loggerInstance: logger` 消灭 pino 双实例；理由：Fastify 4 已过 2025-06-30 LTS 支持、v5 生态 GA、单实例回归；回归测试全部通过 |
 
 ---
 

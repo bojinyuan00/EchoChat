@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EchoChat mediasoup PoC</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 16px;
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+      h1 { font-size: 18px; margin: 0; color: #fbbf24; }
+      .controls button {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        margin-left: 8px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      .controls button:hover { background: #1d4ed8; }
+      .controls button:disabled { background: #475569; cursor: not-allowed; }
+      #log {
+        background: #1e293b;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-family: ui-monospace, SFMono-Regular, monospace;
+        font-size: 12px;
+        max-height: 140px;
+        overflow-y: auto;
+        margin-bottom: 16px;
+      }
+      #log div { line-height: 1.5; }
+      .log-info { color: #93c5fd; }
+      .log-ok { color: #86efac; }
+      .log-err { color: #fca5a5; }
+      #videos {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+        gap: 12px;
+      }
+      .video-box {
+        position: relative;
+        background: #1e293b;
+        border-radius: 8px;
+        overflow: hidden;
+        aspect-ratio: 16 / 9;
+      }
+      .video-box video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .video-box .label {
+        position: absolute;
+        bottom: 8px;
+        left: 8px;
+        background: rgba(0,0,0,0.6);
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+      }
+      .self { outline: 2px solid #f59e0b; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>EchoChat mediasoup PoC（Phase 2e-2 Task 0）</h1>
+      <div class="controls">
+        <span id="status" style="margin-right:12px; color:#94a3b8;">idle</span>
+        <button id="btnJoin">加入并推流</button>
+        <button id="btnLeave" disabled>离开</button>
+      </div>
+    </header>
+    <div id="log"></div>
+    <div id="videos"></div>
+    <script type="module" src="./client.mjs"></script>
+  </body>
+</html>

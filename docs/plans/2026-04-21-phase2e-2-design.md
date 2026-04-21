@@ -641,15 +641,17 @@ media-server/
 └── .env.example
 ```
 
-**技术栈选型**：
-- `fastify@^4` —— 高性能 HTTP，TypeScript 原生支持
-- `mediasoup@^3` —— WebRTC SFU 核心，v3 最新稳定
-- `pino@^8` —— 日志库
-- `typescript@^5`、`@types/node`、`tsx`（开发时热更）
-- `vitest` —— 测试
-- `zod` —— 请求体 Schema 校验
+**技术栈选型**（2026-04-21 Task 1 落盘时的实际锁定版本）：
+- `fastify@5.8.5` —— 高性能 HTTP，TypeScript 原生支持；Fastify 4 已于 2025-06-30 结束 LTS 支持，选用 v5 回归官方维护窗口
+- `fastify-plugin@5.1.0` / `@fastify/sensible@6.0.4` / `@fastify/websocket@11.2.0` —— Fastify 5 兼容版本
+- `mediasoup@3.19.0` —— WebRTC SFU 核心（v3 最新稳定版，较 Task 0 PoC 的 3.14.11 进一步升级）
+- `pino@9.3.2` + `pino-pretty@11.2.2` —— 日志库（Fastify 5 原生支持 pino 9/10）
+- `zod@3.23.8` —— 请求体 Schema 校验（Fastify 5 要求完整 JSON Schema，zod 完美吻合）
+- `typescript@5.5.4`、`@types/node@20.x`、`tsx@4.16.5`（开发时热更）
+- `vitest@1.6.0` —— 单元测试
+- `eslint@8.57` + `prettier@3.3.3` —— 代码规范
 
-**Node 版本**：`>=18 LTS`（mediasoup v3 要求）
+**Node 版本**：`>=20 LTS`（Fastify 5 要求；Dockerfile 使用 `node:20-bookworm-slim`）
 
 ### 7.2 内部 REST API 契约（9 个）
 

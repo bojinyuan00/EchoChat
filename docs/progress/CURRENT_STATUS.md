@@ -1,7 +1,7 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-21（Phase 2e-2 设计阶段：专用设计文档 + 实施计划落盘）
-> **当前阶段**：Phase 2e-2 会议 MVP **设计阶段** 📋（设计文档已完成，待评审后进入代码开发）
+> **最后更新**：2026-04-21（Phase 2e-2 Task 2 media-server 9 个内部 REST API 完成 + 58 个单测 + 80.89% 覆盖率）
+> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-2 ✅ / Task 3-16 待执行）
 > **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
 > **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（✅ 已完成）
@@ -57,6 +57,234 @@
 
 - **评审设计文档**：由用户 Review 两份新建文档
 - **进入代码开发**：评审通过后从 Task 0（mediasoup PoC Spike）启动，预计 17 人日完成 MVP
+
+---
+
+## 🚀 2026-04-21 Phase 2e-2 Task 2 Router/Transport/Producer/Consumer 核心内部 REST API 完成
+
+**交付**：`media-server/` 的 9 个内部 REST API 全部落地 + zod 请求校验 + AppError 统一错误响应 + observer-close 自清理 + 58 个 vitest 单元/集成测试（覆盖率 **80.89%**），9 接口 happy-path + 6 类错误路径全部手动验证通过。
+
+### 产出文件
+| 文件 | 规模 | 作用 |
+|---|---|---|
+| `media-server/src/schemas/common.ts` | 20 行 | `idStringSchema` / `roomCodeSchema` / `userIdSchema` / `okResponseSchema`（共用基础 schema） |
+| `media-server/src/schemas/router.schema.ts` | 10 行 | `createRouterBodySchema` + `routerIdParamSchema` |
+| `media-server/src/schemas/transport.schema.ts` | 30 行 | `transportDirectionSchema` + `create/connectTransportBodySchema` + DTLS fingerprint 严格校验 |
+| `media-server/src/schemas/producer.schema.ts` | 12 行 | `mediaKindSchema` + `createProducerBodySchema` |
+| `media-server/src/schemas/consumer.schema.ts` | 10 行 | `createConsumerBodySchema` + `consumerIdParamSchema` |
+| `media-server/src/utils/errors.ts` | 45 行 | `AppError`（5 种 code → 404/409/400/500/503 状态码映射）+ `notFound` / `conflict` 辅助函数 |
+| `media-server/src/middlewares/error-handler.ts` | 55 行 | 统一错误处理：`ZodError`→400 / `AppError`→对应 status / Fastify 4xx 透传 / 未知错误→500 |
+| `media-server/src/mediasoup/codecs.ts` | 28 行 | `MEDIA_CODECS`（opus + VP8 + H264，与 PoC 完全一致） |
+| `media-server/src/services/router.service.ts` | 85 行 | Router Map + `maxRouters` 限制 + observer close 自清理 + 统计接口 |
+| `media-server/src/services/transport.service.ts` | 145 行 | Transport Map + `listenIps` 构建（announcedIp 可选）+ connect 幂等冲突校验 + 错误包装 |
+| `media-server/src/services/producer.service.ts` | 95 行 | Producer Map + send-direction 校验（recv transport 禁止 produce）+ 错误包装 |
+| `media-server/src/services/consumer.service.ts` | 130 行 | Consumer Map + recv-direction 校验 + `router.canConsume` 检查 + paused-on-create + `producerclose` 自动关闭 |
+| `media-server/src/routes/{router,transport,producer,consumer}.route.ts` | 共 ~95 行 | 9 个接口分文件挂载，均调用对应 zod schema.parse + service 层，专注薄 controller |
+| `media-server/src/app.ts` | +18 行 | 注册 `registerErrorHandler` + 以 `/internal/v1` 前缀挂载 4 组路由 |
+| `media-server/vitest.config.ts` + `tests/setup.ts` | - | vitest forks pool + 覆盖率 v8 + 自动注入测试 env（silent 日志 + 专用 RTC 端口段 40800-40899） |
+| `media-server/tests/{schemas,errors,app}.spec.ts` + `tests/services/*.spec.ts` | 7 文件 / 58 测试 | schemas + AppError + 4 services + HTTP 层集成 |
+
+### 9 个内部 REST API 清单（挂载在 `/internal/v1`）
+
+| # | 方法+路径 | 成功状态 | 说明 |
+|---|---|---|---|
+| 1 | POST /routers | 201 | 创建 mediasoup Router（含房间限额检查） |
+| 2 | DELETE /routers/:routerId | 200 | 显式关闭 Router（observer close 自动清理 map） |
+| 3 | POST /transports | 201 | 创建 WebRtcTransport（send/recv 两方向） |
+| 4 | POST /transports/:id/connect | 200 | DTLS connect（二次调用返回 409 CONFLICT） |
+| 5 | POST /producers | 201 | 仅允许在 send transport 上创建 |
+| 6 | DELETE /producers/:id | 200 | 显式关闭 Producer |
+| 7 | POST /consumers | 201 | 仅允许在 recv transport；`router.canConsume` 失败 → 400 CAN_NOT_CONSUME；创建后 `paused=true` |
+| 8 | POST /consumers/:id/resume | 200 | 客户端 `transport.consume` 成功后调用，避免首帧丢失 |
+| 9 | DELETE /consumers/:id | 200 | 显式关闭 Consumer |
+
+### 统一错误响应格式
+
+| Code | HTTP | 场景 |
+|---|---|---|
+| `UNAUTHORIZED` | 401 | 缺失/错误 `X-Internal-Token` |
+| `VALIDATION_ERROR` | 400 | zod 校验失败；body 含 `fieldErrors[]{path,code,message}` |
+| `NOT_FOUND` | 404 | router / transport / producer / consumer id 不存在 |
+| `CONFLICT` | 409 | 重复 connect；recv transport 上尝试 produce；send transport 上尝试 consume |
+| `CAN_NOT_CONSUME` | 400 | `router.canConsume` 返回 false（rtpCapabilities 不兼容） |
+| `ROUTER_LIMIT_EXCEEDED` | 503 | 活跃 router 超过 `MEDIASOUP_MAX_ROUTERS` |
+| `MEDIASOUP_ERROR` | 500 | mediasoup 层抛错（透明包装，含 transportId 等 details） |
+| `INTERNAL_ERROR` | 500 | 未分类异常（同时 error 级日志落盘） |
+
+### 测试验收实测
+
+| 维度 | 命令 | 结果 |
+|---|---|---|
+| 类型校验 | `npm run typecheck` | 0 错误 |
+| 代码规范 | `npm run lint` | 0 错误 |
+| 单测 | `npm test` | **58 passed / 0 failed**（7 个 spec 文件，~900ms） |
+| 覆盖率 | `npx vitest run --coverage` | **statements 80.89% / branches 76.03% / functions 90.9% / lines 80.89%**（远超 60% 目标） |
+| 健康探测 | `curl /healthz` + `/readyz` | 200 + `ok:true` |
+| 鉴权 | 无/错 token → 401、正确 token → 200 | 通过 |
+| 9 接口 happy path | 手动 curl（见下） | 通过 |
+| 错误路径 | unknown router→404 / produce on recv→409 / delete unknown→404 / resume unknown→404 / 小写 roomCode→400 / 缺 token→401 | 全部按预期返回 |
+
+### 代码覆盖率明细（v8）
+
+| 模块 | Stmts | 备注 |
+|---|---|---|
+| schemas/* | 100% | 全部 5 个 schema 文件 |
+| utils/errors.ts | 100% | 5 种 AppError code 全覆盖 |
+| mediasoup/codecs.ts | 100% | - |
+| routes/* | 91.26% | 未覆盖为 error 分支的 catch（由 e2e 真实 mediasoup 触发） |
+| middlewares/internal-auth.ts | 100% | 无 token / 错 token / 正确 token / 白名单 4 条分支 |
+| middlewares/error-handler.ts | 63.79% | 未触发 Fastify 内置 4xx 透传分支（属 happy case） |
+| services/router.service.ts | 97.95% | 仅 `_clearRouterMap` 内部 try/catch 未触发 |
+| services/transport.service.ts | 81.57% | - |
+| services/producer.service.ts | 84.4% | - |
+| services/consumer.service.ts | 47.22% | happy path 需真实 WebRTC 连接（由 Task 9 前端 E2E 覆盖） |
+| mediasoup/worker.ts | 68.18% | 重启路径需故意 kill worker 触发（集成环境） |
+
+### 关键工程决策
+
+1. **zod.parse 手动调用 + 全局错误处理器**：放弃 `fastify-type-provider-zod`（避免引入 zod v4 依赖冲突），改为每个 handler 内显式 `.parse()`，由 `setErrorHandler` 统一捕获 `ZodError` → 400。依赖面小、行为直观、不牺牲安全性。
+2. **Map + observer.once('close') 自清理**：所有 service 层都以 `Map<id, Entry>` 持有资源，并在创建时 `observer.once('close', () => map.delete(id))`；无论外部主动 `close()` 还是上游级联关闭（router→transport→producer→consumer），map 都自动收敛，杜绝泄漏。
+3. **Consumer `paused:true` 强约束 + `producerclose` 级联**：严格遵循 mediasoup 官方推荐 —— 服务端创建后总是 paused，等客户端 `transport.consume()` 成功后再调 `/resume`；同时监听 `producerclose` 自动关闭下游 consumer，防止对端已关闭但本端仍占流的幽灵资源。
+4. **direction 强约束**：producer 只允许 send transport、consumer 只允许 recv transport，违反即 409 CONFLICT；从 API 层就隔断"send 上混消费"这类难以排查的状态错误。
+5. **AppError 扁平化错误码 + details**：`{ code, message, details?}` 形式，前端/Go 后端都能用 `error.code === 'NOT_FOUND'` 精准分支，避免依赖 message 字符串。
+
+### 代码审查修复（`code-reviewer` 子代理，2026-04-21）
+
+子代理总评"**有条件通过**"（0 Blocker / 2 Major / 10 Minor / 10 Nits / 5 亮点），2 Major + 4 高价值 Minor 已全部当场修复，剩余 Minor/Nits 延后至 Task 16 收尾时清扫。
+
+| 编号 | 级别 | 问题 | 修复 | 文件 |
+|---|---|---|---|---|
+| M1 | Major | `_clearXxxMap` 无守卫，生产环境可误调用销毁全部资源 | 新增 `src/utils/test-guard.ts#assertTestOnly`，4 个 service 的 `_clearXxxMap` 首行调用，`NODE_ENV !== 'test'` 直接抛错 | `src/utils/test-guard.ts` + 4 个 service.ts |
+| M2 | Major | `rtpParameters`/`rtpCapabilities` 仅用 `z.record(z.string(), z.unknown())`，空对象直接走到 mediasoup 层被包成 500 | 新增 `src/schemas/rtp.ts`，对 codecs 做最小结构校验（mimeType/clockRate/payloadType 必填，codecs 数组 ≥1），消除 `as unknown as` 双跳断言，客户端参数错误现在正确返回 400 VALIDATION_ERROR | `src/schemas/rtp.ts` + `producer.schema.ts` / `consumer.schema.ts` / `producer.route.ts` / `consumer.route.ts` |
+| m1 | Minor | `connectTransport` 在 `await transport.connect` 前没置位 `connected`，并发重复请求被 mediasoup 包成 500 | 改为乐观锁：先 `entry.connected = true` 再 await，失败时回退为 false | `src/services/transport.service.ts` |
+| m2 | Minor | 返回 `producerPaused: producer.paused` 语义不如 `consumer.producerPaused`，且阻碍未来跨进程 PipeTransport | 改读 `consumer.producerPaused` | `src/services/consumer.service.ts` |
+| m3 | Minor | `consumer.on('producerclose', ...)` 风格不统一（事件只触发一次） | 改为 `consumer.once(...)`，与其他 observer 语义一致 | `src/services/consumer.service.ts` |
+| m5 | Minor | `internal-auth` 使用正向白名单（`/healthz`/`/readyz`），未来新增 `/metrics`/`/docs` 等公共端点容易漏加 | 改为**反向白名单** `PRIVATE_PATH_PREFIXES = ['/internal/']`，默认开放，仅私有前缀强制校验 | `src/middlewares/internal-auth.ts` |
+
+### 修复后验收
+
+| 维度 | 结果 |
+|---|---|
+| typecheck | 0 错误 |
+| lint | 0 错误 |
+| vitest | **65 passed / 0 failed**（新增 rtp schema 校验 4 测试、`test-guard` 2 测试、consumer CAN_NOT_CONSUME 细分测试 1） |
+| 覆盖率 | **stmts 82.87% / branches 75.83% / funcs 91.3% / lines 82.87%**（较修复前 80.89% 提升 ~2 pp） |
+| `internal-auth` 覆盖率 | 从 92.3% → **100%** |
+| `schemas` 覆盖率 | 新增 `rtp.ts` 后仍保持 **100%** |
+
+### 延后处理清单（Task 16 收尾）
+
+- m4 `tryGetRouter` 未被引用 → 决定留给 Task 7 Go `NodeClient` 健康探测使用，加 `@internal` JSDoc 即可
+- m6 `rtpCapabilities` 更精细校验 → 随 Task 9 前端 mediasoup-client 对接时结合真实报文完善
+- m7 logger redact 覆盖面 → 加 `'*.headers["x-internal-token"]'` 通配符
+- m8 `userIdSchema` 与 Go 侧契约对齐 → Task 7 实装后统一收敛
+- m9 worker.died 级联清理 → Task 16 补 chaos 测试时加 `drainXxxMap`（无副作用纯清 map）
+- m10 requestId 贯穿 → Task 7 `NodeClient` 头部注入 `X-Request-ID` 时一体化实现
+- n1-n10 均为风格类项，不阻塞
+
+### 下一步
+
+- **Task 3**：Go 侧 `meeting` 模块数据库 DDL + Model + DAO（对齐设计 §5.1 的 3 张表），预计 0.5 人日
+- Task 2 修复后新增文件：`src/schemas/rtp.ts`、`src/utils/test-guard.ts`、`tests/test-guard.spec.ts`；新增单测 7 个（共 65 个）
+
+---
+
+## 🚀 2026-04-21 Phase 2e-2 Task 1 media-server 项目骨架完成（含 Fastify 5 升级）
+
+**交付**：正式 `media-server/` 子项目骨架落盘 + 原地升级至 Fastify 5 → 锁定 **mediasoup 3.19.0 + fastify 5.8.5 + fastify-plugin 5.1.0 + @fastify/sensible 6.0.4 + @fastify/websocket 11.2.0 + pino 9.3.2 + zod 3.23.8**，`/healthz` + `/internal/*` + `X-Internal-Token` 鉴权 + Worker `died` 自动重启全部通过本机验证，pino 统一为单实例。
+
+### 🔁 2026-04-21 升级补充：Fastify 4 → 5
+
+- **升级理由**：Fastify 4 已于 2025-06-30 结束官方 LTS 支持（到 2026-04 已过保约 10 个月）；v5 最新 5.8.5（2026-03）、插件生态（@fastify/websocket 11.x / @fastify/sensible 6.x / fastify-plugin 5.x）均已 GA 支持；且可一步消灭前一轮由类型系统限制造成的两个 pino 实例
+- **实际改动**：`package.json` 4 行版本号 + `src/app.ts`：`logger: buildLoggerOptions()` → `loggerInstance: logger`（回归 pino 单实例）
+- **兼容性确认**（Fastify 5 破坏性变更逐条核查）：
+  - Node.js ≥20：Dockerfile 已用 `node:20-bookworm-slim` ✅
+  - 完整 JSON Schema 校验：我们 Task 2 规划用 `zod` 完整 schema，无 shorthand 残留 ✅
+  - `.listen()` 对象签名：已用 `app.listen({ host, port })` ✅
+  - Plugin 纯 async：已用 `fp(async (fastify) => {...})` ✅
+- **回归实测**：`npm install` 319 包 / `typecheck` + `lint` 0 错误 / `curl /healthz` + `/internal/info` 401/200 / `kill -9 <workerPid>` → 1s 内新 Worker 上线
+- **日志行为验证**：启动输出两行 `Server listening at ...` 来自 Fastify 内部日志、`media-server listening` 来自业务逻辑，**格式/时间戳/pid 完全一致**，确认单实例生效
+
+### 产出文件
+
+| 文件 | 规模 | 作用 |
+|---|---|---|
+| `media-server/package.json` | - | 锁定依赖（升级后）：mediasoup@3.19.0 / fastify@5.8.5 / fastify-plugin@5.1.0 / @fastify/sensible@6.0.4 / @fastify/websocket@11.2.0 / pino@9.3.2 / zod@3.23.8；开发链：tsx / typescript@5.5 / eslint / prettier / vitest |
+| `media-server/tsconfig.json` + `tsconfig.build.json` | - | TS 5.5 严格模式、ES2022 + Bundler 解析、dist 输出裁切 tests/poc |
+| `media-server/.eslintrc.json` + `.prettierrc` | - | @typescript-eslint + prettier 协同，强制 `consistent-type-imports` |
+| `media-server/.env.example` + `.gitignore` + `.dockerignore` | 60 行 | 双态部署必备变量（announcedIp / rtcPort 范围 / internalToken / logPretty） |
+| `media-server/src/config.ts` | 110 行 | 自研 dotenv 加载 + zod 严格校验 + 端口区间交叉校验 + 失败直接 `process.exit(1)` |
+| `media-server/src/utils/logger.ts` | 45 行 | pino + pino-pretty（dev）+ token redact + `childLogger` |
+| `media-server/src/mediasoup/worker.ts` | 115 行 | Worker 单例 + `died` 指数退避（1s/2s/4s/8s/16s/30s 封顶）+ snapshot（pid / restartAttempts） |
+| `media-server/src/middlewares/internal-auth.ts` | 55 行 | `fastify-plugin` 包装 onRequest hook + `timingSafeEqual` 防侧信道 + `/healthz` 和 `/readyz` 白名单 |
+| `media-server/src/app.ts` | 125 行 | Fastify 入口 + `/healthz` + `/readyz`（503 when 未 ready）+ `/internal/info` + 优雅停机（SIGINT/SIGTERM + unhandledRejection/uncaughtException） |
+| `media-server/Dockerfile` | 多阶段 | node:20-bookworm-slim；builder 装 python3 + build-essential 编译 mediasoup worker；runtime 裁 dev deps + 非 root 用户 + curl HEALTHCHECK + 显式暴露 40000-40199 UDP/TCP |
+| `media-server/README.md` | 6 节 | 目录结构 / 快速开始 / 鉴权校验 / npm 脚本 / Docker 构建 / 配置说明 / Task 1 验收清单 |
+
+### 验收实测（本机 macOS + Node 20，已清理 .env）
+
+| 场景 | 命令 | 结果 |
+|---|---|---|
+| 依赖安装 | `npm install` | 315 包，3 分钟，mediasoup C++ worker 编译通过 |
+| 类型校验 | `npm run typecheck` | 0 错误 |
+| 代码规范 | `npm run lint` | 0 错误 |
+| 启动验证 | `npm run dev` | 2s 内 "media-server listening" + Worker PID 打印 |
+| 健康探测 | `curl /healthz` | `{"ok":true,"mediasoupVersion":"3.19.0","workerPid":10584,"workerRestartAttempts":0,"uptimeSec":16}` |
+| 就绪探测 | `curl /readyz` | `{"ready":true}` |
+| 无 Token 访问 | `curl /internal/info` | HTTP 401 + `{"code":"UNAUTHORIZED"}` |
+| 错 Token 访问 | `curl -H "X-Internal-Token: wrong" ...` | HTTP 401 |
+| 正确 Token 访问 | `curl -H "X-Internal-Token: <env>" /internal/info` | 200，返回 mediasoup 版本 / worker 状态 / listen 配置 |
+| Worker 自愈 | `kill -9 <workerPid>` | 日志 "worker died" → 1s 后自动 "worker started"，新 PID 11141 在线，`/healthz` 恢复 `ok:true` |
+
+### 关键工程决策
+
+1. **Fastify 5 + 单 pino 实例**：升级至 Fastify 5 后使用原生 `loggerInstance: logger`，Fastify 请求日志与业务日志共享同一个 pino 实例，消除 v4 时代的两个独立实例；配合 Fastify 4 已出 LTS 的事实，回归官方维护版本
+2. **mediasoup 3.19 类型导入**：统一从 `mediasoup/types` 子路径引入（`Worker` / `WorkerLogLevel`），与 3.14 PoC 阶段 `mediasoup.types` 命名空间兼容
+3. **内部鉴权侧信道防护**：`timingSafeEqual` 替代 `===`，对长度不等也先拉齐再比，防止 token 长度被时序探测
+4. **Worker 指数退避重启**：`1s → 2s → 4s → 8s → 16s → 30s`（封顶 30s），重启成功后 `restartAttempts` 归零；避免快速失败时 CPU 飙高
+5. **Docker 运行时轻量化**：builder 阶段 `npm prune --omit=dev` 裁掉 dev 依赖，runtime 仅保留必要的 curl + libstdc++，非 root 用户运行
+
+### 下一步
+
+- **Task 2**：Router/Transport/Produce/Consume 核心内部 API（对齐 PoC 的 paused-then-resume + simulcast 三档 encodings），预计 1.5 人日
+
+---
+
+## 🚀 2026-04-21 Phase 2e-2 Task 0 mediasoup PoC Spike 完成
+
+**交付**：`media-server/poc/` 跑通 2 浏览器 ↔ Node ↔ mediasoup 完整 SFU 链路，技术栈可用性验证通过，mediasoup 选型锁定。
+
+### 产出文件
+| 文件 | 规模 | 作用 |
+|---|---|---|
+| `media-server/poc/server.mjs` | 248 行 | Fastify + WS 信令 + mediasoup Worker/Router |
+| `media-server/poc/public/client.mjs` | 215 行 | mediasoup-client Device/Transport/Producer/Consumer 完整流程 |
+| `media-server/poc/public/index.html` | 101 行 | 极简 UI（视频网格 + 日志 + 加入/离开按钮） |
+| `media-server/poc/package.json` | - | 固定版本依赖（mediasoup@3.14.11 / fastify@4.28.1 / pino@9.3.2） |
+| `media-server/docs/poc-notes.md` | 9 章节 | 架构图 / 实测数据 / 7 项关键坑 / 技术栈判定 / 复用映射 / 启动步骤 |
+
+### 实测数据（Playwright 双 tab 自动化）
+- 2 人会议：4 transports / 4 producers / 4 consumers / RSS **61 MB**
+- peer 关闭：consumers 自动从 4 → 0，无泄漏
+- 8 人线性外推：16 transports / 16 producers / **112 consumers** / 约 200 MB RSS（Node 单进程承载充裕）
+- Node 24.12.0 下 mediasoup C++ 编译 **53 秒**完成，无环境问题
+
+### 锁定的 7 项关键坑
+1. 本机 Demo `MEDIASOUP_ANNOUNCED_IP` 必须留空（非 `127.0.0.1`），让 Chromium 自动替换 `0.0.0.0`
+2. mediasoup-client 无 UMD bundle，Task 9 正式前端需 `npm + vite` 打包（PoC 用 esm.sh CDN）
+3. Consumer 必须 `paused:true` 创建 → 客户端 `transport.consume` → 服务端 `resumeConsumer`，否则首帧丢失
+4. Worker `died` 事件必须监听 + 外部进程管理器重启
+5. `enableUdp:true + enableTcp:true + preferUdp:true` 开箱即用，DTLS 无需额外配置
+6. Simulcast 三档 encodings `{150k/400k/1M}` 与设计文档完全一致，Task 2/9 可直接复用
+7. Playwright Chromium 默认带 `--use-fake-device-for-media-stream`，E2E 自动化无阻
+
+### 决策结论
+- **维持 mediasoup + fastify + mediasoup-client 选型**，不改用 livekit-server
+- Task 1-2 可直接复用 PoC 的 Worker/Router 初始化、Transport 创建参数、Consumer paused-then-resume 模式
+- Task 9 前端 Store 可复用 `SignalClient` 的 Promise 化 WS 请求 + reqId 配对模式
+
+### 下一步
+- **Task 1**：`media-server/` 正式骨架（TS + Fastify + 内部鉴权中间件 + Dockerfile），预计 0.5 人日
 
 ---
 

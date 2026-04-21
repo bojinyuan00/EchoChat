@@ -1,0 +1,23 @@
+{
+  "name": "echochat-media-server-poc",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Phase 2e-2 Task 0: mediasoup PoC Spike (2 browsers <-> Node <-> mediasoup)",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "fastify": "4.28.1",
+    "@fastify/static": "7.0.4",
+    "@fastify/websocket": "10.0.1",
+    "mediasoup": "3.14.11",
+    "pino": "9.3.2",
+    "pino-pretty": "11.2.2"
+  }
+}
