@@ -142,6 +142,15 @@ const emitIf = (name) => {
   border-radius: 16rpx;
   transition: background-color 0.15s ease, transform 0.1s ease;
   color: rgba(255, 255, 255, 0.85);
+  position: relative;
+}
+/* 关键修复：uni-app H5 会为 <button> 编译后的 <uni-button> 自动注入一个
+   伪元素 ::after（尺寸约 2400rpx × 160rpx，向右下延伸），
+   作为点击态反馈遮罩；若不抹除，会覆盖右侧所有兄弟按钮，
+   导致除最后一个按钮外其他按钮都"点不到"。 */
+.btn::after {
+  content: none !important;
+  display: none !important;
 }
 .btn:hover { background: rgba(255, 255, 255, 0.06); }
 .btn:active { transform: translateY(1rpx); }

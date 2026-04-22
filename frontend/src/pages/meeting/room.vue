@@ -548,7 +548,10 @@ onUnload(() => {
   flex-direction: column;
   background: #0F172A;
   color: #F3F4F6;
-  z-index: 10;
+  /* 必须高于 CustomTabBar（z-index:999），否则从带 tabBar 的页面
+     navigateTo 进会议室后，上一页遗留的 tabBar 会悬浮覆盖 toolbar
+     导致静音/摄像头/邀请/成员/聊天按钮全部被拦截 */
+  z-index: 1000;
 }
 
 .top-bar {
@@ -721,6 +724,14 @@ onUnload(() => {
   font-size: 26rpx;
   font-weight: 600;
   transition: background-color 0.12s ease;
+  position: relative;
+}
+/* 同样抹除 uni-app H5 自动注入的 ::after 遮罩（inset: 0 -1200px -80px 0），
+   否则 cancel 按钮的 ::after 会覆盖到右侧确认按钮区域，
+   导致点击 "取消" 命中 "结束会议" 逻辑。 */
+.leave-btn::after {
+  content: none !important;
+  display: none !important;
 }
 .leave-cancel {
   background: #F3F4F6;
