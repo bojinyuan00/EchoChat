@@ -43,12 +43,20 @@ var ErrMediaServerError = errors.New("media server error")
 //   - X-Internal-Token header 与 media-server/.env 的 MEDIA_INTERNAL_TOKEN 配对，两端不匹配将被 Node 的 401 拒绝
 //
 // 并发：所有方法可安全并发调用；内部 http.Client 复用连接池
+// routerInfoCache Router 本地缓存条目：除 ID 外保存 Node 返回的 rtpCapabilities，
+// 供前端 mediasoup-client Device.load 直接使用（Task 9 引入）。
+type routerInfoCache struct {
+	ID              string
+	RtpCapabilities json.RawMessage
+}
+
 type HTTPMediaOrchestrator struct {
 	cfg    config.MediaServerConfig
 	client *http.Client
 
-	// roomCode → routerID 本地缓存，服务重启后会丢失（此时 Node 侧的 Router 也会随 Node 重启而释放，状态一致）
-	roomRouterIDs sync.Map
+	// roomCode → *routerInfoCache 本地缓存，服务重启后会丢失（此时 Node 侧的 Router 也会随 Node 重启而释放，状态一致）
+	// Task 9 起由 sync.Map<string> 升级为 sync.Map<*routerInfoCache>
+	roomRouterInfos sync.Map
 }
 
 // NewHTTPMediaOrchestrator 构造真实 HTTP 客户端
@@ -91,12 +99,12 @@ func NewHTTPMediaOrchestrator(cfg *config.Config) *HTTPMediaOrchestrator {
 func (h *HTTPMediaOrchestrator) CreateRouter(ctx context.Context, roomCode string) (string, error) {
 	funcName := "service.http_media_orchestrator.CreateRouter"
 
-	if cached, ok := h.roomRouterIDs.Load(roomCode); ok {
-		if rid, _ := cached.(string); rid != "" {
+	if cached, ok := h.roomRouterInfos.Load(roomCode); ok {
+		if info, _ := cached.(*routerInfoCache); info != nil && info.ID != "" {
 			logs.Debug(ctx, funcName, "命中本地 Router 缓存，跳过 Node 调用",
 				zap.String("room_code", roomCode),
-				zap.String("router_id", rid))
-			return rid, nil
+				zap.String("router_id", info.ID))
+			return info.ID, nil
 		}
 	}
 
@@ -116,15 +124,19 @@ func (h *HTTPMediaOrchestrator) CreateRouter(ctx context.Context, roomCode strin
 		return "", err
 	}
 
+	info := &routerInfoCache{
+		ID:              resp.RouterID,
+		RtpCapabilities: resp.RtpCapabilities,
+	}
 	// LoadOrStore 防止并发首次创建时重复覆盖：若他人已写入先到的值就用已存在的
-	actual, loaded := h.roomRouterIDs.LoadOrStore(roomCode, resp.RouterID)
+	actual, loaded := h.roomRouterInfos.LoadOrStore(roomCode, info)
 	if loaded {
-		if existing, _ := actual.(string); existing != "" && existing != resp.RouterID {
+		if existing, _ := actual.(*routerInfoCache); existing != nil && existing.ID != "" && existing.ID != resp.RouterID {
 			logs.Warn(ctx, funcName, "并发创建 Router 出现不一致，保留先到值",
 				zap.String("room_code", roomCode),
-				zap.String("existing", existing),
+				zap.String("existing", existing.ID),
 				zap.String("new", resp.RouterID))
-			return existing, nil
+			return existing.ID, nil
 		}
 	}
 
@@ -138,15 +150,30 @@ func (h *HTTPMediaOrchestrator) CreateRouter(ctx context.Context, roomCode strin
 // 返回 (id, true) 表示命中；返回 (_, false) 表示缓存缺失（通常意味着该房间尚未创建 Router）
 // 供 MeetingService.JoinRoom 等需复用已有 Router 的场景使用，避免重复调 Node
 func (h *HTTPMediaOrchestrator) ResolveRouterID(roomCode string) (string, bool) {
-	v, ok := h.roomRouterIDs.Load(roomCode)
+	v, ok := h.roomRouterInfos.Load(roomCode)
 	if !ok {
 		return "", false
 	}
-	rid, _ := v.(string)
-	if rid == "" {
+	info, _ := v.(*routerInfoCache)
+	if info == nil || info.ID == "" {
 		return "", false
 	}
-	return rid, true
+	return info.ID, true
+}
+
+// ResolveRouterInfo 读取 roomCode 对应的 Router 完整信息（routerID + rtpCapabilities）
+// Task 9 引入：前端 mediasoup-client Device.load 需要 rtpCapabilities，JoinRoom 响应会回填此字段
+// 返回 (id, caps, true) 命中；(_, _, false) 缺失
+func (h *HTTPMediaOrchestrator) ResolveRouterInfo(roomCode string) (string, json.RawMessage, bool) {
+	v, ok := h.roomRouterInfos.Load(roomCode)
+	if !ok {
+		return "", nil, false
+	}
+	info, _ := v.(*routerInfoCache)
+	if info == nil || info.ID == "" {
+		return "", nil, false
+	}
+	return info.ID, info.RtpCapabilities, true
 }
 
 // CloseRouter 调用 DELETE /internal/v1/routers/:routerId
@@ -157,16 +184,17 @@ func (h *HTTPMediaOrchestrator) ResolveRouterID(roomCode string) (string, bool) 
 func (h *HTTPMediaOrchestrator) CloseRouter(ctx context.Context, roomCode string) error {
 	funcName := "service.http_media_orchestrator.CloseRouter"
 
-	v, ok := h.roomRouterIDs.Load(roomCode)
+	v, ok := h.roomRouterInfos.Load(roomCode)
 	if !ok {
 		logs.Debug(ctx, funcName, "无本地映射，跳过 Close", zap.String("room_code", roomCode))
 		return nil
 	}
-	routerID, _ := v.(string)
-	if routerID == "" {
-		h.roomRouterIDs.Delete(roomCode)
+	info, _ := v.(*routerInfoCache)
+	if info == nil || info.ID == "" {
+		h.roomRouterInfos.Delete(roomCode)
 		return nil
 	}
+	routerID := info.ID
 
 	err := h.doCloseRequest(ctx, fmt.Sprintf("/internal/v1/routers/%s", routerID), funcName, []zap.Field{
 		zap.String("room_code", roomCode),
@@ -174,7 +202,7 @@ func (h *HTTPMediaOrchestrator) CloseRouter(ctx context.Context, roomCode string
 	})
 	// 成功或 ResourceNotFound 都从本地缓存删除（幂等）
 	if err == nil || errors.Is(err, ErrMediaResourceNotFound) {
-		h.roomRouterIDs.Delete(roomCode)
+		h.roomRouterInfos.Delete(roomCode)
 		return nil
 	}
 	return err
@@ -278,8 +306,8 @@ func (h *HTTPMediaOrchestrator) CloseProducer(ctx context.Context, producerID st
 }
 
 // CreateConsumer 调用 POST /internal/v1/consumers
-// Node 侧 Consumer 强制 paused=true 创建，前端收到后需额外调 /resume（MediaOrchestrator 暂未暴露 ResumeConsumer，
-// 将在 Task 8 前端接入 mediasoup-client 时按需补充）
+// Node 侧 Consumer 强制 paused=true 创建，前端在 recv Transport 与 track 挂载完成后
+// 需发送 meeting.consume.resume WS 事件触发 ResumeConsumer 才会真正收到 RTP（Task 9）
 func (h *HTTPMediaOrchestrator) CreateConsumer(ctx context.Context, req *CreateConsumerReq) (*ConsumerInfo, error) {
 	funcName := "service.http_media_orchestrator.CreateConsumer"
 
@@ -313,6 +341,22 @@ func (h *HTTPMediaOrchestrator) CreateConsumer(ctx context.Context, req *CreateC
 	return &resp, nil
 }
 
+// ResumeConsumer 调用 POST /internal/v1/consumers/:id/resume（Task 9 引入）
+// Node 侧会把 mediasoup Consumer 从 paused 切到 active，开始向 Transport 推 RTP
+// 语义幂等：Node 端对已 active 的 Consumer 再次 resume 不报错；未找到 Consumer 返回 404 → ErrMediaResourceNotFound
+func (h *HTTPMediaOrchestrator) ResumeConsumer(ctx context.Context, consumerID string) error {
+	funcName := "service.http_media_orchestrator.ResumeConsumer"
+
+	return h.doRequest(ctx, requestOptions{
+		method:    http.MethodPost,
+		path:      fmt.Sprintf("/internal/v1/consumers/%s/resume", consumerID),
+		body:      nil,
+		timeoutMS: h.cfg.TimeoutMS,
+		funcName:  funcName,
+		logFields: []zap.Field{zap.String("consumer_id", consumerID)},
+	}, nil)
+}
+
 // CloseConsumer 调用 DELETE /internal/v1/consumers/:id
 func (h *HTTPMediaOrchestrator) CloseConsumer(ctx context.Context, consumerID string) error {
 	funcName := "service.http_media_orchestrator.CloseConsumer"
@@ -331,15 +375,15 @@ func (h *HTTPMediaOrchestrator) CloseConsumer(ctx context.Context, consumerID st
 // routerIDByRoomCode 从本地缓存反查 routerID，缺失时返回 ErrMediaResourceNotFound
 // 此错误语义表达的是"meeting 业务侧尚未（或已清理了）为该房间创建 Router"，调用方通常应转为"会议未开始/已结束"
 func (h *HTTPMediaOrchestrator) routerIDByRoomCode(roomCode string) (string, error) {
-	v, ok := h.roomRouterIDs.Load(roomCode)
+	v, ok := h.roomRouterInfos.Load(roomCode)
 	if !ok {
 		return "", fmt.Errorf("%w: no router mapped for room_code=%s", ErrMediaResourceNotFound, roomCode)
 	}
-	routerID, _ := v.(string)
-	if routerID == "" {
+	info, _ := v.(*routerInfoCache)
+	if info == nil || info.ID == "" {
 		return "", fmt.Errorf("%w: empty router_id for room_code=%s", ErrMediaResourceNotFound, roomCode)
 	}
-	return routerID, nil
+	return info.ID, nil
 }
 
 // requestOptions 统一请求参数

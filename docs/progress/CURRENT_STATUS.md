@@ -1,7 +1,7 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-21（Phase 2e-2 Task 8 会议生命周期状态机落地，host 宽限期 + 自动转让 + 空房 TTL + Router 幂等，E2E 20/20 PASS）
-> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-8 ✅ / Task 9-16 待执行）
+> **最后更新**：2026-04-21（Phase 2e-2 Task 9 前端 mediasoup-client + Pinia Store 落地，REST/WS/媒体三链路打通，`npm run build:h5` 通过）
+> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-9 ✅ / Task 10-16 待执行）
 > **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
 > **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（✅ 已完成）
@@ -167,6 +167,86 @@
 ### 下一步
 
 - **Task 5**（1.5 人日）：`MeetingService.CreateRoom` + `JoinRoom` + `LeaveRoom` + `EndRoom` 核心业务逻辑（6 位会议号生成 + bcrypt 密码校验 + 人数上限 + Redis host 宽限期 Timer 骨架），替换当前 `ErrNotImplemented` 占位。
+
+---
+
+## 🎯 2026-04-21 Phase 2e-2 Task 9 前端 mediasoup-client + Pinia Store 落地
+
+**交付**：前端新增 5 个模块（`constants/meeting.js` / `api/meeting.js` / `services/websocket.js` 的 `sendWithAck` 扩展 / `utils/mediasoup-client.js` / `store/meeting.js`）+ 1 个临时调试页（`pages/meeting/debug.vue`），把 REST（12 接口）/ WebSocket（14 事件）/ mediasoup 媒体三链路全部汇聚到 Pinia Store 对外提供 ~20 个 action；后端补齐 `meeting.consume.resume` WS 事件 + `RouterRtpCapabilities` 透传到 REST 响应；`npm run build:h5` 通过（无本次新增 warning）。
+
+### 产出文件
+
+| 文件 | 行数 | 作用 |
+|---|---|---|
+| `frontend/package.json`（改） | +1 | `dependencies` 增加 `mediasoup-client@^3.9`（Q2=`a2_npm_dep`） |
+| `frontend/src/constants/meeting.js`（新） | 150 | 会议类型/状态/角色/结束原因/离会原因/host 自动转让原因/14 个 WS 事件名（含 `meeting.consume.resume`）/前端本地状态机常量，对齐后端 `app/constants/meeting.go` |
+| `frontend/src/api/meeting.js`（新） | 120 | 12 个 REST API 封装（`createRoom` / `getRoom` / `joinRoom` / `leaveRoom` / `endRoom` / `listMyMeetings` / `transferHost` / `kickMember` / `inviteUsers` / `redeemInvite` / `sendChat` / `listChats`），复用 `utils/request.js`（Q4=`a4_full_12`） |
+| `frontend/src/services/websocket.js`（改） | +90 | 新增 `sendWithAck(event, data, timeoutMS)` Promise 接口 + `pendingAcks` Map + `_handleAck` 路由 + `_rejectAllPendingAcks` 断线清理；自动识别 `*.ack` 后缀消息路由到 Promise（Q5=`a5_services_layer`） |
+| `frontend/src/utils/mediasoup-client.js`（新） | 270 | `createMediaEngine` 工厂：封装 Device / SendTransport / RecvTransport / Producer / Consumer 全生命周期；`Transport` 的 `connect`/`produce` 事件桥接到 `wsService.sendWithAck`；`#ifdef H5` 条件编译隔离非 H5 平台（Q1=`a1_h5_only`）；所有 mediasoup 实例 `markRaw` 包裹避免 Vue 深度代理 |
+| `frontend/src/store/meeting.js`（新） | 615 | Pinia Store：本地状态机（idle/joining/connecting/connected/reconnecting/leaving/ended）+ 当前 room/participant + routerID + participants/chatMessages + localProducers / remoteConsumers；监听 8 个 `meeting.*` 广播事件（room.ended / member.joined / member.left / member.state.changed / member.kicked / member.producer.new / host.changed / chat.message）；生命周期 4 个 action（createAndEnter / joinAndEnter / leave / endMeeting）+ 媒体 4 个（startLocalAudio/Video / stopLocalAudio/Video）+ 读取 2 个（getLocalTrack / getRemoteTrack）+ 聊天/管理 5 个（sendChat / loadChatHistory / transferHost / kickMember / inviteUsers）；WS 监听在进房时注册、离房时注销（Q3=`a3_on_enter_room`） |
+| `frontend/src/pages/meeting/debug.vue`（新） | 280 | 临时调试页：会议状态面板 + 生命周期按钮 + 本地音/视频开关 + 远端参与者视频/音频动态渲染 + 聊天面板；`<video>`/`<audio>` 通过 `document.createElement` 原生 DOM 挂载到 `<view>` 容器（绕过 uni-h5 的 Video/Audio 组件不支持 `srcObject` 的限制）；`#ifdef H5` 保护确保非 H5 平台构建正常（Q7=`a7_debug_page`） |
+| `frontend/src/pages.json`（改） | +6 | 注册 `pages/meeting/debug` 路由（未进入 tabBar，仅供手测） |
+| `backend/go-service/app/constants/meeting.go`（改） | +2 | `MeetingWSEventConsumeResume = "meeting.consume.resume"` + 加入 `MeetingWSClientEvents` |
+| `backend/go-service/app/meeting/service/interfaces.go`（改） | +10 | `MediaOrchestrator` 新增 `ResumeConsumer(ctx, consumerID) error` + `ResolveRouterInfo(roomCode) (routerID, rtpCapabilities, bool)`；`NoopMediaOrchestrator` 同步实现 |
+| `backend/go-service/app/meeting/service/http_media_orchestrator.go`（改） | ±40 | `sync.Map[roomCode]*routerInfoCache` 替换原 `roomRouterIDs`，同时缓存 `ID` + `RtpCapabilities`；`CreateRouter` 缓存 `rtpCapabilities` → `ResolveRouterInfo` 返回两者；新增 `ResumeConsumer` 调 Node `POST /internal/v1/consumers/:id/resume` |
+| `backend/go-service/app/meeting/service/meeting_signal_service.go`（改） | +25 | `OnConsumeResume` 处理函数 + `ConsumeResumePayload` 结构体 |
+| `backend/go-service/app/meeting/controller/meeting_ws_handler.go`（改） | +10 | 注册 `MeetingWSEventConsumeResume` + `handleConsumeResume` 分发 |
+| `backend/go-service/app/dto/meeting_dto.go`（改） | +4 | `CreateMeetingRoomResponse` / `JoinMeetingRoomResponse` 新增 `router_id` / `rtp_capabilities`（供 `mediasoup-client.Device.load()` 使用） |
+| `backend/go-service/app/meeting/service/meeting_service.go`（改） | +6 | 新增 `ResolveRouterInfo` 代理方法 |
+| `backend/go-service/app/meeting/controller/meeting_controller.go`（改） | ±15 | `CreateRoom` / `JoinRoom` 响应组装时填充 `RtpCapabilities` |
+
+### 关键设计决策（7 项）
+
+| 编号 | 决策 | 选择 |
+|---|---|---|
+| Q1 | 多端策略 | 仅 H5（mediasoup-client 代码 `#ifdef H5` 包裹，其他平台 action 抛出"仅支持 H5"提示） |
+| Q2 | mediasoup-client 安装 | `dependencies`（生产依赖，走 npm registry） |
+| Q3 | Store 与 WS 监听挂载 | 进入会议室时注册 8 个广播监听，离会时注销（避免侵入其他页面） |
+| Q4 | REST 封装范围 | 12 个接口一次性全量封装（避免后续 UI 阶段反复改 api 层） |
+| Q5 | WS seq→ack 处理 | 封装在 `services/websocket.js` 层，对外 Promise 化 `sendWithAck` |
+| Q6 | Consumer 自动 resume | **WS 事件暴露**（`meeting.consume.resume`）而非 Go 自动 resume：符合 mediasoup 官方规范（DOM 挂完 track 再 resume），为未来订阅/分辨率自适应/退会场景保留扩展点 |
+| Q7 | E2E 验证方式 | 临时 `debug.vue` 页面 + Chrome 两 tab 手测（比 Playwright 脚本更适合 MVP 快速验证阶段） |
+
+### Q6 深入：为什么是 WS 暴露 resume 而不是 Go 自动 resume
+
+- **Go 自动 resume 的隐藏代价**：Consumer 创建时若立即 resume，客户端 DOM 还没挂 `<video.srcObject = track>`，mediasoup 已经开始 forward RTP 但浏览器解码出空帧 ~50-200ms，造成首帧黑屏/抖动。
+- **WS 暴露方案的正确流程**：`Go createConsumer`（默认 paused）→ 下发 `consumer.created` 事件给客户端 → 客户端 `consumer = device.consume()` → `attach track to <video>` → **`video.onloadedmetadata`** 触发 → 客户端发 `meeting.consume.resume` → Go 转给 Node → RTP 开始 forward。全链路可观测，每一步都能打点。
+- **长期扩展点**：未来 simulcast 层切换 / 订阅清单变更 / 进后台节流都只需要在客户端决策何时 resume/pause，不需要改 Go 业务层。
+
+### sendWithAck 语义
+
+```text
+发送：client.send({ event: "meeting.transport.create", seq: "t_xxx", data: {...} })
+回执：server.send({ event: "meeting.transport.create.ack", seq: "t_xxx", code: 0, data: {...} })
+```
+
+- **seq**：`${timestamp}_${random}` 本地生成，纯前端跟踪
+- **超时**：默认 `MEETING_WS_ACK_TIMEOUT_MS=10s`（可通过第 3 参数覆盖）
+- **断线保护**：`_rejectAllPendingAcks('ws_closed')` 在 `onclose` / `onerror` 回调里被调用，所有未完成 Promise 一次性 reject，避免"悬挂" Promise 导致 store action 卡住
+- **消息识别**：只要 `event.endsWith('.ack')` 且 `seq` 匹配，就路由到 ACK 分发器，不再 `_emit` 到业务监听器
+
+### 构建验证
+
+```text
+$ npm run build:h5
+> uni-preset-vue@0.0.0 build:h5
+> uni build
+编译器版本：4.87（vue3）
+正在编译中...
+DONE  Build complete.
+```
+
+剩余 warning（`chat.js` / `notify.js` dynamic import 提示、Sass legacy JS API）**均为 Task 9 之前既有**，非本次引入。
+
+### 已知待改进项（留给后续 Task）
+
+1. **Consumer resume 流程**：当前 Store `_onProducerNew` 内部立即调 `resumeConsumer`，未等页面 `<video>.onloadedmetadata` 再 resume，MVP 阶段首帧可能有 50-100ms 抖动；Task 11 会议室主页将把 resume 时机下移到页面层 `loadedmetadata` 事件。
+2. **`_cleanupRemoteProducer` 粒度粗**：当前实现是"该用户 slot 内的所有 Consumer 一并关掉"，未按 producerId→consumerId 精准关；Task 11 重构时改为 `Map<producerId, consumer>` 精细索引。
+3. **E2E 手测待执行**：Chrome 两 tab 跨 tab 互看 + WS 断线重入会场景需要用户在本地运行后手动验证；Task 16 会补 Playwright 自动化脚本回归。
+
+### 下一步
+
+进入 **Task 10：前端会议预览/创建/加入页**，依赖 Task 9 的 Pinia Store + REST 封装；预估 1 人日。
 
 ---
 

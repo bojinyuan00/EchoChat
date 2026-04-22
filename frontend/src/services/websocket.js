@@ -18,6 +18,7 @@ const HEARTBEAT_INTERVAL = 30000
 const RECONNECT_BASE_DELAY = 1000
 const RECONNECT_MAX_DELAY = 30000
 const MAX_RECONNECT_ATTEMPTS = Infinity
+const ACK_DEFAULT_TIMEOUT_MS = 10000
 
 class WebSocketService {
   constructor() {
@@ -28,6 +29,11 @@ class WebSocketService {
     this.reconnectAttempts = 0
     this.isManualClose = false
     this.seq = 0
+    /**
+     * 等待 ACK 的请求索引：Map<seq, { resolve, reject, timer, event }>
+     * Task 9 引入，为 meeting.* 事件提供 Promise 化 ACK 等待
+     */
+    this.pendingAcks = new Map()
   }
 
   /**
@@ -121,6 +127,41 @@ class WebSocketService {
   }
 
   /**
+   * 发送消息并等待服务端 ACK（Task 9 引入）
+   *
+   * 服务端对 C→S 事件以相同 event 名 + 对应 seq 返回 ACK 报文：
+   *   { event, seq, data: { code, message, data? } }
+   *
+   * 约定：
+   * - code === 0 表示成功，Promise resolve 为 data.data（业务 payload）
+   * - code !== 0 表示业务失败，Promise reject 为 { code, message }
+   * - 超时 reject 为 { code: -1, message: 'ACK 超时' }
+   * - 连接未就绪 reject 为 { code: -1, message: '连接未就绪' }
+   *
+   * 典型用法：
+   *   const info = await wsService.sendWithAck('meeting.transport.create', { room_code, direction: 'send' })
+   *
+   * @param {string} event - 事件名
+   * @param {Object} [data] - 业务 payload
+   * @param {number} [timeoutMS=10000] - 超时时间
+   * @returns {Promise<any>} ACK 的 data 字段
+   */
+  sendWithAck(event, data = {}, timeoutMS = ACK_DEFAULT_TIMEOUT_MS) {
+    return new Promise((resolve, reject) => {
+      const seq = this.send(event, data)
+      if (seq === -1) {
+        reject({ code: -1, message: '连接未就绪' })
+        return
+      }
+      const timer = setTimeout(() => {
+        this.pendingAcks.delete(seq)
+        reject({ code: -1, message: `ACK 超时 (${event})` })
+      }, timeoutMS)
+      this.pendingAcks.set(seq, { resolve, reject, timer, event })
+    })
+  }
+
+  /**
    * 注册事件监听
    * @param {string} event - 事件类型
    * @param {Function} callback - 回调函数
@@ -171,11 +212,25 @@ class WebSocketService {
   _onClose(e) {
     console.log('[WS] 连接关闭', e)
     this._clearTimers()
+    this._rejectAllPendingAcks('连接已断开')
     this._emit('_disconnected')
 
     if (!this.isManualClose) {
       this._scheduleReconnect()
     }
+  }
+
+  /**
+   * 连接断开时统一拒绝所有未完成的 ACK 等待（Task 9）
+   * 避免业务层 await sendWithAck() 永久挂起
+   */
+  _rejectAllPendingAcks(reason) {
+    if (this.pendingAcks.size === 0) return
+    this.pendingAcks.forEach((pending, seq) => {
+      clearTimeout(pending.timer)
+      pending.reject({ code: -1, message: reason, event: pending.event })
+    })
+    this.pendingAcks.clear()
   }
 
   _onError(e) {
@@ -185,9 +240,33 @@ class WebSocketService {
   _onMessage(data) {
     try {
       const msg = JSON.parse(data)
+      // Task 9：ACK 报文（event 以 ".ack" 结尾）走 pendingAcks 处理
+      // 后端 ws.NewResponse 固定在原 event 后追加 ".ack"
+      if (typeof msg.event === 'string' && msg.event.endsWith('.ack')) {
+        this._handleAck(msg)
+        return
+      }
       this._emit(msg.event, msg)
     } catch (e) {
       console.warn('[WS] 消息解析失败', data)
+    }
+  }
+
+  /**
+   * 处理 ACK 报文，触发 pendingAcks 中对应 seq 的 resolve/reject
+   * @param {Object} msg - { event: 'xxx.ack', seq, code, message, data? }
+   */
+  _handleAck(msg) {
+    const pending = this.pendingAcks.get(msg.seq)
+    if (!pending) {
+      return
+    }
+    this.pendingAcks.delete(msg.seq)
+    clearTimeout(pending.timer)
+    if (msg.code === 0) {
+      pending.resolve(msg.data)
+    } else {
+      pending.reject({ code: msg.code, message: msg.message || 'WS 请求失败', event: pending.event })
     }
   }
 

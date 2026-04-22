@@ -823,3 +823,13 @@ func (s *MeetingService) ListChatMessages(ctx context.Context, userID int64, cod
 	}
 	return chats, hasMore, nil
 }
+
+// ResolveRouterInfo 代理 mediaOrchestrator.ResolveRouterInfo
+// Task 9 引入：JoinRoom 响应需把 rtpCapabilities 一并回给前端，避免前端再拉一次
+// 返回 (routerID, rtpCapabilities, ok)；未命中缓存返回 ("", nil, false)
+func (s *MeetingService) ResolveRouterInfo(roomCode string) (string, json.RawMessage, bool) {
+	if s.mediaOrchestrator == nil {
+		return "", nil, false
+	}
+	return s.mediaOrchestrator.ResolveRouterInfo(roomCode)
+}

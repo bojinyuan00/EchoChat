@@ -628,6 +628,7 @@ flowchart LR
 | 2026-04-21 | Agent | Task 0 mediasoup PoC Spike 完成：`media-server/poc/` 跑通 2 浏览器互通，`media-server/docs/poc-notes.md` 归档压测数据与 7 项关键坑，技术栈选型锁定 |
 | 2026-04-21 | Agent | Task 1 media-server 项目骨架完成：src 五件套（app/config/logger/worker/internal-auth）落盘；`/healthz` + `/readyz` + `/internal/info` 全部验收通过；Worker died 自动重启通过 `kill -9` 实测；Dockerfile 多阶段 + 非 root + HEALTHCHECK |
 | 2026-04-21 | Agent | Task 1 Fastify 4 → 5 同日升级：fastify@4.28.1→5.8.5、fastify-plugin@4→5.1.0、@fastify/sensible@5→6.0.4、@fastify/websocket@10→11.2.0；`src/app.ts` 改用 `loggerInstance: logger` 消灭 pino 双实例；理由：Fastify 4 已过 2025-06-30 LTS 支持、v5 生态 GA、单实例回归；回归测试全部通过 |
+| 2026-04-21 | Agent | Task 9 前端 mediasoup-client + Pinia Store 完成：新增 `constants/meeting.js`（14 个 WS 事件）/ `api/meeting.js`（12 REST）/ `utils/mediasoup-client.js`（Device/Transport/Producer/Consumer 全生命周期封装）/ `store/meeting.js`（615 行，20+ action + 8 个广播事件桥）+ 扩展 `services/websocket.js` 的 `sendWithAck` Promise 化；后端补齐 `meeting.consume.resume` WS 事件 + `RouterRtpCapabilities` 透传到 `CreateMeetingRoomResponse` / `JoinMeetingRoomResponse`；新增 `pages/meeting/debug.vue` 临时调试页（原生 DOM 挂 `<video>`/`<audio>` 绕过 uni-h5 组件限制）；`npm run build:h5` 通过无新增 warning；Q1-Q7 七项决策全部锁定（H5 Only / npm dep / 进房注册 WS 监听 / 12 接口全量封装 / services 层 sendWithAck / WS 暴露 consume.resume / debug 页手测） |
 
 ---
 

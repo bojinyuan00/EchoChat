@@ -3,7 +3,7 @@
 > 通用规范（认证、响应包络、通用错误码）见 [README.md](../README.md)
 > 会议内实时信令（Transport / Producer / Consumer / 控制事件）通过 WebSocket 完成，见 [websocket.md](../websocket.md)
 
-**实施状态**：本文档对应 Phase 2e-2 Task 5 / Task 6 / Task 7 已落地的 12 个 REST 接口 + 13 个 WebSocket 信令事件，统一前缀 `/api/v1/meeting`（REST）与 `/ws`（WebSocket），全部需要 JWT 认证。Task 5/6/7 完成时间：2026-04-21。自 Task 7 起 **Go 后端直连 Node media-server**，`transport.id` / `iceCandidates` / `dtlsParameters.fingerprints` 等字段均由真实 mediasoup 返回（不再是 stub 占位）。
+**实施状态**：本文档对应 Phase 2e-2 Task 5 / Task 6 / Task 7 / Task 9 已落地的 12 个 REST 接口 + **14 个** WebSocket 信令事件（Task 9 新增 `meeting.consume.resume`），统一前缀 `/api/v1/meeting`（REST）与 `/ws`（WebSocket），全部需要 JWT 认证。Task 5/6/7/9 完成时间：2026-04-21。自 Task 7 起 **Go 后端直连 Node media-server**，`transport.id` / `iceCandidates` / `dtlsParameters.fingerprints` 等字段均由真实 mediasoup 返回（不再是 stub 占位）；自 Task 9 起 `CreateRoom` / `JoinRoom` 响应同时返回 `router_id` + `rtp_capabilities`，供前端 `mediasoupClient.Device.load()` 直接初始化。
 
 **设计口径**：以 [`docs/plans/2026-04-21-phase2e-2-design.md`](../../plans/2026-04-21-phase2e-2-design.md) §6.2 为单一事实来源（SSOT）。
 
@@ -193,12 +193,18 @@
   "data": {
     "room": { ... },
     "participant": { ... },
-    "router_id": "stub-router-835-000-036"
+    "router_id": "abc-router-835-000-036",
+    "rtp_capabilities": {
+      "codecs": [ { "mimeType": "audio/opus", "clockRate": 48000, ... } ],
+      "headerExtensions": [ ... ]
+    }
   }
 }
 ```
 
-`router_id` 自 Task 7 起为 Node media-server 返回的真实 mediasoup Router ID（Phase 2e-2 Task 7 完成，2026-04-21）。前端可据此建立 WebSocket 订阅，也可忽略，仅依赖 WS `meeting.transport.create` 的返回值创建 mediasoup-client Transport。
+`router_id` 自 Task 7 起为 Node media-server 返回的真实 mediasoup Router ID（Phase 2e-2 Task 7 完成，2026-04-21）；`rtp_capabilities` 自 Task 9 起随响应一并返回（Phase 2e-2 Task 9，2026-04-21），供前端 `mediasoupClient.Device.load({ routerRtpCapabilities })` 初始化媒体协商上下文。前端 MVP 推荐流程：`joinRoom → Device.load(rtp_capabilities) → Transport 双建 → produce/consume`，整个链路不再需要额外 REST 往返。
+
+> 同形响应体在 `POST /rooms`（创建即时会议）中也会返回 `router_id` + `rtp_capabilities`，创建者无需额外请求即可 `Device.load`。
 
 ---
 
@@ -373,7 +379,7 @@
 
 ## WebSocket 信令协议（Task 6）
 
-全部会议相关实时信令走 `/ws?token=<access_token>` 统一通道，共 **13 个 `meeting.*` 事件**：8 个客户端→服务端（C→S）操作事件 + 5 个服务端→客户端（S→C）广播事件 + 2 个补充业务事件（聊天 + 被踢定向推送，与 REST 广播复用）。
+全部会议相关实时信令走 `/ws?token=<access_token>` 统一通道，共 **14 个 `meeting.*` 事件**：**9 个** 客户端→服务端（C→S）操作事件（Task 9 新增 `meeting.consume.resume`）+ 5 个服务端→客户端（S→C）广播事件 + 2 个补充业务事件（聊天 + 被踢定向推送，与 REST 广播复用）。
 
 ### 帧格式
 
@@ -404,16 +410,17 @@
 | 6 | C→S | `meeting.produce.start` | 创建 Producer（上行流） | `mediaOrchestrator.CreateProducer`，成功后广播 `meeting.member.producer.new` |
 | 7 | C→S | `meeting.consume.start` | 创建 Consumer（订阅对端 Producer） | `mediaOrchestrator.CreateConsumer` |
 | 8 | C→S | `meeting.producer.close` | 关闭自己的 Producer | `mediaOrchestrator.CloseProducer`，广播 `meeting.member.producer.new` (closed=true) |
-| 9 | S→C | `meeting.member.joined` | 新成员加入广播（复用 REST /join） | 房间广播 |
-| 10 | S→C | `meeting.member.left` | 成员离开广播（REST /leave /kick 或 WS leave） | 房间广播 |
-| 11 | S→C | `meeting.member.kicked` | 定向通知被踢者（REST /kick） | `PublishToUser` |
-| 12 | S→C | `meeting.host.changed` | 主持人变更 | 房间广播 |
-| 13 | S→C | `meeting.room.ended` | 会议被结束（REST /end 或空房 TTL） | 房间广播 |
-| 14 | S→C | `meeting.member.state.changed` | 成员状态变化（静音/关摄像头/举手） | 房间广播 |
-| 15 | S→C | `meeting.member.producer.new` | 成员开启/关闭媒体流 | 房间广播，`closed=true` 表示关闭 |
-| 16 | S→C | `meeting.chat` | 会议内聊天（REST /chats） | 房间广播 |
+| 9 | C→S | `meeting.consume.resume` | 客户端完成 track 挂载后请求 resume Consumer（Task 9 新增） | `mediaOrchestrator.ResumeConsumer` → Node `POST /internal/v1/consumers/:id/resume`，不广播 |
+| 10 | S→C | `meeting.member.joined` | 新成员加入广播（复用 REST /join） | 房间广播 |
+| 11 | S→C | `meeting.member.left` | 成员离开广播（REST /leave /kick 或 WS leave） | 房间广播 |
+| 12 | S→C | `meeting.member.kicked` | 定向通知被踢者（REST /kick） | `PublishToUser` |
+| 13 | S→C | `meeting.host.changed` | 主持人变更 | 房间广播 |
+| 14 | S→C | `meeting.room.ended` | 会议被结束（REST /end 或空房 TTL） | 房间广播 |
+| 15 | S→C | `meeting.member.state.changed` | 成员状态变化（静音/关摄像头/举手） | 房间广播 |
+| 16 | S→C | `meeting.member.producer.new` | 成员开启/关闭媒体流 | 房间广播，`closed=true` 表示关闭 |
+| 17 | S→C | `meeting.chat` | 会议内聊天（REST /chats） | 房间广播 |
 
-> 说明：客户端仅注册 **C→S 白名单**中的 8 个事件（见 `app/constants/meeting.go:MeetingWSClientEvents`），其余 `meeting.*` 事件若由客户端发送均被静默丢弃，防止恶意客户端伪造广播。
+> 说明：客户端仅注册 **C→S 白名单**中的 9 个事件（见 `app/constants/meeting.go:MeetingWSClientEvents`），其余 `meeting.*` 事件若由客户端发送均被静默丢弃，防止恶意客户端伪造广播。
 
 ### 客户端白名单（C→S）详细契约
 
@@ -588,6 +595,31 @@
 }
 ```
 
+#### 9. `meeting.consume.resume`（Task 9 新增，2026-04-21）
+
+**请求载荷**
+
+```json
+{ "consumer_id": "consumer-def" }
+```
+
+**ACK** `code=0`：`data` 为空。失败原因：`会议资源不存在`（Node 404 → Go 转译，HTTP 层归因 `ErrMediaResourceNotFound`）或 `会议媒体服务暂不可用`（5xx / 网络错）。
+
+**调用时机**（前端推荐流程）：
+
+1. 收到广播 `meeting.member.producer.new { closed:false }`；
+2. 前端创建 `recvTransport` + `consumer = device.consume()`，此时 Consumer 为 **paused**（后端创建时就强制 `paused:true`）；
+3. 前端把 `consumer.track` 挂载到 DOM 元素（`<video>.srcObject = new MediaStream([track])`）；
+4. 监听 `<video>.onloadedmetadata`（或图像解码首帧回调）；
+5. **回调中发送** `meeting.consume.resume { consumer_id }`；
+6. 服务端 `ResumeConsumer` 调 Node `POST /internal/v1/consumers/:id/resume`，Node mediasoup 开始 forward RTP。
+
+**为什么要显式 resume**：mediasoup 官方规范要求"DOM 挂完 track 再 resume"，避免 RTP forward 时浏览器解码空帧造成首帧黑屏/抖动（50-200ms）；同时保留未来 simulcast 层切换、订阅清单变更、后台节流等扩展点。
+
+**不广播**：本事件是纯 C→S 调用，服务端不广播任何事件。
+
+---
+
 ### 服务端广播（S→C）详细契约
 
 | 事件 | 载荷字段 | 说明 |
@@ -606,7 +638,7 @@
 - **MeetingWSHandler**（controller 层）：thin adapter，仅负责 ws.Hub 事件注册 + JSON 反序列化 + ACK 回写；位于 `app/meeting/controller/meeting_ws_handler.go`。
 - **MeetingSignalService**（service 层）：承载 8 个 C→S 事件的业务逻辑（活跃参会校验、host 权限校验、mediaOrchestrator 调用、Redis 资源追踪、广播），位于 `app/meeting/service/meeting_signal_service.go`。
 - **MeetingBroadcaster**（service 层）：封装 `BroadcastToMeeting`（查询活跃 participant 列表 → 逐个 `PubSub.PublishToUser`）与 `PublishToUser`，供 REST / WS 两个入口统一使用，位于 `app/meeting/service/meeting_broadcaster.go`。
-- **MediaOrchestrator**（interface）：定义 8 个 mediasoup 操作方法（第 9 个 `ResumeConsumer` 推迟到 Task 9）；Task 6 曾用 `NoopMediaOrchestrator` 占位，**Task 7 (2026-04-21) 已替换为 `HTTPMediaOrchestrator`**，通过 `X-Internal-Token` 鉴权直连 Node media-server 的 `/internal/v1/*` 接口；错误类型 `ErrMediaResourceNotFound`（Node 404 → 关闭类幂等转 nil）与 `ErrMediaServerError`（5xx / 超时 / 网络错）可供上层 `errors.Is` 区分；关闭类操作指数退避 200ms→500ms 最多 `CloseRetry+1` 次。
+- **MediaOrchestrator**（interface）：定义 **10 个** mediasoup 操作方法（Task 9 新增 `ResumeConsumer` + `ResolveRouterInfo(roomCode) → (routerID, rtpCapabilities, ok)`）；Task 6 曾用 `NoopMediaOrchestrator` 占位，**Task 7 (2026-04-21) 已替换为 `HTTPMediaOrchestrator`**，通过 `X-Internal-Token` 鉴权直连 Node media-server 的 `/internal/v1/*` 接口；错误类型 `ErrMediaResourceNotFound`（Node 404 → 关闭类幂等转 nil）与 `ErrMediaServerError`（5xx / 超时 / 网络错）可供上层 `errors.Is` 区分；关闭类操作指数退避 200ms→500ms 最多 `CloseRetry+1` 次。Router 信息缓存升级：`sync.Map[roomCode]*routerInfoCache{ID, RtpCapabilities}` 同时缓存 Router ID 与 RTP Capabilities（Task 9 变更，供 REST `rtp_capabilities` 字段透传）。
 
 ### 错误处理
 

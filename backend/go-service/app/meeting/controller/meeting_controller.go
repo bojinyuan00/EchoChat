@@ -158,10 +158,13 @@ func (ctl *MeetingController) CreateRoom(c *gin.Context) {
 		ctl.handleError(c, err, "创建会议失败")
 		return
 	}
+	// Task 9：CreateRoom 响应携带 router_id + rtpCapabilities，供前端 Device.load 使用
+	_, rtpCaps, _ := ctl.meetingService.ResolveRouterInfo(room.RoomCode)
 	resp := dto.CreateMeetingRoomResponse{
-		Room: *roomToDTO(room, 1),
+		Room:            *roomToDTO(room, 1),
+		RouterID:        routerID,
+		RtpCapabilities: rtpCaps,
 	}
-	_ = routerID // 当前 Noop 返回占位 RouterID，Task 7 后可拼入响应供前端订阅使用
 	utils.ResponseCreated(c, resp)
 }
 
@@ -214,10 +217,13 @@ func (ctl *MeetingController) JoinRoom(c *gin.Context) {
 		ctl.handleError(c, err, "加入会议失败")
 		return
 	}
+	// Task 9：JoinRoom 响应携带 rtpCapabilities，供前端 mediasoup-client Device.load 直接使用
+	_, rtpCaps, _ := ctl.meetingService.ResolveRouterInfo(code)
 	resp := dto.JoinMeetingRoomResponse{
-		Room:        *roomToDTO(room, 0),
-		Participant: *participantToDTO(participant),
-		RouterID:    routerID,
+		Room:            *roomToDTO(room, 0),
+		Participant:     *participantToDTO(participant),
+		RouterID:        routerID,
+		RtpCapabilities: rtpCaps,
 	}
 	utils.ResponseOK(c, resp)
 }

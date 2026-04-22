@@ -53,6 +53,7 @@
     "@dcloudio/uni-mp-xhs": "3.0.0-4080720251210001",
     "@dcloudio/uni-quickapp-webview": "3.0.0-4080720251210001",
     "@dcloudio/uni-ui": "^1.5.11",
+    "mediasoup-client": "^3.19.0",
     "pinia": "^2.1.7",
     "pinia-plugin-persistedstate": "^3.2.3",
     "vue": "^3.4.21",

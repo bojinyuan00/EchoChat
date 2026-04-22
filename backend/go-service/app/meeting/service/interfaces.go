@@ -94,6 +94,10 @@ type MediaOrchestrator interface {
 	// Task 8 引入：用于 JoinRoom 等"仅需复用"的场景，避免重复调 CreateRouter
 	// 返回 (id, true) 命中；(_, false) 缺失（通常说明房间未创建 Router 或服务重启后未 reschedule）
 	ResolveRouterID(roomCode string) (string, bool)
+	// ResolveRouterInfo 读取 roomCode 对应的 Router 完整信息（routerID + rtpCapabilities）
+	// Task 9 引入：前端 mediasoup-client Device.load 必须 rtpCapabilities，JoinRoom 响应由此填充
+	// 返回 (id, caps, true) 命中；(_, _, false) 缺失
+	ResolveRouterInfo(roomCode string) (string, json.RawMessage, bool)
 
 	// CreateTransport 为用户创建 send/recv WebRTC Transport
 	CreateTransport(ctx context.Context, req *CreateTransportReq) (*TransportInfo, error)
@@ -106,7 +110,12 @@ type MediaOrchestrator interface {
 	CloseProducer(ctx context.Context, producerID string) error
 
 	// CreateConsumer 在指定 recv Transport 上创建 Consumer（订阅远端 Producer）
+	// Node 端创建的 Consumer 默认 paused=true，需在前端 track 就绪后调用 ResumeConsumer 才会开始推流
 	CreateConsumer(ctx context.Context, req *CreateConsumerReq) (*ConsumerInfo, error)
+	// ResumeConsumer 恢复 Consumer 开始接收 RTP（Task 9 引入）
+	// 前端 recv Transport 与 track 挂载完成后由 meeting.consume.resume WS 事件触发
+	// Node 未找到对应 Consumer 返回 ErrMediaResourceNotFound，调用方可按"已失效"处理
+	ResumeConsumer(ctx context.Context, consumerID string) error
 	// CloseConsumer 关闭指定 Consumer（幂等）
 	CloseConsumer(ctx context.Context, consumerID string) error
 }
@@ -135,6 +144,11 @@ func (n *NoopMediaOrchestrator) CloseRouter(_ context.Context, _ string) error {
 // ResolveRouterID 占位实现：始终命中，返回 noop-router-{code}
 func (n *NoopMediaOrchestrator) ResolveRouterID(roomCode string) (string, bool) {
 	return "noop-router-" + roomCode, true
+}
+
+// ResolveRouterInfo 占位：返回空 rtpCapabilities 对象（保证前端 mediasoup-client 能通过 JSON 解析，但 Device.load 会失败；适合本地无 Node 调试）
+func (n *NoopMediaOrchestrator) ResolveRouterInfo(roomCode string) (string, json.RawMessage, bool) {
+	return "noop-router-" + roomCode, json.RawMessage(`{}`), true
 }
 
 // CreateTransport 占位：返回以 "noop-transport-" 为前缀的伪造 ID，带最小合法 JSON 结构
@@ -171,6 +185,11 @@ func (n *NoopMediaOrchestrator) CreateConsumer(_ context.Context, req *CreateCon
 		RtpParameters: json.RawMessage(`{}`),
 		Type:          "simple",
 	}, nil
+}
+
+// ResumeConsumer 占位：直接返回 nil
+func (n *NoopMediaOrchestrator) ResumeConsumer(_ context.Context, _ string) error {
+	return nil
 }
 
 // CloseConsumer 占位：直接返回 nil

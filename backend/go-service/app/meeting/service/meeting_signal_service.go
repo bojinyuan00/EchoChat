@@ -368,6 +368,35 @@ func (s *MeetingSignalService) OnConsumeStart(ctx context.Context, userID int64,
 	return info, nil
 }
 
+// ConsumeResumePayload meeting.consume.resume 请求载荷（Task 9）
+// 前端 recv Transport 与 track 就绪后发送，用于把 Node 侧 paused Consumer 切到 active
+type ConsumeResumePayload struct {
+	RoomCode   string `json:"room_code"`
+	ConsumerID string `json:"consumer_id"`
+}
+
+// OnConsumeResume 处理 meeting.consume.resume 事件（Task 9）
+// 语义：告知 media-server 把指定 Consumer 从 paused 切到 active
+// 权限：仅当 userID 是会议活跃成员且 consumerID 归属该用户时允许
+// 幂等：Node 对已 active Consumer 再次 resume 不报错；Consumer 不存在则 ACK 返回友好错误
+func (s *MeetingSignalService) OnConsumeResume(ctx context.Context, userID int64, payload *ConsumeResumePayload) error {
+	if payload.ConsumerID == "" {
+		return fmt.Errorf("consumer_id 不能为空")
+	}
+	if _, err := s.loadRoomAndParticipant(ctx, payload.RoomCode, userID); err != nil {
+		return err
+	}
+	if err := s.mediaOrchestrator.ResumeConsumer(ctx, payload.ConsumerID); err != nil {
+		logs.Warn(ctx, "service.meeting_signal_service.OnConsumeResume", "恢复 Consumer 失败",
+			zap.String("room_code", payload.RoomCode),
+			zap.Int64("user_id", userID),
+			zap.String("consumer_id", payload.ConsumerID),
+			zap.Error(err))
+		return err
+	}
+	return nil
+}
+
 // ProducerClosePayload meeting.producer.close 请求载荷
 type ProducerClosePayload struct {
 	RoomCode   string `json:"room_code"`

@@ -143,6 +143,12 @@
 			}
 		},
 		{
+			"path": "pages/meeting/debug",
+			"style": {
+				"navigationBarTitleText": "会议调试（Task 9）"
+			}
+		},
+		{
 			"path": "pages/notify/index",
 			"style": {
 				"navigationBarTitleText": "通知中心",

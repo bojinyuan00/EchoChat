@@ -217,18 +217,19 @@
 | 6 | C→S | `meeting.produce.start` | 创建 Producer |
 | 7 | C→S | `meeting.consume.start` | 创建 Consumer |
 | 8 | C→S | `meeting.producer.close` | 关闭自己的 Producer |
-| 9 | S→C | `meeting.member.joined` | 新成员加入广播（REST /join 触发）|
-| 10 | S→C | `meeting.member.left` | 成员离开广播（REST /leave /kick 或 WS 资源清理）|
-| 11 | S→C | `meeting.member.kicked` | 定向通知被踢者 |
-| 12 | S→C | `meeting.host.changed` | 主持人变更 |
-| 13 | S→C | `meeting.room.ended` | 会议被结束 |
-| 14 | S→C | `meeting.member.state.changed` | 成员状态变化广播 |
-| 15 | S→C | `meeting.member.producer.new` | 成员开启/关闭媒体流（`closed=true` 表示关闭）|
-| 16 | S→C | `meeting.chat` | 会议内聊天（REST /chats 触发）|
+| 9 | C→S | `meeting.consume.resume` | 客户端完成 track 挂载后请求 resume Consumer（Task 9 新增，不广播）|
+| 10 | S→C | `meeting.member.joined` | 新成员加入广播（REST /join 触发）|
+| 11 | S→C | `meeting.member.left` | 成员离开广播（REST /leave /kick 或 WS 资源清理）|
+| 12 | S→C | `meeting.member.kicked` | 定向通知被踢者 |
+| 13 | S→C | `meeting.host.changed` | 主持人变更 |
+| 14 | S→C | `meeting.room.ended` | 会议被结束 |
+| 15 | S→C | `meeting.member.state.changed` | 成员状态变化广播 |
+| 16 | S→C | `meeting.member.producer.new` | 成员开启/关闭媒体流（`closed=true` 表示关闭）|
+| 17 | S→C | `meeting.chat` | 会议内聊天（REST /chats 触发）|
 
 ### 协议约定
 
-- **C→S 白名单**：客户端仅可发起上表 C→S 列的 8 个事件，其余 `meeting.*` 事件若由客户端发送被静默丢弃。
+- **C→S 白名单**：客户端仅可发起上表 C→S 列的 9 个事件（Task 9 扩到 9），其余 `meeting.*` 事件若由客户端发送被静默丢弃。
 - **ACK 规则**：每个 C→S 事件服务端必回 `<event>.ack`；成功 `code=0`，业务失败 `code=-1` + 中文 `message`（与 REST 领域错误口径一致）。
 - **错误码示例**：`会议不存在` / `你当前未在会议中` / `仅主持人可执行此操作` / `会议已结束`。
 - **资源追踪**：服务端对每用户在每会议的 transport/producer/consumer 用 Redis Set `echo:meeting:resources:{room_id}:{user_id}` 记录，WS 断开或 `room.leave` 时自动清理。

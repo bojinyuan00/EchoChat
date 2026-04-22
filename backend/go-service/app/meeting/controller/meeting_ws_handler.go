@@ -47,6 +47,7 @@ func (h *MeetingWSHandler) registerEvents() {
 	h.hub.RegisterEvent(constants.MeetingWSEventTransportConnect, h.handleTransportConnect)
 	h.hub.RegisterEvent(constants.MeetingWSEventProduceStart, h.handleProduceStart)
 	h.hub.RegisterEvent(constants.MeetingWSEventConsumeStart, h.handleConsumeStart)
+	h.hub.RegisterEvent(constants.MeetingWSEventConsumeResume, h.handleConsumeResume)
 	h.hub.RegisterEvent(constants.MeetingWSEventProducerClose, h.handleProducerClose)
 }
 
@@ -180,6 +181,19 @@ func (h *MeetingWSHandler) handleConsumeStart(client *ws.Client, msg *ws.Message
 		return
 	}
 	h.sendACK(client, msg, 0, "ok", info)
+}
+
+// handleConsumeResume 处理 meeting.consume.resume（Task 9）
+func (h *MeetingWSHandler) handleConsumeResume(client *ws.Client, msg *ws.Message) {
+	var payload service.ConsumeResumePayload
+	if !h.unmarshal(client, msg, &payload) {
+		return
+	}
+	if err := h.signalSvc.OnConsumeResume(context.Background(), client.UserID, &payload); err != nil {
+		h.sendACK(client, msg, -1, err.Error(), nil)
+		return
+	}
+	h.sendACK(client, msg, 0, "ok", nil)
 }
 
 // handleProducerClose 处理 meeting.producer.close

@@ -1,5 +1,7 @@
 package dto
 
+import "encoding/json"
+
 // ====== 会议模块基础 DTO（Phase 2e-2）======
 
 // MeetingRoomDTO 会议房间传输对象
@@ -66,8 +68,11 @@ type CreateMeetingRoomRequest struct {
 }
 
 // CreateMeetingRoomResponse 创建会议响应
+// Task 9 起返回 router_id + rtp_capabilities，便于前端创建会议后立即 Device.load
 type CreateMeetingRoomResponse struct {
-	Room MeetingRoomDTO `json:"room"`
+	Room            MeetingRoomDTO  `json:"room"`
+	RouterID        string          `json:"router_id,omitempty"`
+	RtpCapabilities json.RawMessage `json:"rtp_capabilities,omitempty"`
 }
 
 // JoinMeetingRoomRequest 加入会议请求
@@ -78,9 +83,10 @@ type JoinMeetingRoomRequest struct {
 
 // JoinMeetingRoomResponse 加入会议响应
 type JoinMeetingRoomResponse struct {
-	Room        MeetingRoomDTO        `json:"room"`
-	Participant MeetingParticipantDTO `json:"participant"`
-	RouterID    string                `json:"router_id,omitempty"` // mediasoup Router ID（Task 7 接入 Node 后填充）
+	Room            MeetingRoomDTO        `json:"room"`
+	Participant     MeetingParticipantDTO `json:"participant"`
+	RouterID        string                `json:"router_id,omitempty"`        // mediasoup Router ID（Task 7 接入 Node 后填充）
+	RtpCapabilities json.RawMessage       `json:"rtp_capabilities,omitempty"` // Router RTP 能力（Task 9）；前端 mediasoup-client Device.load 直接使用
 }
 
 // LeaveMeetingRoomResponse 离开会议响应

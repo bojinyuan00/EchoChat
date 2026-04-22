@@ -114,6 +114,7 @@ const (
 	MeetingWSEventTransportConnect = "meeting.transport.connect" // C→S→Node：Transport DTLS 握手
 	MeetingWSEventProduceStart     = "meeting.produce.start"     // C→S→Node：创建 Producer（广播 producer.new）
 	MeetingWSEventConsumeStart     = "meeting.consume.start"     // C→S→Node：订阅远端 Producer，创建本地 Consumer
+	MeetingWSEventConsumeResume    = "meeting.consume.resume"    // C→S→Node：Consumer 订阅后由前端 track 挂载就绪再 resume（防止首帧丢失；Task 9 引入）
 	MeetingWSEventProducerClose    = "meeting.producer.close"    // C→S→Node：关闭自己的 Producer（推流停止）
 
 	// ====== 补充事件（非 §6.3 核心 11 事件，但业务必须）======
@@ -130,5 +131,6 @@ var MeetingWSClientEvents = []string{
 	MeetingWSEventTransportConnect,
 	MeetingWSEventProduceStart,
 	MeetingWSEventConsumeStart,
+	MeetingWSEventConsumeResume,
 	MeetingWSEventProducerClose,
 }
