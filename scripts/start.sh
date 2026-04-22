@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # EchoChat 一键启动脚本
 # 用法：
-#   ./scripts/start.sh           # 启动全部（Docker 中间件 + Go 后端 + 前台 + 管理端）
+#   ./scripts/start.sh              # 启动应用全部（Docker 中间件 + Go/前端/管理端，本地进程跑）
 #   ./scripts/start.sh --no-docker  # 仅启动应用层（假设 Docker 容器已在运行）
 #   ./scripts/start.sh backend      # 仅启动指定服务（backend|frontend|admin|media|docker）
+#   ./scripts/start.sh full         # Phase 2e-2 Task 14：docker compose 全栈启动（含 media-server 容器）
+#                                   # 会读 deploy/.env（如不存在提示 copy example），公网则用 deploy-public.sh
 # 注意：不使用 set -e，避免单个服务启动失败中断其他服务；
 # 失败时由 spawn_bg 内部打印日志末尾辅助排障
 set -uo pipefail
@@ -12,6 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 RUN_DIR="$ROOT_DIR/.run"
 LOG_DIR="$RUN_DIR/logs"
+DEPLOY_DIR="$ROOT_DIR/deploy"
 mkdir -p "$RUN_DIR" "$LOG_DIR"
 
 COLOR_GREEN='\033[0;32m'
@@ -64,6 +67,57 @@ start_docker() {
   cd "$ROOT_DIR/deploy"
   docker compose -f docker-compose.dev.yml up -d postgres redis minio
   log_ok "Docker 中间件已启动"
+}
+
+# 确保 deploy/.env 存在：若缺失则从 .env.local.example 拷贝（等价于本机 Demo 默认值）
+# 公网部署走 scripts/deploy-public.sh 单独校验，不经此函数
+ensure_env_file() {
+  local env_file="$DEPLOY_DIR/.env"
+  if [[ -f "$env_file" ]]; then
+    return 0
+  fi
+  local tmpl="$DEPLOY_DIR/.env.local.example"
+  if [[ -f "$tmpl" ]]; then
+    cp "$tmpl" "$env_file"
+    log_warn "deploy/.env 不存在，已从 .env.local.example 复制（本机 Demo 默认值）"
+  else
+    log_warn "deploy/.env 和 .env.local.example 都不存在，compose 将使用内置默认值"
+  fi
+}
+
+# Phase 2e-2 Task 14：docker compose 全栈启动
+# 默认只拉起非 public profile 的服务（5 个：postgres/redis/minio/go-service/media-server）
+# coturn 走 public profile，需要用 scripts/deploy-public.sh
+start_full() {
+  ensure_env_file
+  log_info "docker compose 全栈启动（postgres + redis + minio + go-service + media-server）..."
+  cd "$DEPLOY_DIR"
+  if ! docker compose -f docker-compose.dev.yml up -d --build; then
+    log_err "docker compose 启动失败，请检查上方错误输出"
+    return 1
+  fi
+  log_ok "全栈服务已发起启动，等待 healthcheck..."
+  # 等待最多 180 秒让 media-server 进入 healthy
+  local waited=0
+  while (( waited < 180 )); do
+    local health
+    health="$(docker inspect -f '{{.State.Health.Status}}' echochat-media-server 2>/dev/null || echo 'starting')"
+    case "$health" in
+      healthy)
+        log_ok "media-server 已 healthy（$waited 秒）"
+        break
+        ;;
+      unhealthy)
+        log_err "media-server unhealthy，请查看日志：docker logs echochat-media-server"
+        return 1
+        ;;
+    esac
+    sleep 3
+    waited=$((waited + 3))
+  done
+  if (( waited >= 180 )); then
+    log_warn "等待 media-server healthy 超过 180 秒，可能仍在 mediasoup worker 初始化中，请手动验证"
+  fi
 }
 
 start_backend() {
@@ -200,9 +254,21 @@ main() {
     frontend) start_frontend ;;
     admin)    start_admin ;;
     media)    start_media ;;
+    full)
+      start_full || log_err "compose 全栈启动异常"
+      # full 模式下仍用本地进程跑前台 + 管理端（热更体验更好，符合开发机场景）
+      start_frontend || true
+      start_admin    || true
+      print_summary
+      ;;
     *)
       log_err "未知参数: $target"
-      echo "用法: $0 [all|docker|backend|frontend|admin|media|--no-docker]"
+      echo "用法: $0 [all|docker|backend|frontend|admin|media|full|--no-docker]"
+      echo ""
+      echo "模式说明："
+      echo "  all       本地进程启动应用 + docker 只起中间件（默认，开发常用）"
+      echo "  full      docker compose 全栈启动（含 media-server 容器，接近生产形态）"
+      echo "  公网部署  使用 scripts/deploy-public.sh（校验 ANNOUNCED_IP + 启动 coturn）"
       exit 1
       ;;
   esac

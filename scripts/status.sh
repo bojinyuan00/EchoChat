@@ -51,10 +51,17 @@ check_port "后台管理端"    3100 "http://localhost:3100"
 
 echo ""
 echo "===== Docker 中间件 ====="
-check_container "echochat-postgres" 5432
-check_container "echochat-redis"    6379
-check_container "echochat-minio"    9000
+check_container "echochat-postgres"     5432
+check_container "echochat-redis"        6379
+check_container "echochat-minio"        9000
+
+echo ""
+echo "===== 容器化应用（docker compose full） ====="
+check_container "echochat-go-service"    8085
+check_container "echochat-media-server"  3300
+check_container "echochat-coturn"        3478
 
 echo ""
 echo "日志目录：$RUN_DIR/logs"
+echo "compose 日志：docker compose -f deploy/docker-compose.dev.yml logs -f [service]"
 echo ""

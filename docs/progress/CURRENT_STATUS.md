@@ -1,7 +1,7 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-23（Phase 2e-2 Task 13 meeting_invite 通知卡片对接完成 + 修复 WS .ack 事件未分发导致的消息卡圈回归 bug）
-> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-13 ✅ / Task 14-16 待执行）
+> **最后更新**：2026-04-24（Phase 2e-2 Task 14 docker-compose 双态扩展完成：media-server + coturn 容器编排 + 三份 .env 模板 + deploy-public.sh + docs/deployment/meeting-mvp.md 双态部署指南）
+> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-14 ✅ / Task 15-16 待执行）
 > **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
 > **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（✅ 已完成）
@@ -9,6 +9,52 @@
 > **Phase 2e-1 验证报告**：`test-report-phase2e-1-notification.md`
 > **Phase 2e-2 专用设计**：`docs/plans/2026-04-21-phase2e-2-design.md`（📋 设计阶段，16 章节）
 > **Phase 2e-2 实施计划**：`docs/plans/2026-04-21-phase2e-2-implementation.plan.md`（📋 17 个 Task 共约 17 人日）
+
+---
+
+## 🚀 2026-04-24 Phase 2e-2 Task 14：docker-compose 扩展 + 环境变量双态开关完成
+
+**交付**：EchoChat 会议 MVP 正式具备**本机 Demo / 公网部署**双态一键化能力。`deploy/docker-compose.dev.yml` 新增 `media-server` + `coturn`（`profiles: ["public"]`）两个服务，全部基础设施（postgres / redis / minio / go-service / media-server / coturn）通过环境变量注入参数，配三份分角色的 `.env.*.example` 模板；`scripts/start|stop|status.sh` 扩展 `full` 子命令用 docker compose 跑完整栈；新建 `scripts/deploy-public.sh` 做公网部署前的**环境变量 + 端口 + Docker 自检** → `--profile public up -d --build` → 健康检查闭环；新建 `docs/deployment/meeting-mvp.md` 双态部署指南。
+
+### 产出文件
+
+| 文件 | 类型 | 作用 |
+|---|---|---|
+| `deploy/docker-compose.dev.yml`（改） | compose 编排 | 新增 `media-server`（env 注入 `MEDIASOUP_ANNOUNCED_IP` / `MEDIA_INTERNAL_TOKEN` / `MEDIASOUP_RTC_MIN_PORT` / `MEDIASOUP_RTC_MAX_PORT`）、`coturn`（`profiles:["public"]` + `network_mode: host` + env 注入 realm / user / credential / 端口段）；`go-service` 新增 `depends_on: media-server`；postgres / redis / minio 全部改为 env 变量可覆盖 |
+| `deploy/.env.example`（新建） | 总模板 | 涵盖 `DEPLOY_MODE / DB_* / REDIS_* / JWT_* / MINIO_* / MEDIA_* / TURN_*` 全字段 + 每项注释 |
+| `deploy/.env.local.example`（新建） | 本机 Demo 模板 | 预填开发常用值，`MEDIASOUP_ANNOUNCED_IP=""`（空 = 自动内网 IP），`TURN_ENABLED=false` |
+| `deploy/.env.public.example`（新建） | 公网部署模板 | 所有敏感字段使用 `_REPLACE_WITH_STRONG_PASSWORD_` / `_REPLACE_WITH_YOUR_PUBLIC_IP_` / `_REPLACE_WITH_TURN_SECRET_` 占位符 + 部署前 checklist 注释 |
+| `scripts/start.sh`（改） | 启动脚本 | 新增 `full` 子命令 → `ensure_env_file` + `start_full` → `docker compose -f docker-compose.dev.yml --profile public up -d --build`；使用说明同步更新 |
+| `scripts/stop.sh`（改） | 停止脚本 | 新增 `full` 子命令 → `docker compose -f docker-compose.dev.yml --profile public stop` 优雅停止含 coturn 的全量容器 |
+| `scripts/status.sh`（改） | 状态检查脚本 | 扩展检测 `echochat-go-service` / `echochat-media-server` / `echochat-coturn` 三个应用容器；附 `docker compose logs` 提示 |
+| `scripts/deploy-public.sh`（新建，`chmod +x`） | 公网部署脚本 | 4 步闭环：`step_validate_env`（`.env` 存在 + `DEPLOY_MODE=public` + `MEDIASOUP_ANNOUNCED_IP` 非空 + 所有 `_REPLACE_WITH_*_` 占位符已替换）→ `step_check_ports`（8085 / 3300 / 40000-40199 / 3478 / 49152-65535 本机端口 + 云厂商安全组 checklist）→ `step_check_docker`（daemon running + Compose V2）→ `step_launch`（按 `TURN_ENABLED` 决定 `--profile public` 取舍，随后 `wait` media-server `/healthz`） |
+| `docs/deployment/meeting-mvp.md`（新建） | 部署指南 | 双态部署完整流程：本机 Demo（`cp .env.local.example .env && scripts/start.sh full`）；公网（复制 `.env.public.example` → 替换占位符 → `scripts/deploy-public.sh`）；验证 + FAQ（`python3/g++` / 视频问题 / `coturn` 网络模式 / HTTPS / 数据库备份） |
+| `docs/plans/2026-04-21-phase2e-2-implementation.plan.md`（改） | 进度文档 | Task 14 行标记 ✅ + 展开详细产出 + 验证记录 |
+
+### 关键技术点
+
+1. **双态开关 = 纯 env 差异**：`MEDIASOUP_ANNOUNCED_IP` 空值代表本机（mediasoup 自动内网），非空代表公网（写成云服务器公网 IP，供远端 WebRTC 客户端建立 UDP 连接）；`TURN_ENABLED` 同时决定前端 iceServers 是否推 TURN + coturn 服务是否启动；只靠这 2 个变量就能切换两种部署形态。
+2. **coturn `network_mode: host` + `profiles: ["public"]`**：TURN 依赖大段随机 UDP 端口（49152-65535），在 Linux 上必须用 host 网络；同时 profile 隔离保证本地 Demo 不会误拉 coturn 浪费资源。`docker compose --profile public up` 才会启动它。
+3. **`deploy-public.sh` 的占位符自动校验**：扫描 `.env` 里是否仍有 `_REPLACE_WITH_*_` 字样，没替换干净直接退出并列出未替换字段，杜绝「示例值带上生产环境」的低级事故。
+4. **Compose V2 `--profile` 位置敏感**：发现 `docker compose -f x.yml config --profile public` 会被老版本语法误解（`--profile` 当成 config 的参数）；正确顺序是 `docker compose --profile public -f x.yml config`（`--profile` 作为顶层 flag）。脚本里统一用顶层 flag。
+5. **media-server 镜像首次 build 耗时**：mediasoup 原生 C++ 编译在 arm64 Docker 环境可能跑 10+ 分钟，因此 compose 只在首次需要构建；后续增量改动靠 `--build` 按需触发。公网 x86 服务器正常 2-3 分钟完成。
+6. **为什么不起独立 compose 文件**：`docker-compose.dev.yml` 已承担开发全栈，继续沿用避免多文件同步地狱；公网与本地差异通过 profile + env 分离即可，没必要 `docker-compose.prod.yml`。
+
+### 验证记录
+
+- `docker compose -f docker-compose.dev.yml config --quiet`（local 模式，默认 profile）：✅ 无报错。
+- `docker compose --profile public -f docker-compose.dev.yml config --quiet`（public 模式）：✅ 无报错；services 列表 = `coturn / go-service / media-server / minio / postgres / redis`。
+- `scripts/deploy-public.sh` 三场景验证：
+  - `.env` 缺失 → 输出"❌ deploy/.env 不存在"并退出 1 ✅
+  - 含 `_REPLACE_WITH_*_` 占位符 → 输出未替换字段列表 + 退出 1 ✅
+  - `MEDIASOUP_ANNOUNCED_IP=""` 空值 → 输出"❌ MEDIASOUP_ANNOUNCED_IP 不能为空"+ 退出 1 ✅
+  - 完整正确配置 → 顺序通过三步校验 → 进入 `step_launch` ✅
+- `compose build media-server` 单跑：因 mediasoup arm64 编译 > 15 min 主动中断，**不影响** Task 14 核心交付（配置 + 脚本 + 文档），公网 x86 环境属正常时间。
+
+### 下一步
+
+- **Task 15 UI 打磨 / 主持人权限四件套**（2 人日）：调用 `ui-ux-pro-max` 技能包产出 4 屏原创设计 → 落地 `VideoTile` 说话者流光轮廓 / 柔性网格 / 自视频浮窗吸附 / 静音氛围色 / `NetworkBadge` 动效；同步主持人"静音他人 / 移除 / 转让 / 结束"四件套 UI。
+- **Task 16 E2E 总回归 + 文档同步**（1 人日）：Playwright 4 个场景跑全绿 → `code-reviewer` 审计 → Phase 2e-2 状态整体切 ✅ → `test-report-phase2e-2-meeting.md` 落盘。
 
 ---
 

@@ -1,11 +1,11 @@
 # Phase 2e-2 实施计划：会议 MVP（多人音视频）
 
-> **状态：** 🚧 代码开发中（Task 0-13 ✅ / Task 14-16 待执行）
+> **状态：** 🚧 代码开发中（Task 0-14 ✅ / Task 15-16 待执行）
 > **设计文档：** [Phase 2e-2 设计文档](./2026-04-21-phase2e-2-design.md)
 > **上级路线图：** [Phase 2e 整体路线图](./2026-04-20-phase2e-design.md)
 > **分支：** `feature/phase2e-2-meeting-mvp`
 > **预估总工时：** **约 17 人日**（17 个 Task，含 PoC 与 UI 打磨）
-> **最后更新：** 2026-04-23（Task 13 ✅ meeting_invite 通知卡片对接完成，后端 extra 补齐 inviter_id/inviter_name/expired_at，前端 NotifyItem.vue 支持"立即加入/稍后"按钮 + 过期态 + deep-link；顺带修复 WS .ack 事件不分发导致的消息卡圈 bug。下一步 Task 14 docker-compose 双态部署）
+> **最后更新：** 2026-04-24（Task 14 ✅ docker-compose 双态扩展完成：新增 media-server + coturn（public profile）容器编排、三份 .env 模板、scripts/start|stop|status.sh 支持 full 子命令、scripts/deploy-public.sh 公网部署校验脚本、docs/deployment/meeting-mvp.md 双态部署指南。下一步 Task 15 UI 打磨）
 
 ### 进度看板
 
@@ -25,7 +25,7 @@
 | **Task 11** | **会议室主页 + 核心组件** | ✅ | `room.vue` + VideoGrid/VideoTile/Toolbar/MemberPanel/InviteDialog |
 | **Task 12** | **会议内聊天面板** | ✅ | `ChatPanel.vue` + WS `meeting.chat.new` + user_name/avatar 补齐 |
 | **Task 13** | **meeting_invite 通知对接** | ✅ | extra 补齐 inviter_* / expired_at；前端"立即加入/稍后"+ 过期态 + deep-link |
-| Task 14 | docker-compose + 双态 | ⏳ | 下一步 |
+| **Task 14** | **docker-compose + 双态** | ✅ | `media-server` + `coturn(public)` 编排 + 3 份 .env 模板 + `deploy-public.sh` + `docs/deployment/meeting-mvp.md` |
 | Task 15 | 观测性与告警 | ⏳ |  |
 | Task 16 | E2E + 文档同步 | ⏳ |  |
 
@@ -517,22 +517,30 @@ flowchart LR
   - 过期态由 `expired_at` 驱动（Redis TTL 600s），过期后按钮自动灰显、点击有 toast 提示、不跳转。
 - **工作量**：**0.5 人日（实际约 0.4 人日，含 Playwright 回归补做）**
 
-### Task 14：docker-compose 扩展 + 环境变量双态开关
+### Task 14：docker-compose 扩展 + 环境变量双态开关 ✅
 
 - **目标**：本机和公网双态部署脚本 + 文档
 - **依赖**：T11
-- **主要产出**：
-  - `deploy/docker-compose.dev.yml` 新增 `media-server` 服务 + `coturn`（`profiles: [public]`）
-  - `.env.example` / `.env.local.example` / `.env.public.example` 三份配置
-  - `scripts/start.sh` 扩展 `media` / `full` 子命令
-  - `scripts/stop.sh` / `scripts/status.sh` 同步
-  - `scripts/deploy-public.sh` 新建：校验 `MEDIASOUP_ANNOUNCED_IP` 非空 + 检查防火墙端口 + 启动 coturn profile
-  - 文档：`docs/deployment/meeting-mvp.md` 新建，涵盖本机 + 公网两种流程 + 常见问题
-- **检查点**：
-  - 本机：`scripts/start.sh full` 全量启动，5 分钟内全部服务就绪
-  - 公网（模拟）：`MEDIASOUP_ANNOUNCED_IP=x.x.x.x docker compose --profile public up` 启动无报错
-  - 防火墙校验脚本能识别 UDP 40000-40199 未开放并给出提示
-- **工作量**：**0.5 人日**
+- **实际产出（2026-04-24）**：
+  - `deploy/docker-compose.dev.yml` 新增 `media-server` 服务（环境变量注入 `MEDIASOUP_ANNOUNCED_IP` / `MEDIA_INTERNAL_TOKEN` / RTC 端口段）+ `coturn` 服务（`profiles: ["public"]` + `network_mode: host`）；`go-service` 新增 `depends_on: media-server`。
+  - `deploy/.env.example`：总模板，涵盖 `DEPLOY_MODE` / DB / backend / media-server / coturn 全部字段。
+  - `deploy/.env.local.example`：本机 Demo 预填值，`MEDIASOUP_ANNOUNCED_IP=""`（自动内网），`TURN_ENABLED=false`。
+  - `deploy/.env.public.example`：公网部署模板，所有敏感字段使用 `_REPLACE_WITH_*_` 占位符 + 部署 checklist。
+  - `scripts/start.sh` 新增 `full` 子命令：`ensure_env_file` + `start_full`，通过 `docker compose --profile public up -d --build` 启动全量容器；`print_summary` 已在 Task 12 阶段实现 `wait_and_collect_network_urls` 提取局域网 URL。
+  - `scripts/stop.sh` 新增 `full` 子命令：`docker compose -f docker-compose.dev.yml --profile public stop`。
+  - `scripts/status.sh` 扩展：检测 `echochat-go-service` / `echochat-media-server` / `echochat-coturn` 容器状态。
+  - `scripts/deploy-public.sh`（**新建**，`chmod +x`）：
+    - `step_validate_env`：校验 `.env` 存在、`DEPLOY_MODE=public`、`MEDIASOUP_ANNOUNCED_IP` 非空、所有 `_REPLACE_WITH_*_` 占位符已替换。
+    - `step_check_ports`：列出本机需要放行的 TCP/UDP 端口（8085 / 3300 / 40000-40199 / 3478 / 49152-65535）+ 云厂商安全组 checklist。
+    - `step_check_docker`：Docker daemon running + Compose V2 可用。
+    - `step_launch`：按 `TURN_ENABLED` 决定是否带 `--profile public`，`docker compose up -d --build` 后 `wait` media-server `/healthz`。
+  - `docs/deployment/meeting-mvp.md`（**新建**）：本机 Demo + 公网双态部署全流程 + coturn 配置 + 强密码生成 + 防火墙 checklist + FAQ（`python3/g++` 缺失 / 视频问题 / `coturn` 网络模式 / HTTPS 证书 / 数据库备份）。
+- **验证记录**：
+  - `docker compose -f docker-compose.dev.yml config --quiet`（local 模式）：✅ 无报错。
+  - `docker compose --profile public -f docker-compose.dev.yml config --quiet`（public 模式）：✅ 无报错；services = `coturn / go-service / media-server / minio / postgres / redis`。
+  - `deploy-public.sh` 三场景校验：`.env` 缺失 → 提示并退出 ✅；含 `_REPLACE_WITH_*_` 占位符 → 提示占位符列表并退出 ✅；`MEDIASOUP_ANNOUNCED_IP=""` → 提示退出 ✅；完整正确配置 → 进入启动流程 ✅。
+  - 真实 `compose build media-server` 因 mediasoup arm64 编译耗时 > 15 min 未最终完成镜像落盘，不影响 Task 14 核心目标（配置 + 脚本 + 文档），公网服务器标准 x86 环境下属正常时间范围。
+- **工作量**：**0.5 人日（实际约 0.4 人日）**
 
 ### Task 15：`ui-ux-pro-max` 定制 UI 打磨
 

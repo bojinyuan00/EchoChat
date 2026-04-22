@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # EchoChat 一键停止脚本
 # 用法：
-#   ./scripts/stop.sh           # 停止应用层（Go 后端 + 前台 + 管理端），保留 Docker 容器
+#   ./scripts/stop.sh           # 停止应用层（Go 后端 + 前台 + 管理端 + 媒体），保留 Docker 容器
 #   ./scripts/stop.sh --all     # 停止全部（含 Docker 中间件）
+#   ./scripts/stop.sh full      # 停止 docker compose 全栈（含 media-server 容器，含 public profile 的 coturn）
 #   ./scripts/stop.sh backend   # 仅停止指定服务（backend|frontend|admin|media|docker）
 # 不使用 set -e：即使某一项停止失败，其他项也要继续尝试
 set -uo pipefail
@@ -10,6 +11,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 RUN_DIR="$ROOT_DIR/.run"
+DEPLOY_DIR="$ROOT_DIR/deploy"
 
 COLOR_GREEN='\033[0;32m'
 COLOR_YELLOW='\033[0;33m'
@@ -88,6 +90,15 @@ stop_docker() {
   log_ok "Docker 中间件已停止（数据卷保留）"
 }
 
+# Phase 2e-2 Task 14：停止 docker compose 全栈（含 media-server、coturn）
+# 使用 --profile public 确保即使 coturn 在 public profile 下运行也能被停掉
+stop_full() {
+  log_info "停止 docker compose 全栈（含 media-server / coturn）..."
+  cd "$DEPLOY_DIR"
+  docker compose -f docker-compose.dev.yml --profile public stop || true
+  log_ok "全栈服务已停止（数据卷保留）"
+}
+
 main() {
   local target="${1:-app}"
 
@@ -112,8 +123,9 @@ main() {
     admin)    stop_admin ;;
     media)    stop_media ;;
     docker)   stop_docker ;;
+    full)     stop_full ;;
     *)
-      echo "用法: $0 [app|--all|backend|frontend|admin|media|docker]"
+      echo "用法: $0 [app|--all|backend|frontend|admin|media|docker|full]"
       exit 1
       ;;
   esac

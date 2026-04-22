@@ -1,18 +1,21 @@
 services:
+  # ============================================================
+  # 中间件层：Postgres / Redis / MinIO
+  # ============================================================
   postgres:
     image: postgres:17
     container_name: echochat-postgres
     environment:
-      POSTGRES_DB: echochat
-      POSTGRES_USER: echochat
-      POSTGRES_PASSWORD: echochat_dev_2026
+      POSTGRES_DB: ${POSTGRES_DB:-echochat}
+      POSTGRES_USER: ${POSTGRES_USER:-echochat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-echochat_dev_2026}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U echochat"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-echochat}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -40,8 +43,8 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: echochat
-      MINIO_ROOT_PASSWORD: echochat123456
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-echochat}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-echochat123456}
     volumes:
       - minio_data:/data
     healthcheck:
@@ -51,6 +54,9 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ============================================================
+  # 应用层：Go backend
+  # ============================================================
   go-service:
     build:
       context: ../backend/go-service
@@ -58,8 +64,11 @@ services:
     container_name: echochat-go-service
     environment:
       CONFIG_NAME: config.docker
+      # 透传关键环境变量，config.docker.yaml 内部引用（可选覆盖）
+      ECHOCHAT_JWT_SECRET: ${JWT_SECRET:-}
+      ECHOCHAT_MEDIA_SERVER_INTERNAL_TOKEN: ${MEDIA_INTERNAL_TOKEN:-}
     ports:
-      - "8085:8085"
+      - "${GO_SERVICE_PORT:-8085}:8085"
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,6 +76,73 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      media-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ============================================================
+  # 媒体层：mediasoup Node SFU
+  # ============================================================
+  media-server:
+    build:
+      context: ../media-server
+      dockerfile: Dockerfile
+    container_name: echochat-media-server
+    environment:
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: 3300
+      LOG_LEVEL: info
+      LOG_PRETTY: "false"
+      MEDIA_INTERNAL_TOKEN: ${MEDIA_INTERNAL_TOKEN:-dev-internal-token-change-me}
+      MEDIASOUP_LISTEN_IP: ${MEDIASOUP_LISTEN_IP:-0.0.0.0}
+      # 关键：公网部署时必须填服务器公网 IP，本机留空
+      MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP:-}
+      MEDIASOUP_RTC_MIN_PORT: ${MEDIASOUP_RTC_MIN_PORT:-40000}
+      MEDIASOUP_RTC_MAX_PORT: ${MEDIASOUP_RTC_MAX_PORT:-40199}
+      MEDIASOUP_WORKER_LOG_LEVEL: warn
+      MEDIASOUP_MAX_ROUTERS: "200"
+    ports:
+      - "3300:3300"
+      # mediasoup RTC 流量端口范围（UDP + TCP 双栈，ICE-TCP fallback 用）
+      - "40000-40199:40000-40199/udp"
+      - "40000-40199:40000-40199/tcp"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3300/healthz"]
+      interval: 10s
+      timeout: 3s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+
+  # ============================================================
+  # TURN 层：coturn（仅公网部署，profiles=public 才启动）
+  # ------------------------------------------------------------
+  # 本机 Demo 默认不拉起（coturn 在 profiles 里）
+  # 公网部署：docker compose --profile public up -d
+  #           或使用 scripts/deploy-public.sh 一键启动
+  # ============================================================
+  coturn:
+    image: coturn/coturn:latest
+    container_name: echochat-coturn
+    profiles: ["public"]
+    # TURN 一般需要 host 网络以便对外中继（端口映射模式会遇到
+    # coturn 回包端口被 Docker NAT 改写的问题）
+    network_mode: host
+    command: >
+      -n
+      --log-file=stdout
+      --listening-port=${TURN_LISTEN_PORT:-3478}
+      --tls-listening-port=${TURN_TLS_PORT:-5349}
+      --min-port=${TURN_MIN_PORT:-49160}
+      --max-port=${TURN_MAX_PORT:-49200}
+      --realm=${TURN_REALM:-echochat}
+      --user=${TURN_USERNAME:-echouser}:${TURN_PASSWORD:-echopass}
+      --fingerprint
+      --lt-cred-mech
+      --no-multicast-peers
+      --no-cli
+      --no-tlsv1
+      --no-tlsv1_1
     restart: unless-stopped
 
 volumes:
