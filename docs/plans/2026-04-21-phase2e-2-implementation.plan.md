@@ -1,11 +1,47 @@
 # Phase 2e-2 实施计划：会议 MVP（多人音视频）
 
-> **状态：** 📋 待执行（设计文档定稿后进入代码开发）
+> **状态：** 🚧 代码开发中（Task 0-12 ✅ / Task 13-16 待执行）
 > **设计文档：** [Phase 2e-2 设计文档](./2026-04-21-phase2e-2-design.md)
 > **上级路线图：** [Phase 2e 整体路线图](./2026-04-20-phase2e-design.md)
 > **分支：** `feature/phase2e-2-meeting-mvp`
 > **预估总工时：** **约 17 人日**（17 个 Task，含 PoC 与 UI 打磨）
-> **最后更新：** 2026-04-21（Task 0-8 ✅ 已落地，会议生命周期状态机 E2E 20/20 PASS，下一步 Task 9 前端 mediasoup-client 接入）
+> **最后更新：** 2026-04-22（Task 10-12 ✅ 前端会议 UI 主链路打通；叠加一轮深度 UI 打磨：uni-button ::after 全视口遮罩修复、toolbar z-index 提升、面板 toggle、视频 HD、静默 stale 清理。下一步 Task 13 主持人权限全链路）
+
+### 进度看板
+
+| Task | 标题 | 状态 | 说明 |
+|---|---|---|---|
+| Task 0 | mediasoup PoC Spike | ✅ | 2026-04-21 完成 |
+| Task 1 | media-server 骨架 | ✅ | Fastify 5 |
+| Task 2 | Node 9 个 REST API | ✅ | Router/Transport/Producer/Consumer |
+| Task 3 | 数据库 DDL + DAO | ✅ | 3 张表 + 9 索引 |
+| Task 4 | Go meeting 骨架 | ✅ | 12 路由 + Wire |
+| Task 5 | 会议 REST 接口 | ✅ | 12 接口全量业务 |
+| Task 6 | WS 信令处理器 | ✅ | 13 事件 |
+| Task 7 | Go↔Node HTTP Client | ✅ | HTTPMediaOrchestrator |
+| Task 8 | 生命周期状态机 | ✅ | E2E 20/20 PASS |
+| Task 9 | 前端 mediasoup + Store | ✅ | REST/WS/媒体三链路 |
+| **Task 10** | **前端预览/创建/加入页** | ✅ | `create.vue` / `join.vue` / `preview.vue` + Hub `index.vue` |
+| **Task 11** | **会议室主页 + 核心组件** | ✅ | `room.vue` + VideoGrid/VideoTile/Toolbar/MemberPanel/InviteDialog |
+| **Task 12** | **会议内聊天面板** | ✅ | `ChatPanel.vue` + WS `meeting.chat.new` + user_name/avatar 补齐 |
+| Task 13 | meeting_invite 通知对接 | ⏳ | 下一步 |
+| Task 14 | docker-compose + 双态 | ⏳ |  |
+| Task 15 | 观测性与告警 | ⏳ |  |
+| Task 16 | E2E + 文档同步 | ⏳ |  |
+
+### 2026-04-22 UI 打磨专项（Task 10-12 之后的体验收敛）
+
+这一轮不属于新 Task，是对已落地页面的深度打磨，统一记录在 CURRENT_STATUS.md 对应段落，要点速览：
+
+1. **uni-button `::after` 全视口遮罩（两处）**：
+   - MeetingToolbar：`.btn::after { content:none }` + `.btn { position:relative }` 解除"离开按钮吃掉所有兄弟按钮点击"
+   - ChatPanel：`.btn-send::after { content:none; display:none }` 解除因 `all:unset` 导致 `::after` 回溯到 body 形成全屏遮罩
+2. **toolbar z-index 提升至 210**：覆盖 MemberPanel/InviteDialog 的 `.panel-root` (z=200) mask，保证抽屉打开时按钮仍可点击 + toggle。
+3. **成员/邀请/聊天按钮 toggle**：`openMembers/openInvite/openChat` 全部改为取反切换，符合用户"再次点击关闭"的直觉。
+4. **H5 全局容器铺满视口**：`App.vue` 给 `html/body/#app/uni-app/uni-page*` 全部 `width/height: 100%`，修复"整体偏左上角"。
+5. **刷新后残留会议的静默清理**：`cleanupStaleMeetings` + `joinAndEnter/createAndEnter` 首次静默 + 自动重试；`leaveRoom({silent:true})` 抑制"你不在此会议中"toast。
+6. **设备预览 ↔ 会议内同分辨率**：统一 1280×720 / 24-30fps。
+7. **会议聊天显示真实昵称**：后端 `ResolveUsersDisplay` 批量补齐 `user_name` / `user_avatar`，前端 ChatPanel 显示昵称而非"用户 54"。
 
 ---
 
@@ -413,7 +449,7 @@ flowchart LR
   - 关闭标签后另一端 1 秒内收到 `meeting.member.left`
 - **工作量**：**1.5 人日**
 
-### Task 10：前端设备预览页 + 创建页 + 加入页
+### Task 10：前端设备预览页 + 创建页 + 加入页 ✅（2026-04-21/22 完成）
 
 - **目标**：完成 `/pages/meeting/{create,join,preview}.vue` 3 个页面
 - **依赖**：T5
@@ -432,7 +468,7 @@ flowchart LR
   - 权限被拒绝时给出清晰引导
 - **工作量**：**1 人日**
 
-### Task 11：前端会议室主页（视频网格 + 工具栏 + 成员面板 + 响应式）
+### Task 11：前端会议室主页（视频网格 + 工具栏 + 成员面板 + 响应式） ✅（2026-04-21/22 完成，含一轮 UI 深度打磨）
 
 - **目标**：实现 `/pages/meeting/room.vue` + 6 个主要组件
 - **依赖**：T9
@@ -450,7 +486,7 @@ flowchart LR
   - 手机浏览器：单列主画面 + 缩略抽屉工作正常
 - **工作量**：**2 人日**
 
-### Task 12：会议内聊天面板
+### Task 12：会议内聊天面板 ✅（2026-04-21/22 完成）
 
 - **目标**：实现 `ChatPanel.vue` + 后端 `meeting_chats` 相关接口
 - **依赖**：T11

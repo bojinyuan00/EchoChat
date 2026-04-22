@@ -1,7 +1,7 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-21（Phase 2e-2 Task 9 前端 mediasoup-client + Pinia Store 落地，REST/WS/媒体三链路打通，`npm run build:h5` 通过）
-> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-9 ✅ / Task 10-16 待执行）
+> **最后更新**：2026-04-22（Phase 2e-2 Task 10-12 前端会议 UI 主链路全部落地 + uni-button H5 遮罩深度修复 + 面板 toggle 交互打磨）
+> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-12 ✅ / Task 13-16 待执行）
 > **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
 > **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（✅ 已完成）
@@ -167,6 +167,88 @@
 ### 下一步
 
 - **Task 5**（1.5 人日）：`MeetingService.CreateRoom` + `JoinRoom` + `LeaveRoom` + `EndRoom` 核心业务逻辑（6 位会议号生成 + bcrypt 密码校验 + 人数上限 + Redis host 宽限期 Timer 骨架），替换当前 `ErrNotImplemented` 占位。
+
+---
+
+## 🎯 2026-04-22 Phase 2e-2 Task 10-12 + UI 打磨：会议 MVP 前端主链路全部打通
+
+**交付**：Task 10（创建/加入/设备预览三页）、Task 11（会议室主页 + 核心组件）、Task 12（会议内聊天面板）顺序落地，叠加一轮深度 UI 打磨，解决了 uni-app H5 `<uni-button>` 点击遮罩、全屏面板 z-index 覆盖、刷新后"残留会议"提示、视频清晰度、面板 toggle 交互等一整串体验问题，现前端 → REST → WS → 媒体 → 渲染 → 内置聊天链路全部可用。
+
+### 产出文件（本轮新建 / 改动要点）
+
+| 文件 | 角色 | 作用 |
+|---|---|---|
+| `frontend/src/pages/meeting/create.vue` (新) | Task 10 | 立即/预约创建表单，校验 + 跳转 preview |
+| `frontend/src/pages/meeting/join.vue` (新) | Task 10 | 会议号/密码输入 + 识别 `xxx-yyy-zzz` 格式 |
+| `frontend/src/pages/meeting/preview.vue` (新/改) | Task 10 + UI | 设备预览 + 默认启用开关；`getUserMedia` 升级到 1280x720 / 24-30fps，和会议内同分辨率统一 |
+| `frontend/src/pages/meeting/index.vue` (重写) | UI 打磨 | 从"功能开发中"占位改为 **会议 Hub**：即时创建 + 加入会议双入口卡片 |
+| `frontend/src/pages/meeting/room.vue` (新/多轮改) | Task 11 + UI | 视频网格 + 顶部栏 + Toolbar + 抽屉聊天 + 离会弹窗；修复 z-index/刷新/toggle/输入遮挡等 5 个子问题 |
+| `frontend/src/components/meeting/MeetingToolbar.vue` (新/改) | Task 11 + UI | 6 个工具按钮；**`.btn::after` 禁用修复点击穿透**，`z-index: 210` 浮在成员面板 mask 之上 |
+| `frontend/src/components/meeting/VideoGrid.vue` / `VideoTile.vue` (新) | Task 11 | 自适应 1/2/3-4/5-9/10+ 网格 + 本地/远端 tile + 主持人徽章 |
+| `frontend/src/components/meeting/MemberPanel.vue` (新) | Task 11 | 右侧抽屉成员列表 + 踢出/转让菜单 |
+| `frontend/src/components/meeting/InviteDialog.vue` (新) | Task 11 | 会议号/密码/邀请链接复制 |
+| `frontend/src/components/meeting/ChatPanel.vue` (新/多轮改) | Task 12 + UI | 聊天抽屉 → 侧边栏布局，消息流 + 头像聚合 + 懒加载更多；**`.btn-send::after` 彻底 `content:none`** 解决关闭/输入/发送全部被遮挡 |
+| `frontend/src/store/meeting.js` (改) | Task 10-12 + UI | 新增 `cleanupStaleMeetings`（静默清理）+ `createAndEnter`/`joinAndEnter` 自动重试 + 视频约束 HD |
+| `frontend/src/api/meeting.js` (改) | UI | `createRoom`/`joinRoom`/`leaveRoom` 支持 `options.silent` 透传 |
+| `frontend/src/utils/request.js` (改) | UI | 请求层新增 `silent` 选项抑制 toast，给 stale 清理等场景用 |
+| `frontend/src/App.vue` (改) | UI | H5 全局 CSS：`html/body/#app/uni-app/uni-page/uni-page-body` 均 100% 宽高，修复"整体布局偏左上" |
+| `backend/go-service/app/meeting/service/meeting_service.go` (改) | UI/Task 12 | `UserDisplayInfo` + `resolveUserDisplay`；`SendChatMessage` WS 载荷带 `user_name`/`user_avatar` |
+| `backend/go-service/app/meeting/controller/meeting_controller.go` (改) | UI/Task 12 | `chatToDTO` 支持 `userMap`；`SendChat`/`ListChats` 调 `ResolveUsersDisplay` |
+| `backend/go-service/app/dto/meeting_dto.go` (改) | UI/Task 12 | `MeetingChatDTO` 新增 `UserName` / `UserAvatar` |
+
+### 核心技术决策与攻坚点
+
+1. **uni-app H5 `<uni-button>::after` 点击遮罩**（两轮）：
+   - **第一轮（工具栏）**：原生 `<button>` 被 uni-app 编译为 `<uni-button>`，自动注入 `::after { content:" "; position:absolute; inset:0 -1200px -80px 0 }` 作为点击反馈遮罩（2400×160）。在 MeetingToolbar 里，最后一个"离开"按钮的 `::after` **横跨整个 toolbar 并 DOM 顺序最上**，导致所有按钮的中心点命中检测都落在"离开"按钮上，表现为"除了离开按钮其他全都点不响应"、"离开弹窗的取消也触发结束会议"。修复：`.btn { position: relative } .btn::after { content: none; display: none }`，同步给 `.leave-btn::after` 加防御。
+   - **第二轮（聊天面板）**：`.btn-send { all: unset }` 把 `position` 重置为 `static`，导致 `::after` 的 `absolute` 定位沿 DOM 树回溯到 `<body>` 作为 containing block，`inset: 0 -1200px -80px 0` 直接形成**覆盖整个视口并向右下溢出的超级遮罩**，关闭按钮 / 输入框 / 发送按钮全部被挡。修复：把原本只 `border: none` 的 `.btn-send::after` 升级为 `content: none; display: none`。
+
+2. **面板 z-index 冲突**：`MemberPanel` / `InviteDialog` 的 `.panel-root` 是 `position:fixed; inset:0; z-index:200` 的全屏 mask。面板打开时把底部 toolbar 整个遮掉，用户再次点击"成员/邀请"按钮，命中的是 mask 而非按钮，toggle 逻辑永远走不到。**修复：`.toolbar { z-index: 210 }`**，使得抽屉打开时 toolbar 浮在 mask 之上（仍低于 `.leave-mask` 的 220）；同时 `openMembers` / `openInvite` 改为 toggle，和 `openChat` 行为对齐。
+
+3. **`uni-app` 全局容器偏左上**：桌面大窗口下 `uni-app` / `uni-page` 祖先默认不 100% 拉伸，导致 `position: fixed; inset: 0` 的 `.room` 相对于偏小的祖先盒子定位，出现"左上角一小块"的 bug。修复：在 `App.vue` 内 `/* #ifdef H5 */` 块统一给 `html, body, #app, uni-app, uni-page*` 全部 `width/height: 100%`，并给 `.room` 加 `100vw / 100vh / z-index: 1000` 作为二道防御。
+
+4. **刷新后"残留会议"体验**：
+   - `joinAndEnter` / `createAndEnter` 包 try/catch，首次调用走 `silent: true`（不弹 toast），若后端返回 `staleMeetingHint` 类错误则先调 `cleanupStaleMeetings()` → 再重试一次。
+   - `cleanupStaleMeetings` 内部调 `meetingApi.leaveRoom({ silent: true })`，把 `400: 你不在此会议中` 这类预期错误静默掉。
+   - 用户路径：刷新 → 回到 Hub → 再次 Join/Create → 不再看到"你已在其他会议中"或"你不在当前会议中"。
+
+5. **预览/会议内视频画质一致性**：`preview.vue` 与 `store/meeting.js#startLocalVideo` 原本用 640×480 → 统一改为 `width:{ideal:1280} height:{ideal:720} frameRate:{ideal:24,max:30}`，设备预览看到什么画质，入会后就是什么画质。
+
+6. **会议内聊天**：后端 `SendChatMessage` WS 广播 + REST 列表均通过 `ResolveUsersDisplay` 批量补齐 `user_name/user_avatar`，前端 ChatPanel 显示真实昵称而非"用户 54"；`ChatPanel` 由父 `room.vue` 通过 props 受控，消息分组聚合头像，滚动位置保持策略区分"用户上拉中 / 自动贴底"。
+
+### Playwright 验证
+
+- `MeetingToolbar` 每个按钮 `elementFromPoint(center) === 自身`（`hitSelf=true`）✅
+- 离会弹窗"取消" `hitSelf=true`，点击后 `.leave-mask` 消失，URL 不跳转 ✅
+- 聊天面板：关闭按钮、textarea、发送按钮 `hitSelf=true` ✅
+- 成员按钮两次点击 → 面板打开 → 面板关闭 ✅
+- 聊天按钮 toggle、邀请按钮 toggle 同样生效 ✅
+
+### 已知待改进项
+
+1. **Task 13 管理员权限全链路**（主持人静音他人 / 踢出 / 转让 / 结束）仍需专项 E2E。
+2. **Task 14 通知中心邀请接入**：收到 `meeting_invite` notification 直接跳转 Join 页面，待落地。
+3. **Task 15 统一观测性**：会议内 RTC 状态、WS 重连、媒体 rtp 状态尚无 dashboard。
+4. **Task 16 E2E**：Playwright 回归脚本需补 "两用户跨 tab 互看 + 内置聊天 + 主持人操作" 全景脚本。
+
+### 相关提交
+
+```
+cacf4ae fix(meeting): 提升 toolbar z-index 确保成员/邀请面板开启时仍可点击
+a311c03 fix(meeting): 聊天面板点击失效 & 成员/邀请按钮支持 toggle
+3aa8174 fix(meeting): 抹除 uni-button ::after 遮罩修复工具栏点击失效
+ff46dc5 fix(phase2e-2): 视频 HD 分辨率 + toolbar 防溢出 + 聊天按钮 toggle
+ce09315 feat(phase2e-2): 会议首页落地 "创建 / 加入" 双入口
+c529ff4 fix(phase2e-2): 全局 H5 容器铺满视口 + 静默自动清理 stale 会议
+0c9f048 fix(phase2e-2): 修复刷新后重入会失败 + 聊天输入区布局防御
+16225c4 fix(phase2e-2): 会议内聊天面板 UI 布局优化
+1222bf5 feat(phase2e-2): 会议内聊天面板落地（Task 12）
+59f824a feat(phase2e-2): 会议室主页与核心 UI 组件落地（Task 11）
+eb3857a feat(phase2e-2): 前端创建/加入/设备预览 3 页落地（Task 10）
+```
+
+### 下一步
+
+进入 **Task 13：主持人权限全链路**（静音他人 / 移除 / 转让 / 结束），前端 MemberPanel 已铺好行尾菜单，后端 REST/WS 事件已就绪，本 Task 聚焦前后端握手 + E2E。
 
 ---
 
