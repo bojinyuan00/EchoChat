@@ -396,8 +396,16 @@ const close = () => emit('close')
   line-height: 1;
   box-sizing: border-box;
 }
-/* 防御 uni-app H5 <uni-button> 内部嵌套 <button> 的全宽/默认边框 */
-.btn-send::after { border: none !important; }
+/* 关键防御：uni-app H5 会给 <uni-button> 注入一个 ::after 伪元素
+   （inset: 0 -1200px -80px 0, 即 2400x160 的点击反馈遮罩）。
+   由于 .btn-send 使用 all:unset 后 position 变为 static，
+   ::after 的 absolute 定位会回溯到 body 作为 containing block，
+   形成横跨整个视口的覆盖层，阻挡关闭按钮、输入框的点击。
+   这里彻底禁用 ::after。 */
+.btn-send::after {
+  content: none !important;
+  display: none !important;
+}
 .input-area ::v-deep(uni-button.btn-send) {
   width: auto;
   margin: 0;

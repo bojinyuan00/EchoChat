@@ -376,8 +376,8 @@ const onCamToggle = async () => {
   }
 }
 
-const openInvite = () => { inviteVisible.value = true }
-const openMembers = () => { memberVisible.value = true }
+const openInvite = () => { inviteVisible.value = !inviteVisible.value }
+const openMembers = () => { memberVisible.value = !memberVisible.value }
 const openChat = () => {
   // 点击工具栏聊天按钮时进行切换：已打开 → 关闭；未打开 → 打开并标记已读
   if (chatVisible.value) {
