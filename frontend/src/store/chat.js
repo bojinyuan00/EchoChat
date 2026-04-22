@@ -507,19 +507,42 @@ export const useChatStore = defineStore('chat', () => {
 
   // ==================== 内部工具方法 ====================
 
-  /** 追加消息到缓存（带去重检查，防止重连/ACK 导致重复） */
+  /**
+   * 追加消息到缓存
+   *
+   * 去重 + 临时消息合并（2026-04-23 加固）：
+   *   - 若已存在同 id 的消息：真重复，直接丢弃
+   *   - 若匹配到相同 client_msg_id 的本地临时消息（_sending=true）：
+   *     就地把服务端权威字段（id/created_at/...）合并进去，并清除
+   *     _sending / _failed 标记；这样即使 ACK 丢失、但广播帧到了，
+   *     也能把发送方的"转圈"状态变成已入库可读/未读态，避免 UX 卡死
+   *   - 否则追加一条新消息
+   */
   const _appendMessage = (conversationId, message) => {
     if (!messagesMap.value[conversationId]) {
       messagesMap.value[conversationId] = []
     }
     const list = messagesMap.value[conversationId]
-    const isDup = list.some(m =>
-      (message.id && m.id === message.id) ||
-      (message.client_msg_id && m.client_msg_id === message.client_msg_id)
-    )
-    if (!isDup) {
-      list.push(message)
+
+    if (message.id) {
+      const idIdx = list.findIndex(m => m.id === message.id)
+      if (idIdx !== -1) return
     }
+
+    if (message.client_msg_id) {
+      const tmpIdx = list.findIndex(m => m.client_msg_id === message.client_msg_id)
+      if (tmpIdx !== -1) {
+        list[tmpIdx] = {
+          ...list[tmpIdx],
+          ...message,
+          _sending: false,
+          _failed: false
+        }
+        return
+      }
+    }
+
+    list.push(message)
   }
 
   /** 更新会话列表中的预览信息 */

@@ -267,11 +267,17 @@ class WebSocketService {
   _onMessage(data) {
     try {
       const msg = JSON.parse(data)
-      // Task 9：ACK 报文（event 以 ".ack" 结尾）走 pendingAcks 处理
+      // Task 9：ACK 报文（event 以 ".ack" 结尾）会先走 pendingAcks 处理
       // 后端 ws.NewResponse 固定在原 event 后追加 ".ack"
+      //
+      // 修复（2026-04-23）：历史实现在命中 _handleAck 后直接 return，
+      // 导致通过 on('xxx.ack') 订阅 ACK 事件的 listener（chat store 的
+      // _onSendACK / _onReadACK）永远收不到回调，表现为
+      // "发送方消息一直卡在 _sending=true，气泡下方不显示 已读/未读"。
+      // 两条通路互不冲突：sendWithAck() 按 seq 命中 pending；
+      // on('xxx.ack') 按 event 命中 listener。此处改为并行分发。
       if (typeof msg.event === 'string' && msg.event.endsWith('.ack')) {
         this._handleAck(msg)
-        return
       }
       this._emit(msg.event, msg)
     } catch (e) {
