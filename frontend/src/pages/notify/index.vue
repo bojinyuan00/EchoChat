@@ -109,7 +109,8 @@ import {
   NOTIFY_TYPE_FRIEND_REQUEST,
   NOTIFY_TYPE_GROUP_INVITE,
   NOTIFY_TYPE_GROUP_JOIN_REQUEST,
-  NOTIFY_TYPE_GROUP_JOIN_APPROVED
+  NOTIFY_TYPE_GROUP_JOIN_APPROVED,
+  NOTIFY_TYPE_MEETING_INVITE
 } from '@/constants/notify'
 import NotifyItem from '@/components/notify/NotifyItem.vue'
 import groupApi from '@/api/group'
@@ -225,7 +226,9 @@ const handleNotifyTap = async (notify) => {
 }
 
 /**
- * 群邀请/入群申请 —— 内联“接受”
+ * 内联"接受"按钮
+ * - group_invite / group_join_request：沿用原逻辑
+ * - meeting_invite：立即加入，跳预览页（mode=join&code=...）
  */
 const handleAccept = async (notify) => {
   try {
@@ -240,6 +243,11 @@ const handleAccept = async (notify) => {
       const extra = _parseExtra(notify.extra)
       uni.showToast({ title: '已接受邀请', icon: 'success' })
       _navigateToGroup(extra)
+    } else if (notify.type === NOTIFY_TYPE_MEETING_INVITE) {
+      const extra = _parseExtra(notify.extra)
+      if (!_navigateToMeetingInvite(extra)) {
+        uni.showToast({ title: '邀请信息已失效', icon: 'none' })
+      }
     }
     await notifyStore.markRead(notify.id).catch(() => {})
   } catch (e) {
@@ -249,7 +257,9 @@ const handleAccept = async (notify) => {
 }
 
 /**
- * 群邀请/入群申请 —— 内联“拒绝”
+ * 内联"拒绝/稍后"按钮
+ * - group_invite / group_join_request：沿用原逻辑
+ * - meeting_invite：仅标记已读，不弹 toast（"稍后"是轻量操作）
  */
 const handleReject = async (notify) => {
   try {
@@ -290,6 +300,11 @@ const _navigateByNotify = (notify) => {
     case NOTIFY_TYPE_GROUP_JOIN_APPROVED:
       _navigateToGroup(extra)
       return
+    case NOTIFY_TYPE_MEETING_INVITE:
+      if (_navigateToMeetingInvite(extra)) return
+      // 过期或 extra 缺失时给用户提示
+      uni.showToast({ title: '邀请已过期或信息缺失', icon: 'none' })
+      return
     default:
       break
   }
@@ -309,6 +324,25 @@ const _navigateToGroup = (extra) => {
   } else if (extra.group_id) {
     uni.navigateTo({ url: `/pages/group/settings?groupId=${extra.group_id}` })
   }
+}
+
+/**
+ * 跳转到会议预览页（meeting_invite 卡片专用）
+ *
+ * 路由协议：/pages/meeting/preview?mode=join&code=xxx
+ *   - 预览页负责让用户确认设备、输入密码（若 has_password），再调 joinAndEnter
+ *   - invite_token 当前不在 URL 透传：Redis 写入 600s，Token 保留冗余兑换
+ *     后端 RedeemInviteToken 目前在独立接口；MVP 阶段仅凭 room_code 加入即可
+ *
+ * @returns {boolean} 是否成功发起跳转（用于调用方判断是否需要 fallback 提示）
+ */
+const _navigateToMeetingInvite = (extra) => {
+  if (!extra || !extra.room_code) return false
+  if (extra.expired_at && Number(extra.expired_at) * 1000 < Date.now()) {
+    return false
+  }
+  uni.navigateTo({ url: `/pages/meeting/preview?mode=join&code=${encodeURIComponent(extra.room_code)}` })
+  return true
 }
 
 /** 解析 extra（后端以 JSON 字符串存储） */

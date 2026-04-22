@@ -693,6 +693,9 @@ func (s *MeetingService) InviteUsers(ctx context.Context, inviterID int64, code 
 		return 0, 0, err
 	}
 
+	// 邀请人展示信息：extra 里一并带上，前端卡片不必再查 actor_* 字段就能渲染
+	inviterName, inviterAvatar := s.resolveUserDisplay(ctx, inviterID)
+
 	pushed := 0
 	skipped := 0
 	seen := make(map[int64]struct{}, len(inviteeIDs))
@@ -720,11 +723,13 @@ func (s *MeetingService) InviteUsers(ctx context.Context, inviterID int64, code 
 			skipped++
 			continue
 		}
+		now := time.Now()
+		expiredAt := now.Add(time.Duration(constants.MeetingInviteTokenTTL) * time.Second).Unix()
 		payload := invitePayload{
 			RoomCode:  code,
 			InviterID: inviterID,
 			InviteeID: invitee,
-			CreatedAt: time.Now().Unix(),
+			CreatedAt: now.Unix(),
 		}
 		buf, _ := json.Marshal(payload)
 		if err := s.redis.Set(ctx, redisKeyInvitePrefix+token, string(buf),
@@ -736,11 +741,19 @@ func (s *MeetingService) InviteUsers(ctx context.Context, inviterID int64, code 
 
 		roomID := room.ID
 		actor := inviterID
+		// extra 字段约定（Phase 2e-2 Task 13 / design §10.1）：
+		//   room_code / invite_token / room_title / has_password：进会所需参数
+		//   inviter_id / inviter_name / inviter_avatar：前端卡片渲染"XX 邀请你加入..."
+		//   expired_at：Unix 秒，与 Redis TTL 同步，前端据此把按钮灰显
 		extra := map[string]interface{}{
-			"room_code":     code,
-			"invite_token":  token,
-			"room_title":    room.Title,
-			"has_password":  room.PasswordHash != nil,
+			"room_code":       code,
+			"invite_token":    token,
+			"room_title":      room.Title,
+			"has_password":    room.PasswordHash != nil,
+			"inviter_id":      inviterID,
+			"inviter_name":    inviterName,
+			"inviter_avatar":  inviterAvatar,
+			"expired_at":      expiredAt,
 		}
 		payloads = append(payloads, &notifyService.PushPayload{
 			UserID:     invitee,

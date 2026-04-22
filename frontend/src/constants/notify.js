@@ -82,11 +82,29 @@ export const NOTIFY_CATEGORY_COLOR = {
 }
 
 /**
- * 判断该通知是否支持内联操作（接受/拒绝按钮）
- * 仅 group_invite 和 group_join_request 支持，对方待处理状态
+ * 判断该通知是否支持内联操作按钮
+ * - group_invite / group_join_request：接受 / 拒绝
+ * - meeting_invite：立即加入 / 稍后（Phase 2e-2 Task 13 接入）
  * @param {string} type
  * @returns {boolean}
  */
 export const supportsInlineAction = (type) => {
-  return type === NOTIFY_TYPE_GROUP_INVITE || type === NOTIFY_TYPE_GROUP_JOIN_REQUEST
+  return (
+    type === NOTIFY_TYPE_GROUP_INVITE ||
+    type === NOTIFY_TYPE_GROUP_JOIN_REQUEST ||
+    type === NOTIFY_TYPE_MEETING_INVITE
+  )
 }
+
+/**
+ * 内联按钮文案映射
+ * 组件内根据 type 自动渲染，默认走"接受 / 拒绝"
+ */
+export const NOTIFY_INLINE_ACTION_LABEL = {
+  [NOTIFY_TYPE_GROUP_INVITE]: { accept: '接受', reject: '拒绝' },
+  [NOTIFY_TYPE_GROUP_JOIN_REQUEST]: { accept: '接受', reject: '拒绝' },
+  [NOTIFY_TYPE_MEETING_INVITE]: { accept: '立即加入', reject: '稍后' }
+}
+
+/** 默认按钮文案（兜底） */
+export const NOTIFY_INLINE_ACTION_DEFAULT = { accept: '接受', reject: '拒绝' }

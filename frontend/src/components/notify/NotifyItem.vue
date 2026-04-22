@@ -34,25 +34,35 @@
       </view>
       <text class="notify-content" v-if="notify.content">{{ notify.content }}</text>
 
-      <!-- 内联操作按钮：仅限群聊邀请 / 入群申请 -->
+      <!-- 内联操作按钮：群聊邀请 / 入群申请 / 会议邀请 -->
       <view
         v-if="showActions"
         class="notify-actions"
       >
+        <!-- 会议邀请过期时：合并为单个 disabled 提示按钮 -->
         <button
-          class="notify-btn notify-btn--primary"
-          :disabled="processing"
-          @tap.stop="handleAccept"
+          v-if="isExpired"
+          class="notify-btn notify-btn--ghost notify-btn--expired"
+          disabled
         >
-          接受
+          邀请已过期
         </button>
-        <button
-          class="notify-btn notify-btn--ghost"
-          :disabled="processing"
-          @tap.stop="handleReject"
-        >
-          拒绝
-        </button>
+        <template v-else>
+          <button
+            class="notify-btn notify-btn--primary"
+            :disabled="processing"
+            @tap.stop="handleAccept"
+          >
+            {{ actionLabel.accept }}
+          </button>
+          <button
+            class="notify-btn notify-btn--ghost"
+            :disabled="processing"
+            @tap.stop="handleReject"
+          >
+            {{ actionLabel.reject }}
+          </button>
+        </template>
       </view>
     </view>
   </view>
@@ -69,6 +79,9 @@ import {
   NOTIFY_DEFAULT_ICON,
   NOTIFY_TYPE_LABEL,
   NOTIFY_CATEGORY_COLOR,
+  NOTIFY_TYPE_MEETING_INVITE,
+  NOTIFY_INLINE_ACTION_LABEL,
+  NOTIFY_INLINE_ACTION_DEFAULT,
   supportsInlineAction
 } from '@/constants/notify'
 
@@ -109,6 +122,34 @@ const showActions = computed(() => {
   if (props.notify.is_read) return false
   return supportsInlineAction(props.notify.type)
 })
+
+/** 内联按钮文案（按 type 映射；兜底为"接受/拒绝"） */
+const actionLabel = computed(() => {
+  return NOTIFY_INLINE_ACTION_LABEL[props.notify.type] || NOTIFY_INLINE_ACTION_DEFAULT
+})
+
+/**
+ * 会议邀请是否已过期
+ * extra.expired_at 为 Unix 秒，与后端 Redis TTL 保持一致
+ * 非 meeting_invite 或无 expired_at 时一律返回 false
+ */
+const isExpired = computed(() => {
+  if (props.notify.type !== NOTIFY_TYPE_MEETING_INVITE) return false
+  const extra = _parseExtra(props.notify.extra)
+  if (!extra || !extra.expired_at) return false
+  return Number(extra.expired_at) * 1000 < Date.now()
+})
+
+/** 容错解析 extra：后端入库后以 JSON 字符串下发，也可能已是对象 */
+function _parseExtra(extra) {
+  if (!extra) return null
+  if (typeof extra === 'object') return extra
+  try {
+    return JSON.parse(extra)
+  } catch (e) {
+    return null
+  }
+}
 
 const handleTap = () => {
   emit('item-tap', props.notify)
@@ -283,5 +324,10 @@ const formatTime = (str) => {
 .notify-btn--ghost {
   background-color: #F1F5F9;
   color: #1E293B;
+}
+
+/* 会议邀请过期态：合并成一个灰显按钮，占满整行 */
+.notify-btn--expired {
+  color: #94A3B8;
 }
 </style>

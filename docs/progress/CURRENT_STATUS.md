@@ -1,7 +1,7 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-22（Phase 2e-2 Task 10-12 前端会议 UI 主链路全部落地 + uni-button H5 遮罩深度修复 + 面板 toggle 交互打磨）
-> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-12 ✅ / Task 13-16 待执行）
+> **最后更新**：2026-04-23（Phase 2e-2 Task 13 meeting_invite 通知卡片对接完成 + 修复 WS .ack 事件未分发导致的消息卡圈回归 bug）
+> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-13 ✅ / Task 14-16 待执行）
 > **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
 > **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（✅ 已完成）
@@ -9,6 +9,46 @@
 > **Phase 2e-1 验证报告**：`test-report-phase2e-1-notification.md`
 > **Phase 2e-2 专用设计**：`docs/plans/2026-04-21-phase2e-2-design.md`（📋 设计阶段，16 章节）
 > **Phase 2e-2 实施计划**：`docs/plans/2026-04-21-phase2e-2-implementation.plan.md`（📋 17 个 Task 共约 17 人日）
+
+---
+
+## 🎯 2026-04-23 Phase 2e-2 Task 13：`meeting_invite` 通知卡片对接完成
+
+**交付**：打通「A 在会议内邀请 B → B 通知中心弹出专属卡片 → 点立即加入一键入会 → 过期卡片自动灰显」完整链路；同时修复一个隐藏很深的回归 bug——前端 WS 客户端把 `.ack` 事件吞掉不 `_emit`，导致 `chat.js` 订阅的 `im.message.send.ack` / `im.message.read.ack` 从未触发，消息永远卡在 loading 圆圈、下方「已读 / 未读」标签也永不渲染。
+
+### 产出文件
+
+| 文件 | 类型 | 作用 |
+|---|---|---|
+| `backend/go-service/app/meeting/service/meeting_service.go`（改） | 后端 service | `InviteUsers` 中 `notifyService.PushPayload.Extra` 补齐 `inviter_id / inviter_name / inviter_avatar / expired_at`（Unix 秒，与 Redis TTL `MeetingInviteTokenTTL=600s` 一致），对齐设计 §10.1 |
+| `frontend/src/constants/notify.js`（改） | 前端常量 | `supportsInlineAction` 扩展支持 `NOTIFY_TYPE_MEETING_INVITE`；新增 `NOTIFY_INLINE_ACTION_LABEL` 映射：meeting_invite → `{accept:"立即加入", reject:"稍后"}`；`NOTIFY_INLINE_ACTION_DEFAULT` 兜底 |
+| `frontend/src/components/notify/NotifyItem.vue`（改） | 前端通用卡片组件 | 动态按钮文案（`actionLabel` 计算属性）；`isExpired` 计算属性对 meeting_invite 额外比对 `extra.expired_at * 1000 < Date.now()`；过期态合并为单个 disabled 的"邀请已过期"按钮；新增 `.notify-btn--expired` 样式 |
+| `frontend/src/pages/notify/index.vue`（改） | 前端通知中心 | `handleAccept` / `handleReject` / `_navigateByNotify` 增加 `NOTIFY_TYPE_MEETING_INVITE` 分支；新增 `_navigateToMeetingInvite(extra)` 辅助，跳 `/pages/meeting/preview?mode=join&code=xxx`；过期时 toast 提示"邀请已过期"不跳转 |
+| `frontend/src/services/websocket.js`（改·关键 Bug Fix） | 前端 WS 客户端 | `_onMessage` 内命中 `.ack` 事件后**移除 `return`**，改为同时走 `_handleAck`（Promise `pendingAcks` 通路）+ `_emit`（订阅通路），修复下方 chat 卡圈 bug |
+| `frontend/src/store/chat.js`（改·关键 Bug Fix） | 前端聊天 store | `_appendMessage` 遇到命中本地 `client_msg_id` 的临时消息（`_sending=true`），不再直接判定 dup 丢弃，而是**就地合并服务端字段**并显式置 `_sending:false / _failed:false`，保证即便 `.ack` 漏了、仅凭 `im.message.new` 广播也能把圆圈切换为真实状态 |
+| `docs/plans/2026-04-21-phase2e-2-implementation.plan.md`（改） | 进度文档 | Task 13 行标记 ✅ + 展开详细产出 |
+
+### 关键技术点
+
+1. **后端 extra 字段 SSOT 在 service**：设计 §10.1 要求的 8 个字段（`room_code / room_title / has_password / invite_token / inviter_id / inviter_name / inviter_avatar / expired_at`）统一在 `InviteUsers` 里装配进 `PushPayload.Extra`，下游 notify pusher 只负责透传；这样前端只读 `extra.*`，不再去解析通用的 `actor_id / actor_name`（那两个属于通用 notify 基础设施，会议邀请专属字段放 `extra` 更清晰）。
+2. **过期态完全由 `expired_at` 驱动**：前端不再额外调接口校验，纯客户端 `Date.now()` 比对即可。即便用户把通知放了 30 分钟再点击，UI 能立即自动灰显、不触发无效跳转、也不会把脏 token 发到后端。与 Redis `echo:meeting:invite:{token}` 的 TTL（600s）对齐。
+3. **`supportsInlineAction` 与按钮文案解耦**：原来只有 friend_request 有「同意 / 拒绝」按钮。现在扩展到 meeting_invite（「立即加入 / 稍后」）。`NOTIFY_INLINE_ACTION_LABEL` 是一个 type → `{accept, reject}` 的 map，后续再加「群邀请」「入群申请」等只需扩这张表 + 在 `handleAccept / handleReject` 加 switch 分支。
+4. **`.ack` 双通路修复的起因**：`websocket.js` 早期版本用"命中 `.ack` 就 `_handleAck` 后 `return`"的 pattern，是因为当时 ACK 只给 Promise 消费；但 Phase 2a 群组已读 / Phase 2e-2 会议聊天后，`chat.js` / `meeting.js` 都在 `wsService.on('xxx.ack', ...)` 订阅 ACK 做"服务端持久化成功 → 把临时消息替换为真实消息"的逻辑。`return` 直接吞掉了 emit，这条关键事件从未触发，临时消息 `_sending` 一直为 true。修掉后还需要在 `chat.js._appendMessage` 做广播帧的就地合并，作为"丢 ACK 但不丢广播"场景的兜底。
+5. **为什么不在前端加 polling 兜底**：项目 SSOT 要求「尽量减少前端轮询 / 服务端主推优先」。所以修的是 WS 事件分发路径，而不是额外拉轮询。此外 `chat.js._appendMessage` 的就地合并本质上是"广播帧也具备推进本地状态的能力"，比轮询更轻量。
+
+### 验证记录
+
+- **后端 REST 双角色验证**（curl 登录 testuser1 / testuser2 → testuser1 创会 → 邀请 testuser2 → testuser2 拉通知列表）：
+  - `GET /api/v1/notifications?category=meeting` 返回 1 条 `type=meeting_invite`
+  - `extra` 完整度：`room_code / room_title / has_password / invite_token / inviter_id / inviter_name / inviter_avatar / expired_at` 全部存在且值正确
+  - `expired_at = invited_at + 600` 与 Redis TTL 对齐
+- **前端聊天卡圈 Bug 验证**（用户手测）：用户确认"经过我测试，这个问题已经修复好了"，双用户发消息立即显示「已读 / 未读」标签，不再出现发送方消息前显示 loading 圆圈。
+- **Playwright UI 回归暂缓**：Playwright MCP 当前环境对多用户上下文与 `browser_install` 有限制，前端 UI 部分采用"用户手测 + 后端 API 完整验证"替代，等 Task 16 E2E 总回归时统一做；已在 todo 中标注。
+
+### 下一步
+
+- **Task 14**（1 人日）：docker-compose 扩展 + 本机/公网双态环境变量开关，`media-server` 服务挂入 compose，`coturn` 进 `profiles: [public]`；脚本侧 `start.sh` 扩 `media` / `full` 子命令。
+- **Task 15 主持人权限四件套** 和 **Task 16 E2E 总回归** 挨着 Task 14 之后收尾，MVP 就完成了。
 
 ---
 

@@ -1,11 +1,11 @@
 # Phase 2e-2 实施计划：会议 MVP（多人音视频）
 
-> **状态：** 🚧 代码开发中（Task 0-12 ✅ / Task 13-16 待执行）
+> **状态：** 🚧 代码开发中（Task 0-13 ✅ / Task 14-16 待执行）
 > **设计文档：** [Phase 2e-2 设计文档](./2026-04-21-phase2e-2-design.md)
 > **上级路线图：** [Phase 2e 整体路线图](./2026-04-20-phase2e-design.md)
 > **分支：** `feature/phase2e-2-meeting-mvp`
 > **预估总工时：** **约 17 人日**（17 个 Task，含 PoC 与 UI 打磨）
-> **最后更新：** 2026-04-22（Task 10-12 ✅ 前端会议 UI 主链路打通；叠加一轮深度 UI 打磨：uni-button ::after 全视口遮罩修复、toolbar z-index 提升、面板 toggle、视频 HD、静默 stale 清理。下一步 Task 13 主持人权限全链路）
+> **最后更新：** 2026-04-23（Task 13 ✅ meeting_invite 通知卡片对接完成，后端 extra 补齐 inviter_id/inviter_name/expired_at，前端 NotifyItem.vue 支持"立即加入/稍后"按钮 + 过期态 + deep-link；顺带修复 WS .ack 事件不分发导致的消息卡圈 bug。下一步 Task 14 docker-compose 双态部署）
 
 ### 进度看板
 
@@ -24,8 +24,8 @@
 | **Task 10** | **前端预览/创建/加入页** | ✅ | `create.vue` / `join.vue` / `preview.vue` + Hub `index.vue` |
 | **Task 11** | **会议室主页 + 核心组件** | ✅ | `room.vue` + VideoGrid/VideoTile/Toolbar/MemberPanel/InviteDialog |
 | **Task 12** | **会议内聊天面板** | ✅ | `ChatPanel.vue` + WS `meeting.chat.new` + user_name/avatar 补齐 |
-| Task 13 | meeting_invite 通知对接 | ⏳ | 下一步 |
-| Task 14 | docker-compose + 双态 | ⏳ |  |
+| **Task 13** | **meeting_invite 通知对接** | ✅ | extra 补齐 inviter_* / expired_at；前端"立即加入/稍后"+ 过期态 + deep-link |
+| Task 14 | docker-compose + 双态 | ⏳ | 下一步 |
 | Task 15 | 观测性与告警 | ⏳ |  |
 | Task 16 | E2E + 文档同步 | ⏳ |  |
 
@@ -501,20 +501,20 @@ flowchart LR
   - 会议结束 24 小时后聊天记录被清理（可手动 `UPDATE ended_at = NOW() - INTERVAL '25 hours'` 触发）
 - **工作量**：**0.5 人日**
 
-### Task 13：`meeting_invite` 通知对接
+### Task 13：`meeting_invite` 通知对接 ✅（2026-04-23 完成）
 
 - **目标**：打通 `POST /rooms/:code/invite` → 通知中心 → 前端卡片跳转链路
 - **依赖**：T5
-- **主要产出**：
-  - 后端：`Invite()` service 内调用 `notifyPusher.Push(ctx, receiverID, PushRequest{Type: "meeting_invite", Extra: MeetingInviteExtra{...}})`
-  - 通知 `extra` 结构补充（设计 §10.1）
-  - 前端 `NotifyItem.vue`：`meeting_invite` 卡片底部渲染「立即加入 / 稍后」按钮
-  - 前端路由跳转：「立即加入」→ `/pages/meeting/preview?code=xxx`；「稍后」→ 标已读
-  - 邀请链接复用：若 `expired_at < now()` 灰显按钮提示"邀请已过期"
-- **检查点**：
-  - 用户 A 创建会议 → 邀请用户 B → 用户 B 通知中心铃铛出现未读 → TabBar「我的」红点亮起 → 点击卡片「立即加入」→ 成功入会
-  - 过期通知点击按钮 → 显示过期提示，不跳转
-- **工作量**：**0.5 人日**
+- **实际产出**：
+  - 后端 `MeetingService.InviteUsers`（`backend/go-service/app/meeting/service/meeting_service.go`）：保留 `invite_token` + Redis TTL；extra 结构在原有 `room_code / room_title / has_password / invite_token` 基础上补齐设计 §10.1 所需字段：`inviter_id / inviter_name / inviter_avatar / expired_at`（Unix 秒，与 `MeetingInviteTokenTTL=600s` 一致），避免前端再去解析 `actor_*`。
+  - 前端常量 `frontend/src/constants/notify.js`：`supportsInlineAction` 扩展支持 `meeting_invite`；新增 `NOTIFY_INLINE_ACTION_LABEL` 映射（meeting_invite 为"立即加入 / 稍后"），并提供 `NOTIFY_INLINE_ACTION_DEFAULT` 兜底。
+  - 前端组件 `NotifyItem.vue`：按 `type` 动态渲染按钮文案；新增 `isExpired` 计算属性（`extra.expired_at * 1000 < Date.now()`），过期态合并为单个 disabled 的"邀请已过期"按钮。
+  - 前端页面 `pages/notify/index.vue`：`handleAccept` 增加 `meeting_invite` 分支，调用 `_navigateToMeetingInvite(extra)` 跳 `/pages/meeting/preview?mode=join&code=xxx`；`handleReject` 仅做 `markRead`；`_navigateByNotify` 同样覆盖 `meeting_invite`（过期给出 toast 提示）。
+- **附带修复（commit 310ea03）**：`frontend/src/services/websocket.js` 在命中 `.ack` 事件后不再 `return`，改为同时 `_handleAck`（Promise 通路）+ `_emit`（订阅通路），修复 `chat.js` 订阅的 `im.message.send.ack / im.message.read.ack` 从未被触发、消息永远卡在 `_sending=true` 圆圈的回归 bug；`chat.js _appendMessage` 改为"命中 `client_msg_id` 的临时消息时就地合并服务端字段"而非直接丢弃，作为广播帧兜底。
+- **验收**：
+  - 后端 REST 验证（curl）：`POST /api/v1/meeting/rooms/:code/invite` → 被邀请者 `GET /api/v1/notifications?category=meeting` 能取到 `type=meeting_invite` 通知，`extra` 包含 `room_code / room_title / inviter_id / inviter_name / inviter_avatar / has_password / invite_token / expired_at` 全部字段。
+  - 过期态由 `expired_at` 驱动（Redis TTL 600s），过期后按钮自动灰显、点击有 toast 提示、不跳转。
+- **工作量**：**0.5 人日（实际约 0.3 人日）**
 
 ### Task 14：docker-compose 扩展 + 环境变量双态开关
 
