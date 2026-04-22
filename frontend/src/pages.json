@@ -167,6 +167,13 @@
 			}
 		},
 		{
+			"path": "pages/meeting/room",
+			"style": {
+				"navigationBarTitleText": "会议进行中",
+				"navigationStyle": "custom"
+			}
+		},
+		{
 			"path": "pages/notify/index",
 			"style": {
 				"navigationBarTitleText": "通知中心",

@@ -12,8 +12,7 @@
   - 「入会默认开麦/摄像头」两个开关写入 mediaPrefs
   - 兜底：权限被拒 / 浏览器不支持 WebRTC 时给明确错误提示
 
-  入会成功后（Task 11 room 页未就绪期间）：uni.redirectTo 到会议调试页 debug.vue 作为会议室占位。
-  TODO（Task 11 落地后）：改为 uni.redirectTo '/pages/meeting/room?code=xxx'
+  入会成功后：uni.redirectTo('/pages/meeting/room?code=xxx')
 -->
 <template>
   <view class="page">
@@ -362,8 +361,8 @@ const onJoin = async () => {
     } else {
       await meetingStore.joinAndEnter(joinCode.value, joinPassword.value, prefs)
     }
-    // Task 11 会议室页尚未落地，临时跳转 debug.vue 作为会议室占位
-    uni.redirectTo({ url: '/pages/meeting/debug' })
+    const roomCode = meetingStore.currentRoom?.room_code
+    uni.redirectTo({ url: `/pages/meeting/room${roomCode ? `?code=${roomCode}` : ''}` })
   } catch (err) {
     const msg = err?.message || JSON.stringify(err)
     uni.showToast({ title: `加入失败：${msg}`, icon: 'none', duration: 3500 })

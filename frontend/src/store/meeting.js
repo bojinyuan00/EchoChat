@@ -306,11 +306,13 @@ export const useMeetingStore = defineStore('meeting', () => {
     try {
       const consumer = await _engine.consume({ producerId: data.producer_id })
       if (!remoteConsumers[data.user_id]) {
-        remoteConsumers[data.user_id] = markRaw({
+        // 外层 slot 保持 reactive 以便 slot.audio/slot.video 赋值能驱动 VideoTile 重渲染；
+        // 仅 Consumer 实例和 Set 本身用 markRaw 隔离 Vue 代理
+        remoteConsumers[data.user_id] = {
           audio: null,
           video: null,
-          producerIds: new Set()
-        })
+          producerIds: markRaw(new Set())
+        }
       }
       const slot = remoteConsumers[data.user_id]
       slot[consumer.kind] = markRaw(consumer)
