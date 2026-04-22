@@ -177,7 +177,10 @@ export const useMeetingStore = defineStore('meeting', () => {
       [MEETING_WS_MEMBER_KICKED]: _onMemberKicked,
       [MEETING_WS_MEMBER_PRODUCER_NEW]: _onProducerNew,
       [MEETING_WS_HOST_CHANGED]: _onHostChanged,
-      [MEETING_WS_CHAT_MESSAGE]: _onChatMessage
+      [MEETING_WS_CHAT_MESSAGE]: _onChatMessage,
+      // WS 连接生命周期：用于断线/重连期间维持会议会话，避免"连接断开 → 后端失去 roomCode 绑定 → 广播丢失"
+      _connected: _onWsReconnected,
+      _disconnected: _onWsDisconnected
     }
     Object.entries(handlers).forEach(([event, handler]) => {
       wsService.on(event, handler)
@@ -319,6 +322,51 @@ export const useMeetingStore = defineStore('meeting', () => {
     const data = msg.data || {}
     if (!currentRoom.value || data.room_code !== currentRoom.value.room_code) return
     chatMessages.value.push(data)
+  }
+
+  /**
+   * WS 连接断开：仅当当前已进入会议（CONNECTED/CONNECTING）时切换到 RECONNECTING，
+   * 供 UI 展示"重连中…"，避免用户误以为自己已离会。
+   */
+  const _onWsDisconnected = () => {
+    if (!currentRoom.value) return
+    if (
+      localState.value === MEETING_LOCAL_STATE_CONNECTED ||
+      localState.value === MEETING_LOCAL_STATE_CONNECTING
+    ) {
+      _log('warn', '[Meeting] WS 已断开，进入 reconnecting')
+      localState.value = MEETING_LOCAL_STATE_RECONNECTING
+    }
+  }
+
+  /**
+   * WS 重连成功：若当前仍在某个房间内，自动重发 meeting.room.join 以恢复后端 WS↔roomCode 绑定。
+   * 后端 WS Handler 对同一用户重连后，需要再次收到 meeting.room.join 才会将该连接加入房间广播组，
+   * 否则即使 mediasoup 层仍在线，所有 meeting.* 广播都不会再送达本端。
+   */
+  const _onWsReconnected = async () => {
+    if (!currentRoom.value) return
+    // 仅在 RECONNECTING 状态触发（避免首次进房 _onOpen 与 _afterJoined 的首次 join 并发冲突）
+    if (localState.value !== MEETING_LOCAL_STATE_RECONNECTING) return
+    const roomCode = currentRoom.value.room_code
+    try {
+      _log('info', '[Meeting] WS 重连后重绑定房间', roomCode)
+      await wsService.sendWithAck(MEETING_WS_ROOM_JOIN, { room_code: roomCode })
+      // 重连期间可能错过若干广播，重新拉一次详情对齐参与者列表
+      try {
+        const detail = await meetingApi.getRoom(roomCode)
+        if (detail && Array.isArray(detail.participants)) {
+          participants.value = detail.participants
+        }
+      } catch (e) {
+        _log('warn', '[Meeting] 重绑定后拉取房间详情失败', e)
+      }
+      localState.value = MEETING_LOCAL_STATE_CONNECTED
+      _log('info', '[Meeting] WS 重绑定房间成功，恢复 connected')
+    } catch (err) {
+      _log('warn', '[Meeting] WS 重绑定房间失败，保持 reconnecting 等待下次重连', err)
+      // 保留 RECONNECTING 状态，下一次 WS 重连会再次触发本回调
+    }
   }
 
   // ==================== 远端媒体清理 ====================

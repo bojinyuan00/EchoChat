@@ -15,6 +15,11 @@
   <view class="page">
     <view class="header">
       <text class="title">会议调试（Task 9）</text>
+      <view class="ws-status">
+        <view class="ws-dot" :class="wsStatusClass"></view>
+        <text class="ws-text">{{ wsStatusLabel }}</text>
+        <text class="ws-flap" v-if="wsFlapping">⚠ 检测到异常重连（{{ wsFlapCount }} 次/{{ Math.round(wsFlapWindowMs / 1000) }}s），可能同账号在其他端登录</text>
+      </view>
       <text class="state">状态：{{ localStateLabel }}</text>
       <text class="state">房号：{{ currentRoom?.room_code || '-' }} ({{ currentRoom?.title || '-' }})</text>
       <text class="state">是否主持人：{{ isHost ? '是' : '否' }}</text>
@@ -83,9 +88,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, computed, watch, onBeforeUnmount, onMounted, nextTick } from 'vue'
 import { useMeetingStore } from '@/store/meeting'
 import { MEETING_LOCAL_STATE_LABEL } from '@/constants/meeting'
+import wsService from '@/services/websocket'
 import { storeToRefs } from 'pinia'
 
 const meetingStore = useMeetingStore()
@@ -120,6 +126,53 @@ const setRemoteBox = (userId, el) => {
 const localStateLabel = computed(() => {
   const label = MEETING_LOCAL_STATE_LABEL[localState.value] || localState.value
   return `${localState.value} (${label})`
+})
+
+// ==================== WS 状态指示灯 ====================
+
+/** 'connected' | 'reconnecting' | 'disconnected' */
+const wsStatus = ref('disconnected')
+const wsFlapping = ref(false)
+const wsFlapCount = ref(0)
+const wsFlapWindowMs = ref(10000)
+let _wsFlapResetTimer = null
+
+const wsStatusClass = computed(() => `ws-dot-${wsStatus.value}`)
+const wsStatusLabel = computed(() => {
+  switch (wsStatus.value) {
+    case 'connected': return 'WS 已连接'
+    case 'reconnecting': return 'WS 重连中…'
+    default: return 'WS 已断开'
+  }
+})
+
+const _onWsConnected = () => { wsStatus.value = 'connected' }
+const _onWsDisconnected = () => {
+  wsStatus.value = wsService.isManualClose ? 'disconnected' : 'reconnecting'
+}
+const _onWsFlapping = (info) => {
+  wsFlapping.value = true
+  wsFlapCount.value = info?.count || 0
+  wsFlapWindowMs.value = info?.windowMs || 10000
+  if (_wsFlapResetTimer) clearTimeout(_wsFlapResetTimer)
+  // 连续 20s 无新 flapping 信号时自动消隐
+  _wsFlapResetTimer = setTimeout(() => { wsFlapping.value = false }, 20000)
+}
+
+onMounted(() => {
+  // 页面加载时根据当前 WS 实例判断初始状态
+  // #ifdef H5
+  if (wsService.ws && wsService.ws.readyState === WebSocket.OPEN) {
+    wsStatus.value = 'connected'
+  } else if (wsService.ws && wsService.ws.readyState === WebSocket.CONNECTING) {
+    wsStatus.value = 'reconnecting'
+  } else {
+    wsStatus.value = 'disconnected'
+  }
+  // #endif
+  wsService.on('_connected', _onWsConnected)
+  wsService.on('_disconnected', _onWsDisconnected)
+  wsService.on('_flapping', _onWsFlapping)
 })
 
 // ==================== 原生 DOM 辅助（仅 H5）====================
@@ -308,6 +361,10 @@ const onSendChat = async () => {
 }
 
 onBeforeUnmount(() => {
+  wsService.off('_connected', _onWsConnected)
+  wsService.off('_disconnected', _onWsDisconnected)
+  wsService.off('_flapping', _onWsFlapping)
+  if (_wsFlapResetTimer) clearTimeout(_wsFlapResetTimer)
   if (isInMeeting.value) {
     meetingStore.leave().catch(() => {})
   }
@@ -337,4 +394,12 @@ onBeforeUnmount(() => {
 .chat-box { max-height: 300rpx; overflow-y: auto; background: #F1F5F9; padding: 12rpx; border-radius: 8rpx; margin-bottom: 12rpx; }
 .chat-msg { font-size: 26rpx; color: #1E293B; padding: 4rpx 0; }
 .hint { font-size: 24rpx; color: #F59E0B; margin-top: 12rpx; display: block; }
+.ws-status { display: flex; align-items: center; gap: 10rpx; margin: 8rpx 0 12rpx; flex-wrap: wrap; }
+.ws-dot { width: 16rpx; height: 16rpx; border-radius: 50%; background: #94A3B8; box-shadow: 0 0 0 2rpx rgba(148,163,184,0.18); }
+.ws-dot.ws-dot-connected { background: #10B981; box-shadow: 0 0 0 2rpx rgba(16,185,129,0.22); }
+.ws-dot.ws-dot-reconnecting { background: #F59E0B; box-shadow: 0 0 0 2rpx rgba(245,158,11,0.22); animation: ws-pulse 1.2s ease-in-out infinite; }
+.ws-dot.ws-dot-disconnected { background: #EF4444; box-shadow: 0 0 0 2rpx rgba(239,68,68,0.22); }
+.ws-text { font-size: 24rpx; color: #334155; }
+.ws-flap { font-size: 22rpx; color: #B45309; background: #FEF3C7; padding: 4rpx 10rpx; border-radius: 6rpx; }
+@keyframes ws-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 </style>

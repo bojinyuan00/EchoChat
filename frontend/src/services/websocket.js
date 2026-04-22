@@ -19,6 +19,11 @@ const RECONNECT_BASE_DELAY = 1000
 const RECONNECT_MAX_DELAY = 30000
 const MAX_RECONNECT_ATTEMPTS = Infinity
 const ACK_DEFAULT_TIMEOUT_MS = 10000
+/** 异常重连检测：10s 窗口内 >=3 次断连即认为异常抖动（常见于同账号多 tab 互踢） */
+const FLAPPING_WINDOW_MS = 10000
+const FLAPPING_THRESHOLD = 3
+/** 两次 flapping 警告之间最小间隔，避免持续抖动时每秒触发 */
+const FLAPPING_NOTIFY_COOLDOWN_MS = 15000
 
 class WebSocketService {
   constructor() {
@@ -34,6 +39,10 @@ class WebSocketService {
      * Task 9 引入，为 meeting.* 事件提供 Promise 化 ACK 等待
      */
     this.pendingAcks = new Map()
+    /** 近期断连时间戳数组，用于 flapping 检测 */
+    this.recentCloseAt = []
+    /** 上次 flapping 警告时间，用于冷却 */
+    this.lastFlappingNotifyAt = 0
   }
 
   /**
@@ -213,11 +222,29 @@ class WebSocketService {
     console.log('[WS] 连接关闭', e)
     this._clearTimers()
     this._rejectAllPendingAcks('连接已断开')
-    this._emit('_disconnected')
+    this._emit('_disconnected', e)
 
     if (!this.isManualClose) {
+      this._recordCloseForFlapping()
       this._scheduleReconnect()
     }
+  }
+
+  /**
+   * 记录一次非主动断连，并在短窗口内多次断连时触发 _flapping 事件
+   * 典型场景：同账号多端登录互踢导致 WS 每秒被后端关闭
+   */
+  _recordCloseForFlapping() {
+    const now = Date.now()
+    this.recentCloseAt.push(now)
+    // 丢掉窗口外的历史记录
+    this.recentCloseAt = this.recentCloseAt.filter((t) => now - t <= FLAPPING_WINDOW_MS)
+    if (this.recentCloseAt.length < FLAPPING_THRESHOLD) return
+    if (now - this.lastFlappingNotifyAt < FLAPPING_NOTIFY_COOLDOWN_MS) return
+    this.lastFlappingNotifyAt = now
+    const count = this.recentCloseAt.length
+    console.warn(`[WS] 检测到异常重连抖动：${FLAPPING_WINDOW_MS / 1000}s 内断开 ${count} 次，可能同账号在其他 tab/设备登录`)
+    this._emit('_flapping', { count, windowMs: FLAPPING_WINDOW_MS })
   }
 
   /**
