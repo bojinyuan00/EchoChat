@@ -688,5 +688,7 @@
 
 ## 后续任务关联
 
-- **Task 9**：Vue 前端 mediasoup-client 接入，按本文 WS 契约实现 `mediasoup.Transport` 的 `connect / produce` 回调；补齐 `ResumeConsumer`（Node REST 已就绪）或在 Go 侧改为创建 Consumer 后自动 resume；需处理 `meeting.host.changed` 的 `auto_reason` 字段以在 UI 上标注"自动转让"。
+- **Task 9 ✅（2026-04-21）**：Vue 前端 mediasoup-client 已接入，按本文 WS 契约实现 `Transport.on('connect'|'produce')` 回调；创建 Consumer 后前端通过 `meeting.consume.resume` WS 事件驱动 Go → Node `POST /internal/v1/consumers/:id/resume` 完成 resume；UI 已处理 `meeting.host.changed` 的 `auto_reason` 字段标注"自动转让"。
+- **Task 10-12 ✅（2026-04-22）**：前端会议主链路全量打通（Hub / Create / Join / Preview / Room 5 页 + `MeetingToolbar / VideoGrid / VideoTile / MemberPanel / InviteDialog / ChatPanel` 6 个核心组件）；会议内聊天显示真实昵称（后端 `ResolveUsersDisplay` 批量补齐 `user_name / user_avatar`）。
 - **Task 13 ✅（2026-04-23）**：通知卡片 UI 已完成内联按钮（"立即加入 / 稍后"），点击"立即加入"跳 `/pages/meeting/preview?mode=join&code=xxx` 由 preview 页走 `/rooms/:code/join`；过期态由 `extra.expired_at * 1000 < Date.now()` 判定并合并为单个 disabled 的"邀请已过期"按钮，不再发起任何请求。
+- **Task 14 ✅（2026-04-24）**：后端服务已纳入 `deploy/docker-compose.dev.yml` 双态编排（本机 Demo / 公网 `--profile public` + coturn），部署指南见 `docs/deployment/meeting-mvp.md`；API 接口契约本身无变化。
