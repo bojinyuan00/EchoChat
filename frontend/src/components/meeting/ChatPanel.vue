@@ -11,20 +11,19 @@
   - 发送通过 @send 事件回传，成功/失败由父层决定是否 toast
 -->
 <template>
-  <view v-if="visible" class="panel-root" @click.self="close">
-    <view class="panel" :class="{ show }">
-      <view class="header">
-        <view class="title-area">
-          <text class="title">会议聊天</text>
-          <text class="count">({{ messages.length }})</text>
-        </view>
-        <view class="btn-close" @click="close">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </view>
+  <view v-if="visible" class="panel" :class="{ show }">
+    <view class="header">
+      <view class="title-area">
+        <text class="title">会议聊天</text>
+        <text class="count">({{ messages.length }})</text>
       </view>
+      <view class="btn-close" @click="close">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </view>
+    </view>
 
       <scroll-view
         class="msg-list"
@@ -81,11 +80,14 @@
           @input="onDraftInput"
           @confirm="onSend"
         />
-        <button class="btn-send" :disabled="!canSend || sending" @click="onSend">
-          <text v-if="!sending">发送</text>
-          <text v-else>发送中</text>
-        </button>
-      </view>
+      <button class="btn-send" :disabled="!canSend || sending" :class="{ active: canSend && !sending }" @click="onSend">
+        <svg v-if="!sending" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+        <text v-if="!sending" class="btn-send-label">发送</text>
+        <text v-else class="btn-send-label">发送中</text>
+      </button>
     </view>
   </view>
 </template>
@@ -222,28 +224,15 @@ const close = () => emit('close')
 </script>
 
 <style scoped>
-.panel-root {
-  position: fixed;
-  inset: 0;
-  z-index: 205;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  justify-content: flex-end;
-}
-
+/* 面板作为并排侧边栏：父容器 .chat-col 控制宽度/显隐动画 */
 .panel {
-  width: 640rpx;
-  max-width: 92vw;
+  width: 100%;
   height: 100%;
   background: #1F2937;
   color: #F3F4F6;
   display: flex;
   flex-direction: column;
-  transform: translateX(100%);
-  transition: transform 0.24s ease;
-  box-shadow: -4rpx 0 24rpx rgba(0, 0, 0, 0.4);
 }
-.panel.show { transform: translateX(0); }
 
 .header {
   display: flex;
@@ -269,7 +258,9 @@ const close = () => emit('close')
 .btn-close:hover { background: rgba(255, 255, 255, 0.08); }
 
 .msg-list {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
+  height: 0;
   padding: 16rpx 24rpx 24rpx;
   box-sizing: border-box;
 }
@@ -284,10 +275,14 @@ const close = () => emit('close')
 .load-more:hover { color: rgba(255, 255, 255, 0.8); }
 
 .empty {
-  padding: 100rpx 0 80rpx;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   color: rgba(255, 255, 255, 0.45);
   font-size: 24rpx;
+  padding: 40rpx 0;
 }
 
 .msg-row {
@@ -382,18 +377,30 @@ const close = () => emit('close')
 .btn-send {
   all: unset;
   cursor: pointer;
-  padding: 14rpx 28rpx;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 16rpx 28rpx;
   background: #3B82F6;
   color: #FFFFFF;
-  font-size: 26rpx;
-  font-weight: 600;
   border-radius: 14rpx;
-  transition: background-color 0.15s ease;
+  box-shadow: 0 4rpx 14rpx rgba(59, 130, 246, 0.35);
+  transition: background-color 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
   flex-shrink: 0;
+  min-height: 64rpx;
 }
+.btn-send svg { display: block; }
+.btn-send .btn-send-label { font-size: 26rpx; font-weight: 600; }
 .btn-send:hover { background: #2563EB; }
+.btn-send:active { transform: translateY(1rpx); }
 .btn-send[disabled] {
-  background: rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.28);
+  color: rgba(255, 255, 255, 0.55);
+  box-shadow: none;
   cursor: not-allowed;
+}
+.btn-send.active {
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
 }
 </style>

@@ -34,22 +34,38 @@
       </view>
     </view>
 
-    <!-- 视频网格 -->
+    <!-- 主区：左视频 + 右侧聊天面板（仅 chatVisible 时侧栏展开） -->
     <view class="body">
-      <VideoGrid :tiles="tiles">
-        <template #tile="{ tile }">
-          <VideoTile
-            :user-id="tile.userId"
-            :name="tile.name"
-            :is-local="tile.isLocal"
-            :is-host="tile.isHost"
-            :audio-enabled="tile.audioEnabled"
-            :video-enabled="tile.videoEnabled"
-            :audio-track="tile.audioTrack"
-            :video-track="tile.videoTrack"
-          />
-        </template>
-      </VideoGrid>
+      <view class="video-col">
+        <VideoGrid :tiles="tiles">
+          <template #tile="{ tile }">
+            <VideoTile
+              :user-id="tile.userId"
+              :name="tile.name"
+              :is-local="tile.isLocal"
+              :is-host="tile.isHost"
+              :audio-enabled="tile.audioEnabled"
+              :video-enabled="tile.videoEnabled"
+              :audio-track="tile.audioTrack"
+              :video-track="tile.videoTrack"
+            />
+          </template>
+        </VideoGrid>
+      </view>
+      <view class="chat-col" :class="{ open: chatVisible }">
+        <ChatPanel
+          :visible="chatVisible"
+          :messages="chatMessages"
+          :current-user-id="myUserId"
+          :display-name-map="displayNameMap"
+          :has-more="chatHasMore"
+          :loading-more="chatLoadingMore"
+          @close="closeChat"
+          @send="onChatSend"
+          @load-more="onChatLoadMore"
+          @request-initial-load="onChatRequestInitialLoad"
+        />
+      </view>
     </view>
 
     <!-- 底部工具条 -->
@@ -90,20 +106,6 @@
       :meeting-title="meetingTitle"
       :join-link="joinLink"
       @close="inviteVisible = false"
-    />
-
-    <!-- 聊天面板 -->
-    <ChatPanel
-      :visible="chatVisible"
-      :messages="chatMessages"
-      :current-user-id="myUserId"
-      :display-name-map="displayNameMap"
-      :has-more="chatHasMore"
-      :loading-more="chatLoadingMore"
-      @close="closeChat"
-      @send="onChatSend"
-      @load-more="onChatLoadMore"
-      @request-initial-load="onChatRequestInitialLoad"
     />
 
     <!-- 离会确认弹窗 -->
@@ -633,6 +635,31 @@ onUnload(() => {
   min-height: 0;
   background: #0B1220;
   overflow: hidden;
+  display: flex;
+  flex-direction: row;
+}
+.video-col {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+.chat-col {
+  width: 0;
+  min-height: 0;
+  flex-shrink: 0;
+  overflow: hidden;
+  transition: width 0.24s ease;
+  border-left: 1rpx solid rgba(255, 255, 255, 0.06);
+  background: #1F2937;
+}
+.chat-col.open { width: 640rpx; }
+
+@media (max-width: 750px) {
+  /* 小屏幕：聊天面板改为全屏浮层，避免挤压视频 */
+  .chat-col { position: fixed; top: 0; right: 0; bottom: 0; z-index: 205; }
+  .chat-col.open { width: 100vw; }
 }
 
 /* 离会弹窗 */
