@@ -3,7 +3,7 @@
 # 用法：
 #   ./scripts/stop.sh           # 停止应用层（Go 后端 + 前台 + 管理端），保留 Docker 容器
 #   ./scripts/stop.sh --all     # 停止全部（含 Docker 中间件）
-#   ./scripts/stop.sh backend   # 仅停止指定服务（backend|frontend|admin|docker）
+#   ./scripts/stop.sh backend   # 仅停止指定服务（backend|frontend|admin|media|docker）
 # 不使用 set -e：即使某一项停止失败，其他项也要继续尝试
 set -uo pipefail
 
@@ -79,6 +79,7 @@ stop_named() {
 stop_backend()  { stop_named "backend"  8085; }
 stop_frontend() { stop_named "frontend" 5173; }
 stop_admin()    { stop_named "admin"    3100; }
+stop_media()    { stop_named "media"    3300; }
 
 stop_docker() {
   log_info "停止 Docker 中间件..."
@@ -93,12 +94,14 @@ main() {
   case "$target" in
     app|"")
       stop_backend
+      stop_media
       stop_frontend
       stop_admin
       log_ok "应用层服务已停止（Docker 中间件保持运行）"
       ;;
     --all|all)
       stop_backend
+      stop_media
       stop_frontend
       stop_admin
       stop_docker
@@ -107,9 +110,10 @@ main() {
     backend)  stop_backend ;;
     frontend) stop_frontend ;;
     admin)    stop_admin ;;
+    media)    stop_media ;;
     docker)   stop_docker ;;
     *)
-      echo "用法: $0 [app|--all|backend|frontend|admin|docker]"
+      echo "用法: $0 [app|--all|backend|frontend|admin|media|docker]"
       exit 1
       ;;
   esac

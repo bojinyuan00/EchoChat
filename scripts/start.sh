@@ -3,7 +3,7 @@
 # 用法：
 #   ./scripts/start.sh           # 启动全部（Docker 中间件 + Go 后端 + 前台 + 管理端）
 #   ./scripts/start.sh --no-docker  # 仅启动应用层（假设 Docker 容器已在运行）
-#   ./scripts/start.sh backend      # 仅启动指定服务（backend|frontend|admin|docker）
+#   ./scripts/start.sh backend      # 仅启动指定服务（backend|frontend|admin|media|docker）
 # 注意：不使用 set -e，避免单个服务启动失败中断其他服务；
 # 失败时由 spawn_bg 内部打印日志末尾辅助排障
 set -uo pipefail
@@ -93,11 +93,36 @@ start_admin() {
   spawn_bg "admin" "$ROOT_DIR/admin" npm run dev
 }
 
+# 启动 Node 媒体服务器（mediasoup SFU，默认端口 3300）
+# 首次启动若缺少 .env，则从 .env.example 拷贝一份，避免 config 校验失败
+start_media() {
+  local media_dir="$ROOT_DIR/media-server"
+  if [[ ! -d "$media_dir" ]]; then
+    log_warn "media-server 目录不存在，跳过"
+    return 0
+  fi
+  if port_in_use 3300; then
+    log_warn "端口 3300 已被占用，跳过媒体服务器启动"
+    return 0
+  fi
+  if [[ ! -f "$media_dir/.env" && -f "$media_dir/.env.example" ]]; then
+    log_info "media-server/.env 不存在，从 .env.example 复制"
+    cp "$media_dir/.env.example" "$media_dir/.env"
+  fi
+  if [[ ! -d "$media_dir/node_modules" ]]; then
+    log_warn "media-server 依赖未安装，请先在 media-server 目录执行 npm install"
+    return 1
+  fi
+  log_info "启动媒体服务器 (port 3300)..."
+  spawn_bg "media" "$media_dir" npm run dev
+}
+
 print_summary() {
   printf "\n${COLOR_GREEN}=============== EchoChat 启动完成 ===============${COLOR_RESET}\n"
   printf "  前台用户端 (H5):   http://localhost:5173\n"
   printf "  后台管理端:        http://localhost:3100\n"
   printf "  Go 后端 API:       http://localhost:8085\n"
+  printf "  媒体服务器 (SFU):  http://localhost:3300 (healthz: /healthz)\n"
   printf "  MinIO 控制台:      http://localhost:9001 (echochat / echochat123456)\n\n"
   printf "  日志目录:          %s\n" "$LOG_DIR"
   printf "  PID 目录:          %s\n" "$RUN_DIR"
@@ -118,6 +143,7 @@ main() {
     all)
       $skip_docker || start_docker || log_err "Docker 中间件启动异常，请检查 Docker Desktop 是否运行"
       start_backend  || true
+      start_media    || true
       start_frontend || true
       start_admin    || true
       print_summary
@@ -126,9 +152,10 @@ main() {
     backend)  start_backend ;;
     frontend) start_frontend ;;
     admin)    start_admin ;;
+    media)    start_media ;;
     *)
       log_err "未知参数: $target"
-      echo "用法: $0 [all|docker|backend|frontend|admin|--no-docker]"
+      echo "用法: $0 [all|docker|backend|frontend|admin|media|--no-docker]"
       exit 1
       ;;
   esac

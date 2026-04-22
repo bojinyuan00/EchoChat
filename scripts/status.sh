@@ -45,6 +45,7 @@ check_container() {
 echo ""
 echo "===== EchoChat 应用层 ====="
 check_port "Go 后端"       8085 "http://localhost:8085"
+check_port "媒体服务器 SFU" 3300 "http://localhost:3300/healthz"
 check_port "前台用户端"    5173 "http://localhost:5173"
 check_port "后台管理端"    3100 "http://localhost:3100"
 
