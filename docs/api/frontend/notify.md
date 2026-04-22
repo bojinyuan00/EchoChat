@@ -15,9 +15,33 @@
 | 好友 | `friend_request` / `friend_accepted` / `friend_rejected` | contact |
 | 群聊 | `group_invite` / `group_join_request` / `group_join_approved` / `group_join_rejected` / `group_kicked` / `group_role_changed` | group |
 | 系统 | `system_broadcast` | admin 广播 |
-| 会议 | `meeting_invite` / `meeting_reminder` | meeting（Phase 2e-2/2e-3 接入） |
+| 会议 | `meeting_invite`（Phase 2e-2 已接入） / `meeting_reminder`（Phase 2e-3 预约会议接入） | meeting |
 
 > 通知持久化在 `notify_notifications` 表，每条通知对应单个接收者；30 天前的已读通知由后台定时任务自动清理，未读通知永久保留。
+
+### 支持内联按钮的通知类型
+
+以下 type 在 `NotifyItem.vue` 会渲染"接受 / 拒绝"双按钮（文案因 type 而异），其余 type 仅展示点击跳转：
+
+| type | 接受按钮 | 拒绝按钮 | 过期态 |
+|---|---|---|---|
+| `friend_request` | 同意 | 拒绝 | 无 |
+| `meeting_invite` | 立即加入 | 稍后 | ✅ 过期合并为单个 disabled 按钮"邀请已过期"，由 `extra.expired_at * 1000 < Date.now()` 判定 |
+
+前端常量见 `frontend/src/constants/notify.js#NOTIFY_INLINE_ACTION_LABEL`。
+
+### `meeting_invite` 专用 extra 字段（Phase 2e-2 Task 13）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `room_code` | string | 9 位会议号 `XXX-XXX-XXX`，前端跳 preview 页使用 |
+| `room_title` | string | 房间标题，用于卡片正文 |
+| `has_password` | boolean | 是否需要密码，前端在 preview 页决定是否弹密码输入框 |
+| `invite_token` | string | 32 位 hex token，可选使用 `/meeting/invite-tokens/:token/redeem` 兑换 |
+| `inviter_id` | int64 | 邀请人用户 ID |
+| `inviter_name` | string | 邀请人昵称，用于卡片头部"XX 邀请你加入..." |
+| `inviter_avatar` | string | 邀请人头像 URL |
+| `expired_at` | int64 | Unix 秒，与 Redis `echo:meeting:invite:{token}` TTL（600s）同步，前端据此灰显按钮 |
 
 ---
 

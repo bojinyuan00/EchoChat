@@ -513,8 +513,9 @@ flowchart LR
 - **附带修复（commit 310ea03）**：`frontend/src/services/websocket.js` 在命中 `.ack` 事件后不再 `return`，改为同时 `_handleAck`（Promise 通路）+ `_emit`（订阅通路），修复 `chat.js` 订阅的 `im.message.send.ack / im.message.read.ack` 从未被触发、消息永远卡在 `_sending=true` 圆圈的回归 bug；`chat.js _appendMessage` 改为"命中 `client_msg_id` 的临时消息时就地合并服务端字段"而非直接丢弃，作为广播帧兜底。
 - **验收**：
   - 后端 REST 验证（curl）：`POST /api/v1/meeting/rooms/:code/invite` → 被邀请者 `GET /api/v1/notifications?category=meeting` 能取到 `type=meeting_invite` 通知，`extra` 包含 `room_code / room_title / inviter_id / inviter_name / inviter_avatar / has_password / invite_token / expired_at` 全部字段。
+  - **Playwright UI E2E（2026-04-23 补做）**：testuser2 登录 → 通知中心渲染新邀请卡片的"立即加入 / 稍后"双按钮 + 渲染过期邀请卡片的单个 disabled"邀请已过期"按钮；点"立即加入"跳 `/pages/meeting/preview?mode=join&code=xxx`，code 与邀请精确一致；preview 页正确展示"即将加入会议 xxx"与设备选择面板。
   - 过期态由 `expired_at` 驱动（Redis TTL 600s），过期后按钮自动灰显、点击有 toast 提示、不跳转。
-- **工作量**：**0.5 人日（实际约 0.3 人日）**
+- **工作量**：**0.5 人日（实际约 0.4 人日，含 Playwright 回归补做）**
 
 ### Task 14：docker-compose 扩展 + 环境变量双态开关
 

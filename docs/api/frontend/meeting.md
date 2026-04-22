@@ -281,7 +281,13 @@
 **行为**：对每个 invitee：
 1. 若该用户已在本会议活跃 → 跳过；
 2. 生成 32 位十六进制 Token 写 Redis key `echo:meeting:invite:{token}`，TTL 600 秒（`MeetingInviteTokenTTL`），value = `{"room_code","inviter_id","invitee_id","has_password"}`；
-3. 通过 Phase 2e-1 `notify.Pusher.PushBatch` 推送 `type=meeting_invite` 通知，`Extra` 含 `room_code / room_title / has_password / invite_token`；
+3. 通过 Phase 2e-1 `notify.Pusher.PushBatch` 推送 `type=meeting_invite` 通知，`Extra`（Phase 2e-2 Task 13 完整版）包含以下字段：
+   - `room_code`：9 位会议号 `XXX-XXX-XXX`，前端跳 preview 页使用
+   - `room_title`：房间标题，卡片展示
+   - `has_password`：是否有密码，前端据此决定是否在 preview 页弹密码输入
+   - `invite_token`：32 位 hex token，可用于兑换接口快速拉取 room_code
+   - `inviter_id` / `inviter_name` / `inviter_avatar`：邀请人展示字段，卡片左上角头像 + "XX 邀请你加入..." 文案来源
+   - `expired_at`：Unix 秒，与 Redis TTL 同步；前端用 `expired_at * 1000 < Date.now()` 判断过期并灰显按钮
 4. 离线被邀请者走通知入库，上线后由 WS 或未读轮询获得。
 
 **响应 `200 OK`**
@@ -683,4 +689,4 @@
 ## 后续任务关联
 
 - **Task 9**：Vue 前端 mediasoup-client 接入，按本文 WS 契约实现 `mediasoup.Transport` 的 `connect / produce` 回调；补齐 `ResumeConsumer`（Node REST 已就绪）或在 Go 侧改为创建 Consumer 后自动 resume；需处理 `meeting.host.changed` 的 `auto_reason` 字段以在 UI 上标注"自动转让"。
-- **Task 13**：通知卡片 UI 补齐 `meeting_invite` 内联按钮。
+- **Task 13 ✅（2026-04-23）**：通知卡片 UI 已完成内联按钮（"立即加入 / 稍后"），点击"立即加入"跳 `/pages/meeting/preview?mode=join&code=xxx` 由 preview 页走 `/rooms/:code/join`；过期态由 `extra.expired_at * 1000 < Date.now()` 判定并合并为单个 disabled 的"邀请已过期"按钮，不再发起任何请求。

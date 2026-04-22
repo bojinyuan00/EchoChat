@@ -43,7 +43,14 @@
   - `extra` 完整度：`room_code / room_title / has_password / invite_token / inviter_id / inviter_name / inviter_avatar / expired_at` 全部存在且值正确
   - `expired_at = invited_at + 600` 与 Redis TTL 对齐
 - **前端聊天卡圈 Bug 验证**（用户手测）：用户确认"经过我测试，这个问题已经修复好了"，双用户发消息立即显示「已读 / 未读」标签，不再出现发送方消息前显示 loading 圆圈。
-- **Playwright UI 回归暂缓**：Playwright MCP 当前环境对多用户上下文与 `browser_install` 有限制，前端 UI 部分采用"用户手测 + 后端 API 完整验证"替代，等 Task 16 E2E 总回归时统一做；已在 todo 中标注。
+- **Playwright 前端 UI 回归**（2026-04-23 补做，采用"A 侧 curl 邀请 + B 侧 Playwright 登录"策略绕开多用户上下文限制）：
+  - A 侧 curl：testuser1 创会 `room_code=516-162-828` → 邀请 testuser2（id=9）；后端返回 `pushed:1, skipped:0`
+  - B 侧 Playwright：testuser2 登录 → 访问 `/pages/notify/index` → 通知列表成功渲染 2 张 `meeting_invite` 卡片：
+    * **新邀请卡片**（刚刚）→ 底部显示「立即加入 / 稍后」两个独立按钮 ✅
+    * **过期邀请卡片**（10 分钟前，`expired_at` 已过去）→ 双按钮合并为单个 disabled 的「邀请已过期」按钮 ✅
+  - 点击"立即加入"→ URL 跳到 `/pages/meeting/preview?mode=join&code=516-162-828` ✅（room_code 与邀请精确一致）
+  - preview 页正确渲染 `"即将加入会议 516-162-828，确认设备和显示名称后加入会议"`，摄像头/麦克风/扬声器/显示名称/默认开关全部可用 ✅
+  - 截图留档：`task13-notify-meeting-invite-cards.png` / `task13-preview-page-after-invite-accept.png`
 
 ### 下一步
 
