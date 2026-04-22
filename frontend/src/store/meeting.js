@@ -528,7 +528,7 @@ export const useMeetingStore = defineStore('meeting', () => {
    * @param {Object} payload - { title, password?, max_members?, enter_muted?, allow_chat? }
    * @param {Object} [mediaPrefs] - 设备预览页的媒体偏好，入会成功后自动推流（可空）
    */
-  const createAndEnter = async (payload, mediaPrefs) => {
+  const createAndEnter = async (payload, mediaPrefs, _retried = false) => {
     if (isInMeeting.value) {
       throw new Error('你当前已在其他会议中')
     }
@@ -550,7 +550,14 @@ export const useMeetingStore = defineStore('meeting', () => {
     } catch (err) {
       _log('error', '[Meeting] 创建并入会失败', err)
       _reset()
-      throw _enrichStaleMeetingError(err)
+      const enriched = _enrichStaleMeetingError(err)
+      // 刷新/崩溃残留：后端仍标记当前用户为活跃成员 → 自动清理后重试一次
+      if (enriched?.staleMeetingHint && !_retried) {
+        _log('warn', '[Meeting] 检测到僵尸会议残留，自动清理并重试创建')
+        try { await cleanupStaleMeetings() } catch (e) { _log('warn', '[Meeting] 自动清理失败', e) }
+        return createAndEnter(payload, mediaPrefs, true)
+      }
+      throw enriched
     }
   }
 
@@ -560,7 +567,7 @@ export const useMeetingStore = defineStore('meeting', () => {
    * @param {string} [password]
    * @param {Object} [mediaPrefs] - 设备预览页的媒体偏好（可空）
    */
-  const joinAndEnter = async (roomCode, password = '', mediaPrefs) => {
+  const joinAndEnter = async (roomCode, password = '', mediaPrefs, _retried = false) => {
     if (isInMeeting.value) {
       throw new Error('你当前已在其他会议中')
     }
@@ -575,7 +582,14 @@ export const useMeetingStore = defineStore('meeting', () => {
     } catch (err) {
       _log('error', '[Meeting] 加入会议失败', err)
       _reset()
-      throw _enrichStaleMeetingError(err)
+      const enriched = _enrichStaleMeetingError(err)
+      // 刷新/崩溃残留：后端仍记该用户为活跃成员 → 自动清理后重试一次
+      if (enriched?.staleMeetingHint && !_retried) {
+        _log('warn', '[Meeting] 检测到僵尸会议残留，自动清理并重试加入')
+        try { await cleanupStaleMeetings() } catch (e) { _log('warn', '[Meeting] 自动清理失败', e) }
+        return joinAndEnter(roomCode, password, mediaPrefs, true)
+      }
+      throw enriched
     }
   }
 

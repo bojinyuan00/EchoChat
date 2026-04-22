@@ -350,6 +350,8 @@ const close = () => emit('close')
 
 .input-area {
   display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
   align-items: flex-end;
   gap: 12rpx;
   padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
@@ -375,6 +377,7 @@ const close = () => emit('close')
 }
 
 .btn-send {
+  /* 覆盖 uni-app <uni-button> 默认 width:100% / border / margin */
   all: unset;
   cursor: pointer;
   display: inline-flex;
@@ -388,7 +391,16 @@ const close = () => emit('close')
   box-shadow: 0 4rpx 14rpx rgba(59, 130, 246, 0.35);
   transition: background-color 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
   flex-shrink: 0;
+  width: auto;
   min-height: 64rpx;
+  line-height: 1;
+  box-sizing: border-box;
+}
+/* 防御 uni-app H5 <uni-button> 内部嵌套 <button> 的全宽/默认边框 */
+.btn-send::after { border: none !important; }
+.input-area ::v-deep(uni-button.btn-send) {
+  width: auto;
+  margin: 0;
 }
 .btn-send svg { display: block; }
 .btn-send .btn-send-label { font-size: 26rpx; font-weight: 600; }
