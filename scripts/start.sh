@@ -117,14 +117,61 @@ start_media() {
   spawn_bg "media" "$media_dir" npm run dev
 }
 
+# 等待 vite/dev server 日志里出现 Network 行并提取其中的 LAN 地址
+# 最长等待 8 秒；失败时返回空字符串（不阻塞启动流程）
+wait_and_collect_network_urls() {
+  local log_file="$1"
+  local max_wait="${2:-8}"
+  local i=0
+  while (( i < max_wait )); do
+    if grep -q "Network:" "$log_file" 2>/dev/null; then
+      break
+    fi
+    sleep 1
+    i=$((i + 1))
+  done
+  grep -Eo "http://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+/?" "$log_file" 2>/dev/null \
+    | grep -v '127\.0\.0\.1' \
+    | sort -u
+}
+
 print_summary() {
   printf "\n${COLOR_GREEN}=============== EchoChat 启动完成 ===============${COLOR_RESET}\n"
   printf "  前台用户端 (H5):   http://localhost:5173\n"
   printf "  后台管理端:        http://localhost:3100\n"
   printf "  Go 后端 API:       http://localhost:8085\n"
   printf "  媒体服务器 (SFU):  http://localhost:3300 (healthz: /healthz)\n"
-  printf "  MinIO 控制台:      http://localhost:9001 (echochat / echochat123456)\n\n"
-  printf "  日志目录:          %s\n" "$LOG_DIR"
+  printf "  MinIO 控制台:      http://localhost:9001 (echochat / echochat123456)\n"
+
+  # 前端 / 管理端 Vite dev server 启动时 host=0.0.0.0，
+  # 会输出多条 Network 行（本机每块网卡一条），这里从日志提取展示
+  local fe_log="$LOG_DIR/frontend.log"
+  local admin_log="$LOG_DIR/admin.log"
+  local fe_urls admin_urls
+  fe_urls="$(wait_and_collect_network_urls "$fe_log" 8)"
+  admin_urls="$(wait_and_collect_network_urls "$admin_log" 4)"
+
+  if [[ -n "$fe_urls" || -n "$admin_urls" ]]; then
+    printf "\n${COLOR_CYAN}局域网访问地址${COLOR_RESET}（同 WiFi/LAN 下其他设备可直接访问）：\n"
+    if [[ -n "$fe_urls" ]]; then
+      printf "  前台用户端：\n"
+      while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        printf "    %s\n" "$line"
+      done <<< "$fe_urls"
+    fi
+    if [[ -n "$admin_urls" ]]; then
+      printf "  后台管理端：\n"
+      while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        printf "    %s\n" "$line"
+      done <<< "$admin_urls"
+    fi
+    printf "  提示：接口代理走前端 Vite，后端 API(8085) / 媒体(3300) 默认绑定 0.0.0.0，\n"
+    printf "        如需从其他设备访问 API/媒体，需要在前端 .env 里把 baseURL 改成本机 LAN IP。\n"
+  fi
+
+  printf "\n  日志目录:          %s\n" "$LOG_DIR"
   printf "  PID 目录:          %s\n" "$RUN_DIR"
   printf "  查看状态:          ./scripts/status.sh\n"
   printf "  停止全部:          ./scripts/stop.sh\n"
