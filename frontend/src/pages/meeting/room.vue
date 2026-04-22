@@ -379,6 +379,11 @@ const onCamToggle = async () => {
 const openInvite = () => { inviteVisible.value = true }
 const openMembers = () => { memberVisible.value = true }
 const openChat = () => {
+  // 点击工具栏聊天按钮时进行切换：已打开 → 关闭；未打开 → 打开并标记已读
+  if (chatVisible.value) {
+    chatVisible.value = false
+    return
+  }
   chatVisible.value = true
   meetingStore.markChatsRead()
 }
@@ -555,6 +560,7 @@ onUnload(() => {
   background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
   position: relative;
   z-index: 5;
+  flex-shrink: 0;
 }
 
 .top-left {

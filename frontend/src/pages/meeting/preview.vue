@@ -197,8 +197,8 @@ const startPreview = async () => {
     const constraints = {
       audio: selectedAudioId.value ? { deviceId: { exact: selectedAudioId.value } } : true,
       video: selectedVideoId.value
-        ? { deviceId: { exact: selectedVideoId.value }, width: 640, height: 480 }
-        : { width: 640, height: 480 }
+        ? { deviceId: { exact: selectedVideoId.value }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } }
+        : { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } }
     }
     previewStream = await navigator.mediaDevices.getUserMedia(constraints)
     hasPermission.value = true

@@ -648,9 +648,11 @@ export const useMeetingStore = defineStore('meeting', () => {
   const startLocalVideo = async (deviceId) => {
     if (!_engine) throw new Error('未连接')
     if (localProducers.video) return
+    // 与预览页保持一致的 HD 分辨率（ideal 1280x720，允许浏览器在设备不支持时降级）
     const videoConstraints = {
-      width: 640,
-      height: 480,
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 24, max: 30 },
       ...(deviceId ? { deviceId: { exact: deviceId } } : {})
     }
     const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints })

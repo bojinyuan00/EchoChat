@@ -123,6 +123,11 @@ const emitIf = (name) => {
   background: rgba(17, 24, 39, 0.88);
   backdrop-filter: blur(16px);
   border-top: 1rpx solid rgba(255, 255, 255, 0.08);
+  /* flex-shrink:0 保证 body 内容高度过大时不会把 toolbar 挤出视口；
+     position:relative + z-index 提升按钮点击层级，避免 ChatPanel 遮挡 */
+  flex-shrink: 0;
+  position: relative;
+  z-index: 15;
 }
 
 .btn {
