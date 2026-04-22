@@ -79,8 +79,17 @@ export const useMeetingStore = defineStore('meeting', () => {
   /** 活跃参与者列表（含当前用户，按加入时间正序） */
   const participants = ref([])
 
-  /** 会议聊天消息列表（最新在尾部） */
+  /** 会议聊天消息列表（按 ID 升序，最新在尾部） */
   const chatMessages = ref([])
+
+  /** 会议聊天还有更早消息可加载（用于"加载更多"按钮） */
+  const chatHasMore = ref(true)
+
+  /** 会议聊天未读计数（来自他人且 ChatPanel 未打开期间累积） */
+  const chatUnreadCount = ref(0)
+
+  /** 会议聊天首次懒加载完成标记 */
+  const chatHistoryLoaded = ref(false)
 
   /** 最近一次会议结束原因（room.ended_reason 或 room.ended.reason） */
   const lastEndedReason = ref('')
@@ -180,6 +189,9 @@ export const useMeetingStore = defineStore('meeting', () => {
     routerID.value = ''
     participants.value = []
     chatMessages.value = []
+    chatHasMore.value = true
+    chatUnreadCount.value = 0
+    chatHistoryLoaded.value = false
     localAudioEnabled.value = false
     localVideoEnabled.value = false
     localProducers.audio = null
@@ -344,7 +356,22 @@ export const useMeetingStore = defineStore('meeting', () => {
   const _onChatMessage = (msg) => {
     const data = msg.data || {}
     if (!currentRoom.value || data.room_code !== currentRoom.value.room_code) return
-    chatMessages.value.push(data)
+    // WS 广播字段名与 REST 响应不同：id vs message_id；统一映射为 id/user_id/content/created_at
+    const item = {
+      id: data.message_id ?? data.id,
+      user_id: data.user_id,
+      user_name: data.user_name || '',
+      user_avatar: data.user_avatar || '',
+      content: data.content,
+      created_at: data.created_at
+    }
+    // 防止重复：相同 id 已存在则忽略（sendChat 响应 + 广播同时到达的兜底）
+    if (item.id && chatMessages.value.some(m => m.id === item.id)) return
+    chatMessages.value.push(item)
+    const userStore = useUserStore()
+    if (item.user_id !== userStore.userInfo?.id) {
+      chatUnreadCount.value += 1
+    }
   }
 
   /**
@@ -656,15 +683,46 @@ export const useMeetingStore = defineStore('meeting', () => {
 
   // ==================== Actions：聊天/管理 ====================
 
+  /**
+   * 发送会议聊天
+   * 后端广播 meeting.chat.message 给房间内非发送者，发送方依赖 REST 响应里的 message 上屏；
+   * 若后端未把 message 字段回传，则退化为等待广播（不上屏）
+   */
   const sendChat = async (content) => {
     if (!currentRoom.value) throw new Error('未入会')
-    await meetingApi.sendChat(currentRoom.value.room_code, content)
+    const resp = await meetingApi.sendChat(currentRoom.value.room_code, content)
+    const msg = resp?.message
+    if (msg && !chatMessages.value.some(m => m.id === msg.id)) {
+      chatMessages.value.push(msg)
+    }
+    return msg
   }
 
-  const loadChatHistory = async (beforeId = 0, limit = 30) => {
+  /** 加载更早的聊天消息，按 ID 游标向前翻页；首次进入时 beforeId=0 表示拿最新一页 */
+  const loadMoreChats = async (limit = 30) => {
     if (!currentRoom.value) return { list: [], has_more: false }
-    return meetingApi.listChats(currentRoom.value.room_code, { before_id: beforeId, limit })
+    const oldest = chatMessages.value[0]
+    const beforeId = oldest?.id || 0
+    const resp = await meetingApi.listChats(currentRoom.value.room_code, { before_id: beforeId, limit })
+    const list = (resp?.list || []).slice().sort((a, b) => (a.id || 0) - (b.id || 0))
+    if (list.length) {
+      // 去重后按时间序插入到头部
+      const existing = new Set(chatMessages.value.map(m => m.id))
+      const fresh = list.filter(m => !existing.has(m.id))
+      if (fresh.length) chatMessages.value.unshift(...fresh)
+    }
+    chatHasMore.value = !!resp?.has_more
+    chatHistoryLoaded.value = true
+    return resp
   }
+
+  /** 读掉所有会议聊天未读（ChatPanel 打开时调用） */
+  const markChatsRead = () => {
+    chatUnreadCount.value = 0
+  }
+
+  /** 兼容旧调用：保留 loadChatHistory 名称，内部调 loadMoreChats */
+  const loadChatHistory = loadMoreChats
 
   const transferHost = async (targetUserID) => {
     if (!currentRoom.value) throw new Error('未入会')
@@ -720,6 +778,9 @@ export const useMeetingStore = defineStore('meeting', () => {
     routerID,
     participants,
     chatMessages,
+    chatHasMore,
+    chatUnreadCount,
+    chatHistoryLoaded,
     lastEndedReason,
     lastAutoHostReason,
     localAudioEnabled,
@@ -751,7 +812,9 @@ export const useMeetingStore = defineStore('meeting', () => {
 
     // chat & admin
     sendChat,
+    loadMoreChats,
     loadChatHistory,
+    markChatsRead,
     transferHost,
     kickMember,
     inviteUsers,

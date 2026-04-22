@@ -92,6 +92,20 @@
       @close="inviteVisible = false"
     />
 
+    <!-- 聊天面板 -->
+    <ChatPanel
+      :visible="chatVisible"
+      :messages="chatMessages"
+      :current-user-id="myUserId"
+      :display-name-map="displayNameMap"
+      :has-more="chatHasMore"
+      :loading-more="chatLoadingMore"
+      @close="closeChat"
+      @send="onChatSend"
+      @load-more="onChatLoadMore"
+      @request-initial-load="onChatRequestInitialLoad"
+    />
+
     <!-- 离会确认弹窗 -->
     <view v-if="leaveDialogVisible" class="leave-mask" @click.self="leaveDialogVisible = false">
       <view class="leave-modal">
@@ -132,17 +146,19 @@ import MeetingToolbar from '@/components/meeting/MeetingToolbar.vue'
 import MemberPanel from '@/components/meeting/MemberPanel.vue'
 import InviteDialog from '@/components/meeting/InviteDialog.vue'
 import NetworkBadge from '@/components/meeting/NetworkBadge.vue'
+import ChatPanel from '@/components/meeting/ChatPanel.vue'
 
 const meetingStore = useMeetingStore()
 const userStore = useUserStore()
 
 const memberVisible = ref(false)
 const inviteVisible = ref(false)
+const chatVisible = ref(false)
 const leaveDialogVisible = ref(false)
 const audioLoading = ref(false)
 const videoLoading = ref(false)
+const chatLoadingMore = ref(false)
 const networkLevel = ref(4) // Task 15 接入真实 getStats 后动态更新
-const unreadChatCount = ref(0) // Task 14 接入 chat 后动态更新
 const startedAt = ref(0)
 const nowTs = ref(Date.now())
 let timerHandle = null
@@ -181,6 +197,9 @@ const allowChat = computed(() => {
   }
 })
 const invitePassword = computed(() => meetingStore.draftCreatePayload?.password || '')
+const chatMessages = computed(() => meetingStore.chatMessages)
+const chatHasMore = computed(() => meetingStore.chatHasMore)
+const unreadChatCount = computed(() => meetingStore.chatUnreadCount)
 
 const formattedCode = computed(() => {
   const d = String(roomCode.value || '').replace(/\D/g, '')
@@ -358,8 +377,41 @@ const onCamToggle = async () => {
 const openInvite = () => { inviteVisible.value = true }
 const openMembers = () => { memberVisible.value = true }
 const openChat = () => {
-  // Task 14 会议聊天入口；当前阶段仅提示
-  uni.showToast({ title: '聊天功能即将上线', icon: 'none' })
+  chatVisible.value = true
+  meetingStore.markChatsRead()
+}
+const closeChat = () => { chatVisible.value = false }
+
+watch(unreadChatCount, (count) => {
+  if (count > 0 && chatVisible.value) {
+    meetingStore.markChatsRead()
+  }
+})
+
+const onChatSend = async (content) => {
+  try {
+    await meetingStore.sendChat(content)
+  } catch (err) {
+    uni.showToast({ title: err?.message || '发送失败', icon: 'none' })
+    throw err
+  }
+}
+
+const onChatLoadMore = async () => {
+  if (chatLoadingMore.value) return
+  chatLoadingMore.value = true
+  try {
+    await meetingStore.loadMoreChats(30)
+  } catch (err) {
+    uni.showToast({ title: err?.message || '加载失败', icon: 'none' })
+  } finally {
+    chatLoadingMore.value = false
+  }
+}
+
+const onChatRequestInitialLoad = async () => {
+  if (meetingStore.chatHistoryLoaded) return
+  await onChatLoadMore()
 }
 
 const onKickMember = async (uid) => {

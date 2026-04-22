@@ -127,17 +127,23 @@ func participantToDTO(p *model.MeetingParticipant) *dto.MeetingParticipantDTO {
 }
 
 // chatToDTO 将 model.MeetingChat 转 DTO
-func chatToDTO(m *model.MeetingChat) *dto.MeetingChatDTO {
+// userMap 可选：若提供则附带 user_name / user_avatar，否则为空
+func chatToDTO(m *model.MeetingChat, userMap map[int64]service.UserDisplayInfo) *dto.MeetingChatDTO {
 	if m == nil {
 		return nil
 	}
-	return &dto.MeetingChatDTO{
+	d := &dto.MeetingChatDTO{
 		ID:        m.ID,
 		RoomID:    m.RoomID,
 		UserID:    m.UserID,
 		Content:   m.Content,
 		CreatedAt: m.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
+	if info, ok := userMap[m.UserID]; ok {
+		d.UserName = info.Name
+		d.UserAvatar = info.Avatar
+	}
+	return d
 }
 
 // ====== REST API ======
@@ -398,7 +404,8 @@ func (ctl *MeetingController) SendChat(c *gin.Context) {
 		ctl.handleError(c, err, "发送会议聊天失败")
 		return
 	}
-	utils.ResponseCreated(c, dto.SendMeetingChatResponse{Message: *chatToDTO(msg)})
+	userMap := ctl.meetingService.ResolveUsersDisplay(c.Request.Context(), []int64{msg.UserID})
+	utils.ResponseCreated(c, dto.SendMeetingChatResponse{Message: *chatToDTO(msg, userMap)})
 }
 
 // ListChats GET /api/v1/meeting/rooms/:code/chats?before_id=&limit=
@@ -419,9 +426,14 @@ func (ctl *MeetingController) ListChats(c *gin.Context) {
 		ctl.handleError(c, err, "获取会议聊天失败")
 		return
 	}
+	userIDs := make([]int64, 0, len(msgs))
+	for i := range msgs {
+		userIDs = append(userIDs, msgs[i].UserID)
+	}
+	userMap := ctl.meetingService.ResolveUsersDisplay(c.Request.Context(), userIDs)
 	list := make([]dto.MeetingChatDTO, 0, len(msgs))
 	for i := range msgs {
-		list = append(list, *chatToDTO(&msgs[i]))
+		list = append(list, *chatToDTO(&msgs[i], userMap))
 	}
 	utils.ResponseOK(c, dto.ListMeetingChatsResponse{List: list, HasMore: hasMore})
 }

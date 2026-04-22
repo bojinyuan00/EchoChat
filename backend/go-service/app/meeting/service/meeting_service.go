@@ -150,6 +150,63 @@ func (s *MeetingService) broadcastToActiveParticipants(ctx context.Context, room
 	s.broadcaster.BroadcastToMeeting(ctx, roomID, event, data, excludeUserIDs...)
 }
 
+// UserDisplayInfo 用户展示信息（昵称优先，降级为用户名；头像可空）
+type UserDisplayInfo struct {
+	Name   string
+	Avatar string
+}
+
+// resolveUserDisplay 查单个用户的展示信息；查询失败/未命中时返回空字符串
+// 仅服务层内部使用，调用方失败时降级为 user_name="" 即可
+func (s *MeetingService) resolveUserDisplay(ctx context.Context, userID int64) (name string, avatar string) {
+	if s.userResolver == nil || userID <= 0 {
+		return "", ""
+	}
+	users, err := s.userResolver.GetUsersByIDs(ctx, []int64{userID})
+	if err != nil || len(users) == 0 {
+		return "", ""
+	}
+	u := users[0]
+	if u.Nickname != "" {
+		return u.Nickname, u.Avatar
+	}
+	return u.Username, u.Avatar
+}
+
+// ResolveUsersDisplay 批量查询用户展示信息，controller 端用于填充 DTO
+// 返回 map[userID]UserDisplayInfo，查询失败时返回空 map（调用方按降级处理）
+func (s *MeetingService) ResolveUsersDisplay(ctx context.Context, userIDs []int64) map[int64]UserDisplayInfo {
+	out := make(map[int64]UserDisplayInfo, len(userIDs))
+	if s.userResolver == nil || len(userIDs) == 0 {
+		return out
+	}
+	// 去重
+	seen := make(map[int64]struct{}, len(userIDs))
+	unique := make([]int64, 0, len(userIDs))
+	for _, id := range userIDs {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	users, err := s.userResolver.GetUsersByIDs(ctx, unique)
+	if err != nil {
+		return out
+	}
+	for _, u := range users {
+		name := u.Nickname
+		if name == "" {
+			name = u.Username
+		}
+		out[u.ID] = UserDisplayInfo{Name: name, Avatar: u.Avatar}
+	}
+	return out
+}
+
 // ====== 会议生命周期 ======
 
 // CreateRoom 创建即时会议
@@ -773,12 +830,17 @@ func (s *MeetingService) SendChatMessage(ctx context.Context, userID int64, code
 		return nil, err
 	}
 
+	// 附带 user_name / user_avatar，前端聊天面板无需额外拉取
+	userName, userAvatar := s.resolveUserDisplay(ctx, userID)
+
 	go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventChatMessage, map[string]interface{}{
-		"room_code":  code,
-		"message_id": chat.ID,
-		"user_id":    userID,
-		"content":    content,
-		"created_at": chat.CreatedAt.Format("2006-01-02 15:04:05"),
+		"room_code":   code,
+		"message_id":  chat.ID,
+		"user_id":     userID,
+		"user_name":   userName,
+		"user_avatar": userAvatar,
+		"content":     content,
+		"created_at":  chat.CreatedAt.Format("2006-01-02 15:04:05"),
 	}, userID)
 
 	logs.Debug(ctx, funcName, "会议聊天已发送",
