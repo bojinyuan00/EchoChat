@@ -124,10 +124,12 @@ const emitIf = (name) => {
   backdrop-filter: blur(16px);
   border-top: 1rpx solid rgba(255, 255, 255, 0.08);
   /* flex-shrink:0 保证 body 内容高度过大时不会把 toolbar 挤出视口；
-     position:relative + z-index 提升按钮点击层级，避免 ChatPanel 遮挡 */
+     z-index 需要高于 MemberPanel / InviteDialog 的遮罩（z-index: 200），
+     这样成员 / 邀请抽屉打开时用户仍可点击 toolbar 按钮（二次点击 toggle 关闭面板）。
+     同时保持低于离会确认弹窗 .leave-mask (z-index: 220)。 */
   flex-shrink: 0;
   position: relative;
-  z-index: 15;
+  z-index: 210;
 }
 
 .btn {
