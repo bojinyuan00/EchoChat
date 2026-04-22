@@ -60,8 +60,8 @@ EchoChat/
 │       ├── config/        # 配置文件
 │       ├── pkg/           # 公共包 (db / logs / middleware / utils)
 │       └── router/        # 路由聚合
-├── media-server/          # mediasoup Node 媒体服务 (Phase 2e-2 Task 0-2 已落地 9 REST API，Task 7 起 Go 通过 HTTPMediaOrchestrator 接入)
-├── deploy/                # 部署配置 (Docker Compose)
+├── media-server/          # mediasoup Node 媒体服务 (Phase 2e-2 Task 0-2 已落地 9 REST API；Task 7 起 Go 通过 HTTPMediaOrchestrator 接入；Task 14 纳入 docker-compose 双态编排)
+├── deploy/                # 部署配置 (Docker Compose + 三份 .env 双态模板)
 ├── design-system/         # UI 设计系统 (ui-ux-pro-max 生成)
 ├── docs/                  # 项目文档
 │   ├── progress/          # 开发进度
@@ -90,9 +90,10 @@ EchoChat/
 | 脚本 | 用途 | 使用频率 |
 |---|---|---|
 | `scripts/dev-setup.sh` | **首次环境初始化**：检查 Docker、拉起 Postgres/Redis/MinIO、重试式健康检查 | 仅首次 clone 或重建卷时 |
-| `scripts/start.sh` | **日常启动**：秒级拉起全部服务（容器 + 应用层） | 每天多次 |
-| `scripts/stop.sh` | **日常停止**：优雅终止应用层，默认保留容器 | 每天多次 |
-| `scripts/status.sh` | **状态查看**：端口 / PID / 容器一览 | 排障随时 |
+| `scripts/start.sh` | **日常启动**：秒级拉起全部服务（容器 + 应用层）；`full` 子命令拉起含 media-server 的全量栈 | 每天多次 |
+| `scripts/stop.sh` | **日常停止**：优雅终止应用层，默认保留容器；`full` 子命令停止全量栈 | 每天多次 |
+| `scripts/status.sh` | **状态查看**：端口 / PID / 应用容器（含 media-server / coturn）一览 | 排障随时 |
+| `scripts/deploy-public.sh` | **公网部署**（Phase 2e-2 Task 14）：env 校验 + 端口 checklist + Docker 自检 + `--profile public` 启动全栈 + media-server 健康检查 | 公网部署时 |
 
 #### 首次使用（仅一次）
 
@@ -135,14 +136,16 @@ EchoChat/
 | MinIO API | 9000 | 对象存储，S3 兼容 |
 | MinIO Console | 9001 | `http://localhost:9001`（echochat / echochat123456） |
 
-### 方式二：Docker Compose 全量启动
+### 方式二：Docker Compose 全量启动（含 media-server）
 
 ```bash
 cd deploy
-docker compose -f docker-compose.dev.yml up -d
+cp .env.local.example .env   # 本机 Demo 模板
+cd ..
+./scripts/start.sh full      # 拉起 postgres + redis + minio + go-service + media-server 容器
 ```
 
-> 注意：此方式下 Go 后端、前台、管理端需按下方「方式三」各自启动，或在 compose 中启用 `go-service` 服务。
+公网部署请参考 `docs/deployment/meeting-mvp.md`：`cp deploy/.env.public.example deploy/.env` → 替换占位符 → `./scripts/deploy-public.sh`，脚本会自动校验 `MEDIASOUP_ANNOUNCED_IP` / 端口 / Docker 环境，并按需拉起 coturn（`--profile public`）。
 
 ### 方式三：分步手动启动（开发调试）
 

@@ -17,7 +17,7 @@
 | [frontend/websocket.md](frontend/websocket.md) | WebSocket | ✅ Phase 2a | 前端 WebSocket 连接管理、事件协议、心跳、重连 |
 | [frontend/im.md](frontend/im.md) | 即时通讯 | ✅ Phase 2b | 7 个 API：会话列表/置顶/删除/清空、历史消息、全局搜索、未读数 |
 | [frontend/group.md](frontend/group.md) | 群聊管理 | ✅ Phase 2c | 16 个 API：建群/管理/成员/角色/禁言/公告/搜索/入群审批 |
-| [frontend/meeting.md](frontend/meeting.md) | 会议 | ✅ Phase 2e-2 Task 5/6/7 | 12 个 REST 接口（创建/加入/离开/结束/详情/列表/邀请/踢人/转让主持人/发起聊天/拉聊天历史/邀请链接兑换）+ 13 个 WebSocket 信令事件（8 C→S + 5 核心 S→C 广播 + 会议内聊天/被踢定向推送），Redis 媒体资源追踪 + host 权限校验；Task 7 (2026-04-21) 已接入真实 mediasoup，返回值为 Node media-server 真实 Transport/Router/DTLS 参数 |
+| [frontend/meeting.md](frontend/meeting.md) | 会议 | ✅ Phase 2e-2 Task 5/6/7/13 | 12 个 REST 接口 + 13 个 WebSocket 信令事件（8 C→S + 5 核心 S→C 广播 + 会议内聊天/被踢定向推送），Redis 媒体资源追踪 + host 权限校验；Task 7 已接入真实 mediasoup；Task 13 (2026-04-23) `InviteUsers` 补齐 `extra`（8 字段：`room_code/room_title/has_password/invite_token/inviter_id/inviter_name/inviter_avatar/expired_at`），支持通知中心 `meeting_invite` 卡片「立即加入 / 稍后」+ 过期态灰显 |
 | [frontend/notify.md](frontend/notify.md) | 通知中心 | ✅ Phase 2e-1 | 5 个 API：通知列表（游标分页）/未读数/标记已读/全部已读/管理员广播 + 2 个 WS 事件（notify.new/notify.unread.total） |
 
 ### 后台管理端 (`admin/`)

@@ -126,4 +126,6 @@ docker run --rm \
 
 - **Task 2 ✅**：`/internal/v1/routers`、`/transports`、`/produce`、`/consume` 等 9 个内部 REST API 全部落地（58 单元/集成测试，覆盖率 80.89%）。
 - **Task 7 ✅**（2026-04-21）：Go 侧 `HTTPMediaOrchestrator` 通过 `X-Internal-Token` 已完整接入本服务的 `/internal/v1/*`；Go↔Node 媒体链路在端到端脚本 `docs/verify/meeting_t7_verify.mjs` 中 **16/16 PASS**，媒体 Router/Transport/Producer/Consumer 生命周期均由 Go 驱动。
-- 后续：Task 9（前端 mediasoup-client）接入时若暴露 `meeting.consume.resume` 事件，需由 Go 侧调用本服务 `POST /internal/v1/consumers/:id/resume`（已实现）。Task 10 将新增 `GET /internal/v1/transports/:id/stats` 供 Go 定时拉取。
+- **Task 9 ✅**（2026-04-21）：前端接入 mediasoup-client 完成，`meeting.consume.resume` WS 事件全链路打通；本服务 `/internal/v1/consumers/:id/resume` 已被 Go 侧使用。
+- **Task 14 ✅**（2026-04-24）：纳入 `deploy/docker-compose.dev.yml` 双态部署编排，Dockerfile 镜像由 compose 直接 build；配套 `deploy/.env.local.example`（本机 Demo，`MEDIASOUP_ANNOUNCED_IP=""` 自动走内网）与 `deploy/.env.public.example`（公网部署，强制填写公网 IP + 可选 coturn）。本服务现在通过 `scripts/start.sh full` 以容器身份启动，公网部署走 `scripts/deploy-public.sh`。详见 `docs/deployment/meeting-mvp.md`。
+- 后续：Task 10 将新增 `GET /internal/v1/transports/:id/stats` 供 Go 定时拉取。

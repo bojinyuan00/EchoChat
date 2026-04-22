@@ -3,7 +3,7 @@
 > **状态：** 🚧 进行中（2e-1 ✅ 已完成，2e-2 📋 **设计阶段完成待进入编码**，2e-3 📋 待开发）
 > **分支：** `feature/phase2e-meeting-notification`（2e-1）；`feature/phase2e-2-meeting-mvp`（2e-2，基于 `origin/feature/phase2c-group-read-receipt`）
 > **前置依赖：** Phase 2a（联系人 + WS）、Phase 2b（即时通讯）、Phase 2c（群聊+已读）、Phase 2d（消息类型扩展）全部完成
-> **最后更新：** 2026-04-21（§四精简为引用链 + §五缩小 2e-3 范围 + 2e-2 专用设计/实施计划落盘）
+> **最后更新：** 2026-04-24（Phase 2e-2 Task 0-14 ✅ 已完成：PoC / media-server 骨架 / REST / DDL / Go 骨架 / 会议 REST / WS 信令 / Go↔Node HTTP / 生命周期 / 前端 mediasoup / 会议前后端页面 / 会议聊天 / meeting_invite 卡片 / docker-compose 双态；剩 Task 15 UI 打磨 + Task 16 E2E 收官）
 > **子阶段专用文档：**
 > - 2e-1：`docs/plans/2026-04-20-phase2e-1-design.md` + `docs/plans/2026-04-20-phase2e-1-implementation.plan.md`（✅ 已完成，含 TabBar「我的」未读红点优化）
 > - 2e-2：`docs/plans/2026-04-21-phase2e-2-design.md`（16 章节）+ `docs/plans/2026-04-21-phase2e-2-implementation.plan.md`（17 个 Task，约 17 人日）
@@ -375,3 +375,4 @@ export const useNotifyStore = defineStore('notify', () => {
 |---|---|
 | 2026-04-20 | Phase 2e 规划完成：拆分为 2e-1/2e-2/2e-3 三个子阶段；本文档落盘 |
 | 2026-04-20 | Phase 2e-1 实施完成：落实 notify 模块（后端 11 种类型 / 5 REST + 2 WS / 30 天清理）+ 前端通知中心；§3.1/§3.5/§八/§九 同步修订「单端 WS 连接」约束与推迟项 |
+| 2026-04-24 | Phase 2e-2 推进 Task 0-14 全部完成：mediasoup PoC / media-server 9 REST / 3 表 DDL + DAO / Go 12 REST + WS 13 事件 / HTTPMediaOrchestrator / 生命周期状态机（host 宽限 + 自动转让 + 空房 TTL）/ 前端 mediasoup-client + Pinia store / 会议主页面（Hub/Create/Join/Preview/Room）+ 核心组件 / 会议内聊天 / meeting_invite 通知卡片（含过期态 + deep-link）/ docker-compose 双态扩展（media-server + coturn public profile）+ 三份 .env 模板 + deploy-public.sh + 部署指南。剩 Task 15 UI 打磨 + Task 16 E2E 收官 |
