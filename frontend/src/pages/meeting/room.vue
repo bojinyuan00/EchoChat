@@ -530,12 +530,20 @@ onUnload(() => {
 
 <style scoped>
 .room {
+  /* 使用 fixed + 100vw/100vh 双重保险：
+     某些祖先（uni-page-wrapper）带 transform 时 fixed 会相对该祖先而非视口；
+     显式 100vw/100vh 可保证始终铺满整个浏览器窗口。 */
   position: fixed;
   inset: 0;
+  width: 100vw;
+  height: 100vh;
+  min-width: 100vw;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   background: #0F172A;
   color: #F3F4F6;
+  z-index: 10;
 }
 
 .top-bar {

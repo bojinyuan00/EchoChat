@@ -534,7 +534,8 @@ export const useMeetingStore = defineStore('meeting', () => {
     }
     localState.value = MEETING_LOCAL_STATE_JOINING
     try {
-      const resp = await meetingApi.createRoom(payload)
+      // 首次调用时抑制失败 toast：失败后若是 stale 残留会自动清理 + 重试，对用户无感
+      const resp = await meetingApi.createRoom(payload, _retried ? {} : { silent: true })
       currentRoom.value = resp.room
       routerID.value = resp.router_id || ''
       // 创建者 host participant 尚未通过 REST 返回，用本地 userStore 占位
@@ -573,7 +574,8 @@ export const useMeetingStore = defineStore('meeting', () => {
     }
     localState.value = MEETING_LOCAL_STATE_JOINING
     try {
-      const resp = await meetingApi.joinRoom(roomCode, { password })
+      // 首次调用时抑制失败 toast：失败后若是 stale 残留会自动清理 + 重试，对用户无感
+      const resp = await meetingApi.joinRoom(roomCode, { password }, _retried ? {} : { silent: true })
       currentRoom.value = resp.room
       currentParticipant.value = resp.participant
       routerID.value = resp.router_id || ''
@@ -769,7 +771,9 @@ export const useMeetingStore = defineStore('meeting', () => {
     const cleanedCodes = []
     for (const room of list) {
       try {
-        await meetingApi.leaveRoom(room.room_code)
+        // silent: true —— 清理流程中 leave 失败（如 "你不在此会议中"）
+        // 属于幂等预期错误，不应弹 toast 打扰用户
+        await meetingApi.leaveRoom(room.room_code, { silent: true })
         cleanedCodes.push(room.room_code)
       } catch (err) {
         _log('warn', '[Meeting] 清理遗留会议失败（忽略继续）', room.room_code, err)

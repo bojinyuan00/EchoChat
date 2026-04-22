@@ -51,5 +51,24 @@ export default {
 </script>
 
 <style>
-/*每个页面公共css */
+/* 每个页面公共 css */
+
+/*
+ * 基础全屏容器：防止 uni-app H5 在大窗口下祖先容器尺寸小于视口
+ * 导致 position: fixed 元素（如会议房间 .room）"偏左上"。
+ * 同时让普通页面在桌面宽屏下仍能把内容区（.page / uni-page-body）
+ * 拉伸到视口高度，避免下方出现大片浏览器默认底色。
+ */
+/* #ifdef H5 */
+html, body, #app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+uni-app, uni-app > uni-page, uni-page-wrapper, uni-page-body {
+  width: 100%;
+  min-height: 100%;
+}
+/* #endif */
 </style>

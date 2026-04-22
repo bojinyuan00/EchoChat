@@ -31,9 +31,14 @@ const TIMEOUT = 15000
  * @param {Object} [options.params] - URL Query 参数
  * @param {Object} [options.header] - 自定义请求头
  * @param {boolean} [options.needAuth=true] - 是否需要自动附加 Token
+ * @param {boolean} [options.silent=false] - 是否抑制失败 toast（用于内部重试 / 清理等静默流程）
  * @returns {Promise<Object>} 响应中的 data 字段（已解包）
  */
 const request = (options) => {
+  const silent = options.silent === true
+  const toastIfNotSilent = (toast) => {
+    if (!silent) uni.showToast(toast)
+  }
   return new Promise((resolve, reject) => {
     // 构建请求头
     const header = {
@@ -66,7 +71,7 @@ const request = (options) => {
             resolve(data)
           } else {
             // code 非 0 表示业务逻辑错误
-            uni.showToast({
+            toastIfNotSilent({
               title: data.message || '请求失败',
               icon: 'none',
               duration: 2000
@@ -76,7 +81,7 @@ const request = (options) => {
         } else if (statusCode === 401) {
           const isAuthEndpoint = /\/auth\/(login|register)$/.test(options.url)
           const message = data?.message || '登录已过期，请重新登录'
-          uni.showToast({ title: message, icon: 'none', duration: 2000 })
+          toastIfNotSilent({ title: message, icon: 'none', duration: 2000 })
           if (!isAuthEndpoint) {
             removeToken()
             setTimeout(() => {
@@ -85,7 +90,7 @@ const request = (options) => {
           }
           reject({ code: 401, message })
         } else if (statusCode === 403) {
-          uni.showToast({
+          toastIfNotSilent({
             title: data.message || '没有访问权限',
             icon: 'none',
             duration: 2000
@@ -93,7 +98,7 @@ const request = (options) => {
           reject(data)
         } else {
           // 其他 HTTP 错误（400/404/500 等）
-          uni.showToast({
+          toastIfNotSilent({
             title: data.message || `请求错误 (${statusCode})`,
             icon: 'none',
             duration: 2000
@@ -103,7 +108,7 @@ const request = (options) => {
       },
       fail: (err) => {
         // 网络错误或请求超时
-        uni.showToast({
+        toastIfNotSilent({
           title: '网络异常，请检查网络连接',
           icon: 'none',
           duration: 2000

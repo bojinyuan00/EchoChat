@@ -25,8 +25,8 @@ const unwrap = (promise) => promise.then((resp) => (resp && 'data' in resp ? (re
  * @param {Object} payload - { title, password?, max_members? }
  * @returns {Promise<{ room: MeetingRoomDTO }>}
  */
-const createRoom = (payload) => {
-  return unwrap(post('/api/v1/meeting/rooms', payload))
+const createRoom = (payload, options = {}) => {
+  return unwrap(post('/api/v1/meeting/rooms', payload, options))
 }
 
 /**
@@ -44,17 +44,18 @@ const getRoom = (roomCode) => {
  * @param {Object} [payload] - { password? }
  * @returns {Promise<{ room, participant, router_id }>}
  */
-const joinRoom = (roomCode, payload = {}) => {
-  return unwrap(post(`/api/v1/meeting/rooms/${roomCode}/join`, payload))
+const joinRoom = (roomCode, payload = {}, options = {}) => {
+  return unwrap(post(`/api/v1/meeting/rooms/${roomCode}/join`, payload, options))
 }
 
 /**
  * 离开会议
  * @param {string} roomCode
+ * @param {Object} [options] - 请求层选项，如 { silent: true } 抑制失败 toast
  * @returns {Promise<{ duration }>}
  */
-const leaveRoom = (roomCode) => {
-  return unwrap(post(`/api/v1/meeting/rooms/${roomCode}/leave`))
+const leaveRoom = (roomCode, options = {}) => {
+  return unwrap(post(`/api/v1/meeting/rooms/${roomCode}/leave`, undefined, options))
 }
 
 /**
