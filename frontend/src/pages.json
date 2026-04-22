@@ -149,6 +149,24 @@
 			}
 		},
 		{
+			"path": "pages/meeting/create",
+			"style": {
+				"navigationBarTitleText": "创建会议"
+			}
+		},
+		{
+			"path": "pages/meeting/join",
+			"style": {
+				"navigationBarTitleText": "加入会议"
+			}
+		},
+		{
+			"path": "pages/meeting/preview",
+			"style": {
+				"navigationBarTitleText": "设备预览"
+			}
+		},
+		{
 			"path": "pages/notify/index",
 			"style": {
 				"navigationBarTitleText": "通知中心",

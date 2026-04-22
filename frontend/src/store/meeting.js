@@ -105,6 +105,27 @@ export const useMeetingStore = defineStore('meeting', () => {
   const remoteConsumers = reactive({})
 
   /**
+   * 创建会议表单草稿（Task 10）
+   * create.vue 填完表单后暂存于此，preview.vue 点"加入会议"时才真正调用 createAndEnter。
+   * 字段：{ title, password?, enter_muted, allow_chat }
+   */
+  const draftCreatePayload = ref(null)
+
+  /**
+   * 设备预览页的设备选择与显示名（Task 10）
+   * preview.vue 选完设备后写入，入会时作为 mediaPrefs 传给 createAndEnter / joinAndEnter
+   * 字段：{ audioDeviceId, videoDeviceId, speakerDeviceId, displayName, startAudio, startVideo }
+   */
+  const devicePreview = ref({
+    audioDeviceId: '',
+    videoDeviceId: '',
+    speakerDeviceId: '',
+    displayName: '',
+    startAudio: true,
+    startVideo: true
+  })
+
+  /**
    * 标记：当前在 Store 内的事件监听器集合（进房注册，离房注销）
    * Key 是事件名，Value 是监听函数引用
    */
@@ -411,8 +432,14 @@ export const useMeetingStore = defineStore('meeting', () => {
 
   /**
    * 入会后的共同后置流程：加载 Device、创建两条 Transport、发 room.join 信令、订阅在线 Producer
+   * @param {Object} opts
+   * @param {Object} opts.rtpCapabilities - Router RTP capabilities
+   * @param {Object} [opts.mediaPrefs] - 设备预览页传入的媒体偏好，入会成功后自动推流
+   *   - startAudio: boolean 是否默认开麦
+   *   - startVideo: boolean 是否默认开摄像头
+   *   - audioDeviceId / videoDeviceId: 指定采集设备（可空→走系统默认）
    */
-  const _afterJoined = async ({ rtpCapabilities }) => {
+  const _afterJoined = async ({ rtpCapabilities, mediaPrefs }) => {
     if (!isMediaSupported()) {
       throw new Error('当前平台不支持会议（仅支持 H5 浏览器）')
     }
@@ -451,15 +478,28 @@ export const useMeetingStore = defineStore('meeting', () => {
     }
 
     localState.value = MEETING_LOCAL_STATE_CONNECTED
+
+    // mediaPrefs 自动推流：失败仅告警，不阻断入会流程，允许用户在会议室内手动重试开麦/开摄像头
+    if (mediaPrefs) {
+      if (mediaPrefs.startAudio) {
+        try { await startLocalAudio(mediaPrefs.audioDeviceId) }
+        catch (e) { _log('warn', '[Meeting] 自动开麦失败', e) }
+      }
+      if (mediaPrefs.startVideo) {
+        try { await startLocalVideo(mediaPrefs.videoDeviceId) }
+        catch (e) { _log('warn', '[Meeting] 自动开摄像头失败', e) }
+      }
+    }
   }
 
   // ==================== Actions：会议生命周期 ====================
 
   /**
    * 创建即时会议并立即入会
-   * @param {Object} payload - { title, password?, max_members? }
+   * @param {Object} payload - { title, password?, max_members?, enter_muted?, allow_chat? }
+   * @param {Object} [mediaPrefs] - 设备预览页的媒体偏好，入会成功后自动推流（可空）
    */
-  const createAndEnter = async (payload) => {
+  const createAndEnter = async (payload, mediaPrefs) => {
     if (isInMeeting.value) {
       throw new Error('你当前已在其他会议中')
     }
@@ -476,7 +516,7 @@ export const useMeetingStore = defineStore('meeting', () => {
         is_active: true,
         joined_at: new Date().toISOString()
       }
-      await _afterJoined({ rtpCapabilities: resp.rtp_capabilities })
+      await _afterJoined({ rtpCapabilities: resp.rtp_capabilities, mediaPrefs })
       return currentRoom.value
     } catch (err) {
       _log('error', '[Meeting] 创建并入会失败', err)
@@ -489,8 +529,9 @@ export const useMeetingStore = defineStore('meeting', () => {
    * 加入已有会议
    * @param {string} roomCode
    * @param {string} [password]
+   * @param {Object} [mediaPrefs] - 设备预览页的媒体偏好（可空）
    */
-  const joinAndEnter = async (roomCode, password = '') => {
+  const joinAndEnter = async (roomCode, password = '', mediaPrefs) => {
     if (isInMeeting.value) {
       throw new Error('你当前已在其他会议中')
     }
@@ -500,7 +541,7 @@ export const useMeetingStore = defineStore('meeting', () => {
       currentRoom.value = resp.room
       currentParticipant.value = resp.participant
       routerID.value = resp.router_id || ''
-      await _afterJoined({ rtpCapabilities: resp.rtp_capabilities })
+      await _afterJoined({ rtpCapabilities: resp.rtp_capabilities, mediaPrefs })
       return currentRoom.value
     } catch (err) {
       _log('error', '[Meeting] 加入会议失败', err)
@@ -540,22 +581,34 @@ export const useMeetingStore = defineStore('meeting', () => {
 
   // ==================== Actions：本地推流 ====================
 
-  /** 开启本地音频 */
-  const startLocalAudio = async () => {
+  /**
+   * 开启本地音频
+   * @param {string} [deviceId] - 指定麦克风 deviceId（从 enumerateDevices 获取），为空则走系统默认
+   */
+  const startLocalAudio = async (deviceId) => {
     if (!_engine) throw new Error('未连接')
     if (localProducers.audio) return
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const audioConstraints = deviceId ? { deviceId: { exact: deviceId } } : true
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })
     const track = stream.getAudioTracks()[0]
     const producer = await _engine.produce({ kind: 'audio', track })
     localProducers.audio = producer.id
     localAudioEnabled.value = true
   }
 
-  /** 开启本地视频 */
-  const startLocalVideo = async () => {
+  /**
+   * 开启本地视频
+   * @param {string} [deviceId] - 指定摄像头 deviceId，为空则走系统默认
+   */
+  const startLocalVideo = async (deviceId) => {
     if (!_engine) throw new Error('未连接')
     if (localProducers.video) return
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+    const videoConstraints = {
+      width: 640,
+      height: 480,
+      ...(deviceId ? { deviceId: { exact: deviceId } } : {})
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints })
     const track = stream.getVideoTracks()[0]
     const producer = await _engine.produce({ kind: 'video', track })
     localProducers.video = producer.id
@@ -671,6 +724,8 @@ export const useMeetingStore = defineStore('meeting', () => {
     localVideoEnabled,
     localProducers,
     remoteConsumers,
+    draftCreatePayload,
+    devicePreview,
 
     // getters
     isInMeeting,
