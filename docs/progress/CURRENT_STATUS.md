@@ -1,7 +1,7 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-24（Phase 2e-2 Task 14 docker-compose 双态扩展完成：media-server + coturn 容器编排 + 三份 .env 模板 + deploy-public.sh + docs/deployment/meeting-mvp.md 双态部署指南）
-> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-14 ✅ / Task 15-16 待执行）
+> **最后更新**：2026-04-23（Phase 2e-2 Task 15 UI 打磨 + 主持人权限四件套完成 + 媒体层稳定性补丁：6 项原创 UI 特色 + 说话者双源探测 + 主持人四件套 + 4 份 design-system 页面文档 + Playwright MCP 7 屏回归全通过；加挂 5 项 Mediasoup / 信令层回归修复）
+> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-15 ✅ / Task 16 待执行）
 > **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
 > **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（✅ 已完成）
@@ -9,6 +9,66 @@
 > **Phase 2e-1 验证报告**：`test-report-phase2e-1-notification.md`
 > **Phase 2e-2 专用设计**：`docs/plans/2026-04-21-phase2e-2-design.md`（📋 设计阶段，16 章节）
 > **Phase 2e-2 实施计划**：`docs/plans/2026-04-21-phase2e-2-implementation.plan.md`（📋 17 个 Task 共约 17 人日）
+
+---
+
+## 🎨 2026-04-23 Phase 2e-2 Task 15：UI 打磨 + 主持人权限四件套完成
+
+**交付**：EchoChat 会议室页面完成从 MVP 功能 UI 到"原创视觉语言"的升级。落地 6 项原创 UI 特色（说话者流光轮廓 / 柔性网格 / 自视频浮窗 / 静音氛围色 / 入会滑入 / NetworkBadge 3 条波浪），配套 4 屏 design-system 页面文档；说话者探测采用**双源方案**（远端 `RTCRtpReceiver.getSynchronizationSources().audioLevel` + 本地 WebAudio RMS）+ 500ms 防抖；主持人权限"静音他人 / 开麦 / 转让 / 踢出"四件套前端菜单按条件渲染接入既有 WS 事件。Playwright MCP 执行 7 屏截图回归全部通过，归档至 `.playwright-mcp/task15/`。
+
+### 产出文件
+
+| 文件 | 类型 | 作用 |
+|---|---|---|
+| `docs/plans/2026-04-24-phase2e-2-task15-ui-polish.plan.md`（新建） | 计划 | Task 15 设计规范：目标 / 改动清单 / 关键技术点 / 10 个子任务 / 验收点 / 风险 |
+| `design-system/echochat/pages/meeting-home.md`（新建） | 设计文档 | 会议 Hub 首页：深色背景渐变 / 创建&加入双卡片 / 最近会议列表 / CTA 呼吸 / 滑入过渡 |
+| `design-system/echochat/pages/meeting-preview.md`（新建） | 设计文档 | 设备预览页：大视频预览 / 设备列表 / "gradient wave bar" 麦克风音量 / 切换动效 |
+| `design-system/echochat/pages/meeting-room.md`（新建） | 设计文档 | 会议室核心页（最重要一份）：Z-index 分层 / 6 项原创特色完整规格（CSS / 动效 / 交互 / 降级） |
+| `design-system/echochat/pages/meeting-invite.md`（新建） | 设计文档 | 邀请模态/底部弹层：链接/会议号/联系人三入口 + toast 反馈 + 桌面/移动端差异 |
+| `frontend/src/components/meeting/VideoTile.vue`（改） | 组件 | ① 新增 `isSpeaking` prop ② CSS `@property --flow-angle` + `conic-gradient` 流光轮廓动效 ③ Safari 17- `@supports` 降级为静态彩色边框 |
+| `frontend/src/components/meeting/VideoGrid.vue`（改） | 组件 | ① 新增 `layout-2-flex`（65/35 非等分）/ `layout-3-tri`（左大右双小）/ `layout-grid-3` / `layout-grid-sqrt` ② `@keyframes tile-slide-in` 入会滑入 ③ `@media (max-width: 750px)` 回退等分 ④ `prefers-reduced-motion` 兼容 |
+| `frontend/src/components/meeting/SelfVideoFloat.vue`（新建） | 组件 | 桌面恒为浮窗（280×180，移动 160×100）；鼠标/触摸拖拽；四角 `snapToCorner`；图钉按钮 emit `pin-click`；`ResizeObserver` 响应容器尺寸；`z-index: 120` |
+| `frontend/src/components/meeting/MeetingToolbar.vue`（改） | 组件 | 新增 `allMuted` prop → 绑定 `toolbar-all-muted` 类（蓝紫渐变 + `transition: background 0.4s`） |
+| `frontend/src/components/meeting/NetworkBadge.vue`（重写） | 组件 | 3 条 SVG `<path>` 波浪线替代原 4 格信号；`@keyframes wave-flow` 相位错开 `0 / -0.3s / -0.6s`；level≤0 静态图标 + 红点 |
+| `frontend/src/components/meeting/MemberPanel.vue`（改） | 组件 | 主持人操作菜单新增"请他静音 / 请他开麦"条件切换（依据 `audio_enabled`）；emit `mute-member` 事件 |
+| `frontend/src/store/meeting.js`（改） | Pinia | ① `speakingMap` reactive ② `uiPrefs.selfVideoFloat` ③ `isAllMuted` computed（≥2 人 + 全员 audio 关） ④ `_speakingTick`（500ms 轮询 + in=1/out=2 次防抖）⑤ `_readRemoteAudioLevel`（RTP stats）+ `_readLocalAudioLevel`（WebAudio `AnalyserNode` + RMS） ⑥ `muteMember(target, mute)` action 调 WS `meeting.member.state.changed` + `target_user_id` ⑦ `_onMemberStateChanged` 检测 `changed_by !== myUid` 被动触发 `stopLocalAudio` + `uni.showToast` |
+| `frontend/src/pages/meeting/room.vue`（改） | 页面 | 引入 `SelfVideoFloat`；`selfTile`/`gridTiles` 按 `uiPrefs.selfVideoFloat` 分流；`togglePin` 切换；`onMuteMember` 调 store 并 toast |
+| `.playwright-mcp/task15/README.md`（新建） | 回归报告 | 7 张截图对应的 UI 特性矩阵 + 测试账号 / 测试方法说明 |
+| `.playwright-mcp/task15/{01..07}-*.png`（新建，7 张） | 截图 | 01 首页 / 02 设备预览 / 03 空场浮窗+波浪 / 04 单人静音 / 05 流光+柔性3-tri+氛围色 / 06 图钉切回4人网格 / 07 主持人四件套菜单 |
+
+### 关键技术点
+
+1. **说话者流光轮廓的 `@property` 方案**：CSS `@property --flow-angle` 注册一个可动画的 `<angle>` 自定义属性，配合 `conic-gradient(from var(--flow-angle), ...)` + `@keyframes flow-rotate` 让整圈颜色 360° 流动；`@supports not (background: paint(angle-conic))` 分支回退到纯色 3px 边框，保障 Safari 17 及以下浏览器不丢布局。
+2. **说话者探测双源策略**：远端用 W3C 标准 `RTCRtpReceiver.getSynchronizationSources()[0].audioLevel`（0~1），零额外开销；本地 track 用 WebAudio `AnalyserNode.getFloatTimeDomainData` 计算 RMS，因为本地 `RTCRtpSender` 没有标准 `audioLevel` 接口。两源共用 500ms 轮询 + 防抖阈值（`>0.03` 连续 1 次置 true，`<0.015` 连续 2 次置 false），彻底抑制抖动。
+3. **`isAllMuted` 计算逻辑——避免单人场景"自己静音也变蓝"误触发**：`activeParticipants.length >= 2` 是前置条件；本人以 `localAudioEnabled` 为准（后端不会给自己广播 `state.changed`），其他人以 `p.audio_enabled === false` 判定。这保证"独自会议自己静音"不被认为是"全员静音氛围"。
+4. **SelfVideoFloat 桌面恒浮窗 + 图钉切换的取舍**：用户明确"桌面端默认浮窗 + 允许切回网格"，移动端维持 160×100 小浮窗即可。`togglePin` 仅翻 `uiPrefs.selfVideoFloat` 布尔，`room.vue` 的 `selfTile`/`gridTiles` 计算自动分流；无需额外挪 DOM。
+5. **主持人 mute 的"静默执行 + toast"交互**：用户决策——主持人点"请他静音"后不弹二次确认，直接 WS 推 `meeting.member.state.changed`（带 `target_user_id` + `audio_enabled: false`）；后端广播到对方后，对方 `_onMemberStateChanged` 识别 `changed_by !== myUid` → 立即 `stopLocalAudio()` + `uni.showToast('你已被主持人静音')`；主动侧不弹 toast（成员面板菜单项自己会变成"请他开麦"）。
+6. **入会滑入动效只针对"新增 tile"**：`@keyframes tile-slide-in` 绑定 `.video-tile`，但通过 `:nth-child(n+N)` 难以稳定匹配"新来者"，所以直接让所有 tile 在挂载时各跑一次（`animation-duration: 360ms` 短时间一次性），搭配 Vue 的 `key=user_id` 保证只在真正新增时才触发。`prefers-reduced-motion` 下整体禁用。
+7. **NetworkBadge 3 条波浪的动效节奏**：3 条 SVG 路径用同一 `<path>` 偏移 Y 轴 `3px/0/-3px`，`animation-delay` 分别 `0/-0.3s/-0.6s` 造就持续流动感；`level≤0` 时渲染一个带红点的静态"断开"图标，避免继续动画误导用户"有网络"。
+
+### Playwright MCP 回归记录
+
+- 环境：`go-service :8085` + `media-server :3300` + `frontend :5173`（真实三件套）+ Chromium 1440×900 桌面视口。
+- 流程：`task15_a` 真实登录 → 创建"Alice的会议"（房号 `468-996-302`）→ 加入 → `task15_b` 走 REST API 成为真实参会人 → `browser_evaluate` 注入 2 个 mock participant（9001/9002）+ `speakingMap[9001]=true` + 三位远端 `audio_enabled=false` → 拍摄 3-tri 网格 + 流光 + 氛围色；点击"图钉"切回 4 人 2×2 网格；打开成员面板 → 点击用户 56 菜单 → 验证"请他开麦 / 转让主持人 / 踢出会议"条件渲染。
+- 7 张截图全部符合 design-system/echochat/pages/meeting-room.md 规格，归档于 `.playwright-mcp/task15/`。
+
+### 2026-04-23 补丁：媒体层稳定性回归修复（手工联调触发）
+
+在 Task 15 完成后，bojinyuan/duanlingyun 双端 HTTPS 手工联调暴露出 5 个媒体/信令层缺陷，全部修复并经由用户二次验证通过，现作为 Task 15 的收尾补丁并入本章节：
+
+| # | 问题表现 | 根因 | 修复点 |
+|---|---------|------|--------|
+| 1 | 后入会方看不到先入会方的音视频画面（需对方手动切一下按钮才能看到） | SFU 侧对"新加入者"没有补发房间内历史 producers | `backend/go-service/app/meeting/service/meeting_signal_service.go`：`OnRoomJoin` 异步调用 `pushExistingRoomState` → 遍历活跃参会者 Redis 上的 producer_id，向新人定向下发 `meeting.member.producer.new` |
+| 2 | 成员面板里对方的音视频图标一直灰色，只有对方手动切换按钮图标才会变色 | 前端本地切换音视频后未向服务器同步 `meeting.member.state.changed`；后端也没把房间内历史成员的 audio/video 状态补给新加入者 | ① 前端 `store/meeting.js` 新增 `_broadcastSelfState` 在 `startLocalAudio/stopLocalAudio/startLocalVideo/stopLocalVideo` 末尾广播自身状态 ② 后端新增 `memberStateKey` Redis Hash（`echo:meeting:member_state:{room_code}:{uid}`）持久化 audio/video enabled ③ `OnMemberStateChanged` 收到广播后调用 `updateMemberState` 落 Redis ④ `OnRoomJoin` 追加 `pushExistingMemberStates` 把房间内他人当前状态定向下发给新人 ⑤ `cleanupUserResources` 清理对应 Hash |
+| 3 | 一方关闭音频，另一方连画面都看不到了 | `_cleanupRemoteProducer` 写得过激，任一 producer 关闭就把该用户所有 consumers 全部关掉 | `frontend/src/store/meeting.js`：改为基于 `consumer.producerId` 精准匹配，只关闭对应那一路（audio/video 独立清理） |
+| 4 | 结束会议后再次发起会议，自己看不到自己的本地画面 | `_onRoomEnded` 未清 `localProducers` / `localAudio/VideoEnabled`，下一次 `createAndEnter` 遇到历史 producer id 命中 early-return，跳过真正的 producer 创建 | 强化 `_onRoomEnded`：显式清 `localProducers.audio/video`、`localAudio/VideoEnabled = false`、`remoteConsumers`；并在 `createAndEnter` / `joinAndEnter` 入口各加 `_reset()` 做兜底清理 |
+| 5 | 后入会方成员面板仍显示对方音视频图标为灰（比 #2 更隐蔽的时序问题） | `_afterJoined` 里 `wsService.sendWithAck(room.join)` 早于 `meetingApi.getRoom`，后端 `pushExistingMemberStates` 下发的 `state.changed` 到达时 `participants` 还为空，事件被默默丢弃 | ① `_afterJoined` 调整顺序：先 `meetingApi.getRoom` 填充参会者，再 `sendWithAck(room.join)` 触发后端补推 ② `_onMemberStateChanged` 找不到 participant 时创建占位记录，等 `member.joined` / `getRoom` 后续补齐用户名头像 |
+
+另外为了避免并发 `producer.new` 事件下频繁创建冗余 transport，`frontend/src/utils/mediasoup-client.js` 的 `ensureSendTransport` / `ensureRecvTransport` 引入 in-flight Promise 锁（首次调用走 `_createSendTransport/_createRecvTransport`，并发调用共享同一 Promise）。
+
+### 下一步
+
+- **Task 16 E2E 总回归 + 文档同步**（1 人日）：`code-reviewer` 审计全栈（go-service meeting + media-server + frontend meeting + 最近补丁）→ 修 P0/P1 → Playwright MCP 脚本化 4 场景（创建入会 / 邀请加入 / 主持人四件套全链路 / 主持人结束 + 自动转让）+ 手动回归点说明 → 清理 console/TODO/FIXME 残留 → 同步 6 份文档 + 落盘 `test-report-phase2e-2-meeting.md` → Phase 2e-2 整体切 ✅。
 
 ---
 

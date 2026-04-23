@@ -68,6 +68,20 @@
               <circle cx="12" cy="19" r="1"></circle>
             </svg>
             <view v-if="openMenuUid === p.user_id" class="menu" @click.stop>
+              <view
+                v-if="p.audio_enabled !== false"
+                class="menu-item"
+                @click="onMute(p, true)"
+              >
+                <text>请他静音</text>
+              </view>
+              <view
+                v-else
+                class="menu-item"
+                @click="onMute(p, false)"
+              >
+                <text>请他开麦</text>
+              </view>
               <view class="menu-item" @click="onTransfer(p)">
                 <text>转让主持人</text>
               </view>
@@ -98,7 +112,7 @@ const props = defineProps({
   displayNameMap: { type: Object, default: () => ({}) }
 })
 
-const emit = defineEmits(['close', 'kick', 'transfer-host'])
+const emit = defineEmits(['close', 'kick', 'transfer-host', 'mute-member'])
 
 const openMenuUid = ref(0)
 const show = ref(false)
@@ -161,6 +175,12 @@ const onTransfer = (p) => {
 const onKick = (p) => {
   openMenuUid.value = 0
   emit('kick', p.user_id)
+}
+
+/** Task 15：主持人权限四件套第 4 件 —— 请他静音 / 请他开麦 */
+const onMute = (p, mute) => {
+  openMenuUid.value = 0
+  emit('mute-member', { userId: p.user_id, mute })
 }
 
 const close = () => emit('close')

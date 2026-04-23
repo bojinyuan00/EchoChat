@@ -105,7 +105,8 @@ func roomToDTO(r *model.MeetingRoom, onlineCount int) *dto.MeetingRoomDTO {
 }
 
 // participantToDTO 将 model.MeetingParticipant 转 DTO
-func participantToDTO(p *model.MeetingParticipant) *dto.MeetingParticipantDTO {
+// userMap 可选：若提供则附带 user_name / user_avatar，便于前端 MemberPanel/VideoTile 直接渲染昵称头像
+func participantToDTO(p *model.MeetingParticipant, userMap map[int64]service.UserDisplayInfo) *dto.MeetingParticipantDTO {
 	if p == nil {
 		return nil
 	}
@@ -122,6 +123,10 @@ func participantToDTO(p *model.MeetingParticipant) *dto.MeetingParticipantDTO {
 	}
 	if p.LeftAt != nil {
 		out.LeftAt = p.LeftAt.Format("2006-01-02 15:04:05")
+	}
+	if info, ok := userMap[p.UserID]; ok {
+		out.UserName = info.Name
+		out.UserAvatar = info.Avatar
 	}
 	return out
 }
@@ -190,9 +195,15 @@ func (ctl *MeetingController) GetRoom(c *gin.Context) {
 		ctl.handleError(c, err, "获取会议详情失败")
 		return
 	}
+	userIDs := make([]int64, 0, len(participants))
+	for i := range participants {
+		userIDs = append(userIDs, participants[i].UserID)
+	}
+	userMap := ctl.meetingService.ResolveUsersDisplay(c.Request.Context(), userIDs)
+
 	parts := make([]dto.MeetingParticipantDTO, 0, len(participants))
 	for i := range participants {
-		parts = append(parts, *participantToDTO(&participants[i]))
+		parts = append(parts, *participantToDTO(&participants[i], userMap))
 	}
 	resp := dto.GetMeetingRoomResponse{
 		Room:         *roomToDTO(room, int(onlineCount)),
@@ -225,9 +236,10 @@ func (ctl *MeetingController) JoinRoom(c *gin.Context) {
 	}
 	// Task 9：JoinRoom 响应携带 rtpCapabilities，供前端 mediasoup-client Device.load 直接使用
 	_, rtpCaps, _ := ctl.meetingService.ResolveRouterInfo(code)
+	userMap := ctl.meetingService.ResolveUsersDisplay(c.Request.Context(), []int64{participant.UserID})
 	resp := dto.JoinMeetingRoomResponse{
 		Room:            *roomToDTO(room, 0),
-		Participant:     *participantToDTO(participant),
+		Participant:     *participantToDTO(participant, userMap),
 		RouterID:        routerID,
 		RtpCapabilities: rtpCaps,
 	}

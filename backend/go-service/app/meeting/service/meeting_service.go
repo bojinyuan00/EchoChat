@@ -385,10 +385,14 @@ func (s *MeetingService) JoinRoom(ctx context.Context, userID int64, code, passw
 			zap.String("room_code", code))
 	}
 
+	// 广播 payload 附带 user_name / user_avatar，前端 _onMemberJoined 直接落库，无需二次拉取
+	name, avatar := s.resolveUserDisplay(ctx, userID)
 	go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventMemberJoined, map[string]interface{}{
-		"room_code": code,
-		"user_id":   userID,
-		"joined_at": participant.JoinedAt.Format("2006-01-02 15:04:05"),
+		"room_code":   code,
+		"user_id":     userID,
+		"user_name":   name,
+		"user_avatar": avatar,
+		"joined_at":   participant.JoinedAt.Format("2006-01-02 15:04:05"),
 	}, userID)
 
 	logs.Info(ctx, funcName, "用户加入会议成功", zap.String("room_code", code), zap.Int64("user_id", userID))

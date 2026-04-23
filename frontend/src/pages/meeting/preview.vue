@@ -188,7 +188,13 @@ const stopAudioMeter = () => {
 const startPreview = async () => {
   // #ifdef H5
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    permissionError.value = '当前浏览器不支持音视频预览（需 HTTPS + WebRTC）'
+    // secure context 检查：大多数浏览器只在 HTTPS / localhost 下暴露 mediaDevices
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      const host = window.location?.host || ''
+      permissionError.value = `当前为不安全连接，浏览器禁止访问摄像头/麦克风。请改用 HTTPS 访问：https://${host}（自签证书首次访问选择"仍然继续"即可）`
+    } else {
+      permissionError.value = '当前浏览器不支持音视频预览（需 HTTPS + WebRTC）'
+    }
     return
   }
   stopPreviewStream()
@@ -339,15 +345,33 @@ const onJoin = async () => {
     startVideo: mediaPrefs.startVideo
   }
 
-  // 释放预览流，避免与 mediasoup produce 争用摄像头（浏览器单轨互斥）
-  stopPreviewStream()
+  // iOS Safari/Chrome 上 preview 释放摄像头后 room 再次 getUserMedia 常触发 NotReadableError，
+  // 改为把预览页已申请的 track 直接复用给 mediasoup produce。
+  // 此处只停 AudioContext 分析器，不 stop previewStream，track 所有权随之转给 MediaEngine.produce。
   stopAudioMeter()
+
+  const rawAudioTrack = previewStream ? previewStream.getAudioTracks()[0] || null : null
+  const rawVideoTrack = previewStream ? previewStream.getVideoTracks()[0] || null : null
+  // 若用户关掉了"默认开麦/默认开摄像头"，对应 track 不会被 mediasoup 接手，立即 stop 避免硬件泄漏
+  if (rawAudioTrack && !mediaPrefs.startAudio) {
+    try { rawAudioTrack.stop() } catch {}
+  }
+  if (rawVideoTrack && !mediaPrefs.startVideo) {
+    try { rawVideoTrack.stop() } catch {}
+  }
+  const audioTrack = mediaPrefs.startAudio ? rawAudioTrack : null
+  const videoTrack = mediaPrefs.startVideo ? rawVideoTrack : null
+  // previewStream 对象本身不再需要持有，tracks 已取出交给 MediaEngine；
+  // 避免在后续 onUnload 中误调 stopPreviewStream 把 track 给 stop 掉。
+  previewStream = null
 
   const prefs = {
     startAudio: mediaPrefs.startAudio,
     startVideo: mediaPrefs.startVideo,
     audioDeviceId: selectedAudioId.value,
-    videoDeviceId: selectedVideoId.value
+    videoDeviceId: selectedVideoId.value,
+    audioTrack,
+    videoTrack
   }
 
   try {
@@ -367,6 +391,9 @@ const onJoin = async () => {
     const msg = err?.message || JSON.stringify(err)
     uni.showToast({ title: `加入失败：${msg}`, icon: 'none', duration: 3500 })
     console.error('[Preview] 加入会议失败', err)
+    // 入会失败：track 尚未转给 mediasoup 或刚拿到就失败，显式 stop 避免摄像头泄漏
+    try { audioTrack && audioTrack.stop && audioTrack.stop() } catch {}
+    try { videoTrack && videoTrack.stop && videoTrack.stop() } catch {}
   } finally {
     joining.value = false
   }

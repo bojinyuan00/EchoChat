@@ -60,6 +60,14 @@ func resourceTrackKey(roomCode string, userID int64) string {
 	return fmt.Sprintf("echo:meeting:resource:%s:%d", roomCode, userID)
 }
 
+// memberStateKey Redis Hash，保存用户当前的音视频开关状态
+// fields：audio_enabled / video_enabled，值为 "true" / "false"
+// 用途：后入者加入房间时，后端从这里读取每个已有成员的最新状态定向补推 state.changed，
+// 解决"后入者的成员列表里其他人图标一直灰色"的问题
+func memberStateKey(roomCode string, userID int64) string {
+	return fmt.Sprintf("echo:meeting:member_state:%s:%d", roomCode, userID)
+}
+
 // resourceTTL 单个用户资源追踪集合 TTL
 // 设计：会议期间维持可达即可；若用户长期不活跃由断线清理接管
 const resourceTTL = time.Hour
@@ -81,6 +89,54 @@ func (s *MeetingSignalService) untrackResource(ctx context.Context, roomCode str
 	key := resourceTrackKey(roomCode, userID)
 	member := kind + ":" + id
 	_ = s.redis.SRem(ctx, key, member).Err()
+}
+
+// updateMemberState 将某用户的音视频开关状态持久化到 Redis Hash
+// 非 nil 的字段才写入；audio/video 任意一个 nil 都不碰它，避免误覆盖另一维状态
+// 容错：任何一步失败仅 Warn 日志，不阻断业务流程（前端已发 state.changed 作为权威广播）
+func (s *MeetingSignalService) updateMemberState(ctx context.Context, roomCode string, userID int64, audio, video *bool) {
+	if audio == nil && video == nil {
+		return
+	}
+	key := memberStateKey(roomCode, userID)
+	values := make([]interface{}, 0, 4)
+	if audio != nil {
+		values = append(values, "audio_enabled", boolToStr(*audio))
+	}
+	if video != nil {
+		values = append(values, "video_enabled", boolToStr(*video))
+	}
+	if err := s.redis.HSet(ctx, key, values...).Err(); err != nil {
+		logs.Warn(ctx, "service.meeting_signal_service.updateMemberState", "写入成员音视频状态失败",
+			zap.String("key", key), zap.Error(err))
+		return
+	}
+	_ = s.redis.Expire(ctx, key, resourceTTL).Err()
+}
+
+// loadMemberState 读取某用户的音视频开关状态；Hash 不存在时两个字段都返回 (nil, nil)
+func (s *MeetingSignalService) loadMemberState(ctx context.Context, roomCode string, userID int64) (audio *bool, video *bool) {
+	key := memberStateKey(roomCode, userID)
+	fields, err := s.redis.HGetAll(ctx, key).Result()
+	if err != nil || len(fields) == 0 {
+		return nil, nil
+	}
+	if v, ok := fields["audio_enabled"]; ok {
+		b := v == "true"
+		audio = &b
+	}
+	if v, ok := fields["video_enabled"]; ok {
+		b := v == "true"
+		video = &b
+	}
+	return audio, video
+}
+
+func boolToStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
 
 // loadRoomAndParticipant 通用前置校验：拉取房间 + 确认用户是活跃参会者
@@ -110,7 +166,8 @@ func (s *MeetingSignalService) loadRoomAndParticipant(ctx context.Context, roomC
 
 // OnRoomJoin 处理 meeting.room.join 事件
 // 语义：客户端 REST 加入会议成功后，通过 WS 宣告在线；服务端记录 userID ↔ roomCode 映射
-// 仅做存在性校验 + 心跳意义上的资源 key 刷新，不产生副作用
+// 副作用（Task 15 增强）：补推"房间内其他用户已有的 producer 列表"给刚 join 的用户，
+// 解决 Mediasoup SFU "后入者错过历史 producer.new"的经典问题
 func (s *MeetingSignalService) OnRoomJoin(ctx context.Context, userID int64, roomCode string) error {
 	room, err := s.loadRoomAndParticipant(ctx, roomCode, userID)
 	if err != nil {
@@ -130,7 +187,142 @@ func (s *MeetingSignalService) OnRoomJoin(ctx context.Context, userID int64, roo
 		zap.String("room_code", roomCode),
 		zap.Int64("user_id", userID),
 		zap.Int64("room_id", room.ID))
+
+	// 定向补推已有 producer + 成员状态：异步执行，不阻塞 ACK
+	go s.pushExistingRoomState(context.Background(), room.ID, room.RoomCode, userID)
+
 	return nil
+}
+
+// pushExistingRoomState 向刚加入者定向推送房间的历史媒体状态，分两件事：
+//  1. producer 列表：复用 meeting.member.producer.new 事件语义，前端自动发起 consume
+//  2. 成员 audio/video 开关：复用 meeting.member.state.changed 事件语义，前端更新成员面板图标
+//
+// 容错：任何单步失败仅 Warn 日志，不中断流程
+func (s *MeetingSignalService) pushExistingRoomState(ctx context.Context, roomID int64, roomCode string, userID int64) {
+	s.pushExistingProducers(ctx, roomID, roomCode, userID)
+	s.pushExistingMemberStates(ctx, roomID, roomCode, userID)
+}
+
+// pushExistingProducers 向刚加入者定向推送房间里其他用户已产生的 producer 列表
+// 复用 meeting.member.producer.new 事件语义，前端 _onProducerNew handler 无需改动
+// 容错：任何单步失败仅 Warn 日志，不中断流程
+func (s *MeetingSignalService) pushExistingProducers(ctx context.Context, roomID int64, roomCode string, userID int64) {
+	funcName := "service.meeting_signal_service.pushExistingProducers"
+
+	actives, err := s.participantDAO.ListActiveByRoom(ctx, roomID)
+	if err != nil {
+		logs.Warn(ctx, funcName, "列出房间活跃参会者失败",
+			zap.Int64("room_id", roomID), zap.Error(err))
+		return
+	}
+
+	pushCount := 0
+	for i := range actives {
+		other := &actives[i]
+		if other.UserID == userID {
+			continue
+		}
+		otherKey := resourceTrackKey(roomCode, other.UserID)
+		members, err := s.redis.SMembers(ctx, otherKey).Result()
+		if err != nil {
+			logs.Warn(ctx, funcName, "读取他人资源追踪集合失败",
+				zap.String("key", otherKey), zap.Error(err))
+			continue
+		}
+		for _, m := range members {
+			// 格式："kind:id"；仅关心 producer
+			idx := -1
+			for j, c := range m {
+				if c == ':' {
+					idx = j
+					break
+				}
+			}
+			if idx < 0 {
+				continue
+			}
+			kind, id := m[:idx], m[idx+1:]
+			if kind != "producer" || id == "" {
+				continue
+			}
+			if err := s.broadcaster.PublishToUser(ctx, userID, constants.MeetingWSEventMemberProducerNew, map[string]interface{}{
+				"room_code":   roomCode,
+				"user_id":     other.UserID,
+				"producer_id": id,
+				"existing":    true,
+			}); err != nil {
+				logs.Warn(ctx, funcName, "定向推送 existing producer 失败",
+					zap.Int64("to_user", userID),
+					zap.Int64("owner_user", other.UserID),
+					zap.String("producer_id", id),
+					zap.Error(err))
+				continue
+			}
+			pushCount++
+		}
+	}
+
+	if pushCount > 0 {
+		logs.Info(ctx, funcName, "补推已有 producer 完成",
+			zap.String("room_code", roomCode),
+			zap.Int64("to_user", userID),
+			zap.Int("push_count", pushCount))
+	}
+}
+
+// pushExistingMemberStates 向刚加入者定向推送房间里其他活跃成员当前的音视频开关状态
+// 数据源：updateMemberState 在每次 OnMemberStateChanged 成功后写入的 Redis Hash
+// 前端 _onMemberStateChanged 处理逻辑已存在，收到本事件后会刷新 MemberPanel 图标色彩
+// 容错：读取 Hash 失败、该用户暂无状态记录都直接跳过
+func (s *MeetingSignalService) pushExistingMemberStates(ctx context.Context, roomID int64, roomCode string, userID int64) {
+	funcName := "service.meeting_signal_service.pushExistingMemberStates"
+
+	actives, err := s.participantDAO.ListActiveByRoom(ctx, roomID)
+	if err != nil {
+		logs.Warn(ctx, funcName, "列出房间活跃参会者失败",
+			zap.Int64("room_id", roomID), zap.Error(err))
+		return
+	}
+
+	pushCount := 0
+	for i := range actives {
+		other := &actives[i]
+		if other.UserID == userID {
+			continue
+		}
+		audio, video := s.loadMemberState(ctx, roomCode, other.UserID)
+		if audio == nil && video == nil {
+			continue
+		}
+		data := map[string]interface{}{
+			"room_code":  roomCode,
+			"user_id":    other.UserID,
+			"changed_by": other.UserID,
+			"existing":   true,
+		}
+		if audio != nil {
+			data["audio_enabled"] = *audio
+		}
+		if video != nil {
+			data["video_enabled"] = *video
+		}
+		if err := s.broadcaster.PublishToUser(ctx, userID, constants.MeetingWSEventMemberStateChange, data); err != nil {
+			logs.Warn(ctx, funcName, "定向推送 existing state.changed 失败",
+				zap.Int64("to_user", userID),
+				zap.Int64("owner_user", other.UserID),
+				zap.Error(err))
+			continue
+		}
+		pushCount++
+	}
+
+	if pushCount > 0 {
+		logs.Info(ctx, funcName, "补推已有成员状态完成",
+			zap.String("room_code", roomCode),
+			zap.Int64("to_user", userID),
+			zap.Int("push_count", pushCount))
+	}
 }
 
 // OnWSDisconnect WS 断线钩子，实现 ws.MeetingDisconnectHook 接口（Task 8）
@@ -239,6 +431,10 @@ func (s *MeetingSignalService) OnMemberStateChanged(ctx context.Context, fromUse
 	if payload.VideoEnabled != nil {
 		data["video_enabled"] = *payload.VideoEnabled
 	}
+
+	// 持久化到 Redis Hash；作为后入者补推 state.changed 的数据源
+	// 注意：写 Hash 之所以同步执行而非放进 goroutine，是因为同一用户并发开关操作需要顺序一致
+	s.updateMemberState(ctx, payload.RoomCode, targetID, payload.AudioEnabled, payload.VideoEnabled)
 
 	go s.broadcaster.BroadcastToMeeting(context.Background(), room.ID, constants.MeetingWSEventMemberStateChange, data, fromUserID)
 	return nil
@@ -463,6 +659,8 @@ func (s *MeetingSignalService) cleanupUserResources(ctx context.Context, roomCod
 		}
 	}
 	_ = s.redis.Del(ctx, key).Err()
+	// 一并清理成员音视频状态，避免对方下次入会时读到旧 host 的僵尸 AV 状态
+	_ = s.redis.Del(ctx, memberStateKey(roomCode, userID)).Err()
 
 	if len(members) > 0 {
 		logs.Info(ctx, funcName, "清理用户媒体资源",

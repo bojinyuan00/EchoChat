@@ -12,11 +12,14 @@
 
 import { getToken, removeToken } from './storage'
 
-// 基础 URL 配置，根据环境自动切换
-// 开发环境使用 window.location.hostname 动态获取主机名，支持局域网 IP 访问
-const BASE_URL = process.env.NODE_ENV === 'development'
-  ? `http://${window.location.hostname}:8085`
-  : '' // 生产环境由 Nginx 反向代理，使用相对路径
+// 基础 URL 配置
+// 开发 / 生产环境都用相对路径（空串）：
+// - 开发：vite 配置 server.proxy 把 /api /ws 转发到后端，同时开启 HTTPS；前端同源调用 /api/** 即可，
+//   同源意味着浏览器在 HTTPS 页面下不会因混合内容拒绝请求，且 WebRTC 所需的 secure context 自然满足。
+// - 生产：由 Nginx 反向代理到 Go 后端，同样同源。
+// 如果需要直连其他主机（极少数场景），可通过 VITE_API_BASE 在构建期覆盖。
+// eslint-disable-next-line no-undef
+const BASE_URL = (typeof __VITE_API_BASE__ !== 'undefined' && __VITE_API_BASE__) || ''
 
 // 请求超时时间（毫秒）
 const TIMEOUT = 15000

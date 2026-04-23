@@ -143,6 +143,31 @@ export const useMeetingStore = defineStore('meeting', () => {
   /** MediaEngine 实例（H5 才有值），用 markRaw 包裹避免 Vue 深度代理 */
   let _engine = null
 
+  /**
+   * 说话者探测：{ [userId]: boolean }，由 UI 订阅驱动 VideoTile.speaking 边框
+   * Task 15 原创特色 1——EchoChat 会议专属流光轮廓
+   */
+  const speakingMap = reactive({})
+
+  /**
+   * UI 偏好（内存态，不持久化到 storage）
+   * - selfVideoFloat: 自视频是否走浮窗模式（桌面端默认 true）
+   */
+  const uiPrefs = reactive({
+    selfVideoFloat: true
+  })
+
+  /**
+   * 说话者探测内部状态：handle + 本地 WebAudio 实例
+   * 所有字段均为 H5 浏览器 API，非 H5 平台永远保持 null
+   */
+  let _speakingTimer = null
+  let _localAudioCtx = null
+  let _localAnalyser = null
+  let _localSource = null
+  /** { [userId]: { inCount: number, outCount: number } }，用于防抖 1-in / 2-out */
+  const _speakingDebounce = {}
+
   // ==================== Getters ====================
 
   const isInMeeting = computed(() => {
@@ -160,6 +185,23 @@ export const useMeetingStore = defineStore('meeting', () => {
 
   const activeParticipants = computed(() => {
     return participants.value.filter(p => p.is_active)
+  })
+
+  /**
+   * 全员静音标记：用于 Task 15 原创特色 4——静音氛围色
+   * 规则：仅当参与者 ≥ 2 人且所有人 audio_enabled=false 时 true
+   * 单人会议不触发（独自一人不算"全员静音氛围"）
+   */
+  const isAllMuted = computed(() => {
+    const list = activeParticipants.value
+    if (list.length < 2) return false
+    const userStore = useUserStore()
+    const myUid = userStore.userInfo?.id
+    return list.every(p => {
+      // 本地 audio 以 localAudioEnabled 为准（后端不会给自己广播 state.changed）
+      if (myUid && p.user_id === myUid) return !localAudioEnabled.value
+      return p.audio_enabled === false
+    })
   })
 
   // ==================== 私有工具 ====================
@@ -236,22 +278,63 @@ export const useMeetingStore = defineStore('meeting', () => {
     lastEndedReason.value = data.reason || ''
     _log('info', '[Meeting] 会议已结束', data.reason, MEETING_ENDED_REASON_LABEL[data.reason])
     _cleanupMedia()
+    // 清理 producer/consumer 索引与本地开关，防止下次 createAndEnter/joinAndEnter 时
+    // startLocalAudio/Video 因 `if (localProducers.audio) return` 被残留 ID 拦下，
+    // 表现为"重新发起会议后看不到自己的画面"
+    localProducers.audio = null
+    localProducers.video = null
+    localAudioEnabled.value = false
+    localVideoEnabled.value = false
+    Object.keys(remoteConsumers).forEach(k => delete remoteConsumers[k])
     localState.value = MEETING_LOCAL_STATE_ENDED
     _unregisterListeners()
+  }
+
+  /**
+   * 合并 REST getRoom 返回的 participants 与当前内存状态
+   * - REST DTO 目前不包含 audio_enabled/video_enabled（后端 DTO 未暴露该字段）
+   * - WS 广播驱动的内存状态（p.audio_enabled / p.video_enabled）可能已更新；REST 覆盖会回退
+   * - 策略：以 REST 返回的静态属性为主，保留本地已知的音视频开关状态；首次未知时留 undefined
+   *   交由 state.changed 广播权威填充，避免误将"未知"冲成 false 引起 UI 错判
+   */
+  const _mergeParticipantsFromRest = (restList) => {
+    const byUid = new Map()
+    participants.value.forEach((p) => byUid.set(p.user_id, p))
+    return restList.map((p) => {
+      const prev = byUid.get(p.user_id)
+      const merged = { ...p }
+      if (typeof p.audio_enabled !== 'boolean' && prev && typeof prev.audio_enabled === 'boolean') {
+        merged.audio_enabled = prev.audio_enabled
+      }
+      if (typeof p.video_enabled !== 'boolean' && prev && typeof prev.video_enabled === 'boolean') {
+        merged.video_enabled = prev.video_enabled
+      }
+      return merged
+    })
   }
 
   const _onMemberJoined = (msg) => {
     const data = msg.data || {}
     if (!currentRoom.value || data.room_code !== currentRoom.value.room_code) return
-    // 后端广播目前只带基础字段，完整 DTO 通过 GET /rooms/:code 二次拉取
-    if (!participants.value.find(p => p.user_id === data.user_id)) {
-      participants.value.push({
-        user_id: data.user_id,
-        joined_at: data.joined_at,
-        is_active: true,
-        role: 0
-      })
+    // 后端广播已带 user_name/user_avatar，直接补齐昵称头像字段即可
+    const existed = participants.value.find(p => p.user_id === data.user_id)
+    if (existed) {
+      if (data.user_name) existed.user_name = data.user_name
+      if (data.user_avatar) existed.user_avatar = data.user_avatar
+      existed.is_active = true
+      return
     }
+    // Task 15：新入会者的 audio_enabled/video_enabled 保持 undefined，
+    // 等 startLocalAudio/Video 成功后的 meeting.member.state.changed 广播权威填充
+    // MemberPanel 对 undefined 按 !p.audio_enabled 解读为 off（灰），语义"尚未开启"与预期一致
+    participants.value.push({
+      user_id: data.user_id,
+      user_name: data.user_name || '',
+      user_avatar: data.user_avatar || '',
+      joined_at: data.joined_at,
+      is_active: true,
+      role: 0
+    })
   }
 
   const _onMemberLeft = (msg) => {
@@ -268,10 +351,39 @@ export const useMeetingStore = defineStore('meeting', () => {
   const _onMemberStateChanged = (msg) => {
     const data = msg.data || {}
     if (!currentRoom.value || data.room_code !== currentRoom.value.room_code) return
-    const p = participants.value.find(p => p.user_id === data.user_id)
-    if (p) {
-      if (typeof data.audio_enabled === 'boolean') p.audio_enabled = data.audio_enabled
-      if (typeof data.video_enabled === 'boolean') p.video_enabled = data.video_enabled
+    let p = participants.value.find(p => p.user_id === data.user_id)
+    if (!p) {
+      // 时序兜底：OnRoomJoin 触发的 existing state.changed 可能早于 REST getRoom 返回
+      // 此时 participants 里还没有 data.user_id 条目。建个占位，等后续 REST / member.joined
+      // 在 _mergeParticipantsFromRest 里补齐 user_name/avatar 即可，本处先把状态保留住
+      p = {
+        user_id: data.user_id,
+        user_name: '',
+        user_avatar: '',
+        is_active: true,
+        role: 0
+      }
+      participants.value.push(p)
+    }
+    if (typeof data.audio_enabled === 'boolean') p.audio_enabled = data.audio_enabled
+    if (typeof data.video_enabled === 'boolean') p.video_enabled = data.video_enabled
+
+    // Task 15：主持人通过 meeting.member.state.changed 带 target_user_id 指令静音他人，
+    // 后端广播字段名参见 meeting_signal_service.OnMemberStateChanged：
+    //   data.user_id = 被操作者（即当前收到广播的用户）
+    //   data.changed_by = 发起操作者（主持人）
+    const userStore = useUserStore()
+    const myUid = userStore.userInfo?.id
+    const isTargetMe = myUid && data.user_id === myUid
+    const isByOthers = data.changed_by && data.changed_by !== myUid
+    if (isTargetMe && isByOthers && typeof data.audio_enabled === 'boolean' && !data.audio_enabled) {
+      // 被主持人请求静音 → 立即关闭本地 audio producer
+      if (localAudioEnabled.value) {
+        stopLocalAudio().catch((err) => _log('warn', '[Meeting] 被动静音失败', err))
+      }
+      // #ifdef H5
+      try { uni.showToast({ title: '主持人请你静音', icon: 'none', duration: 2000 }) } catch {}
+      // #endif
     }
   }
 
@@ -406,7 +518,7 @@ export const useMeetingStore = defineStore('meeting', () => {
       try {
         const detail = await meetingApi.getRoom(roomCode)
         if (detail && Array.isArray(detail.participants)) {
-          participants.value = detail.participants
+          participants.value = _mergeParticipantsFromRest(detail.participants)
         }
       } catch (e) {
         _log('warn', '[Meeting] 重绑定后拉取房间详情失败', e)
@@ -421,20 +533,30 @@ export const useMeetingStore = defineStore('meeting', () => {
 
   // ==================== 远端媒体清理 ====================
 
+  /**
+   * 精确关闭"某用户某个 producer 对应的 consumer"
+   *
+   * mediasoup-client 的 Consumer 对象自带 `producerId` 字段（transport.consume 时注入），
+   * 利用它匹配 slot.audio / slot.video 中归属 producerId 的那一个；
+   * 其他 kind 的 consumer 必须保留，否则会出现"关音频连带把视频画面也关掉"的连锁问题。
+   *
+   * 找不到匹配时（例如 producerId 异常），不再做 MVP 时期的"整槽关闭"兜底，
+   * 而是只把 producerIds Set 条目移掉；真正该关的 consumer 由后续 transportclose / 离会清理接管
+   */
   const _cleanupRemoteProducer = (userId, producerId) => {
     const slot = remoteConsumers[userId]
     if (!slot) return
     slot.producerIds.delete(producerId)
-    // 无法从 producerId 直接反查 consumer；简单策略：关 slot 内所有 consumer 然后重建（MVP）
-    // 但更稳的：把 Consumer 索引按 producerId 存一遍
     ;['audio', 'video'].forEach(kind => {
       const consumer = slot[kind]
-      if (consumer && !consumer.closed) {
+      if (!consumer) return
+      if (consumer.producerId && consumer.producerId !== producerId) return
+      if (!consumer.closed) {
         try { consumer.close() } catch {}
-        slot[kind] = null
       }
+      slot[kind] = null
     })
-    if (slot.producerIds.size === 0) {
+    if (!slot.audio && !slot.video && slot.producerIds.size === 0) {
       delete remoteConsumers[userId]
     }
   }
@@ -451,10 +573,172 @@ export const useMeetingStore = defineStore('meeting', () => {
   }
 
   const _cleanupMedia = () => {
+    _stopSpeakingDetection()
     if (_engine) {
       try { _engine.close() } catch (e) { _log('warn', '_cleanupMedia engine.close', e) }
       _engine = null
     }
+  }
+
+  // ==================== 说话者探测（Task 15 原创特色 1） ====================
+
+  /**
+   * 音量阈值（0-1 线性，RMS / audioLevel 均归一化到此区间）
+   * 0.05 为静默阈值，比正常说话（0.15-0.4）低 3-8 倍，可过滤键盘敲击背景噪声
+   */
+  const _SPEAKING_LEVEL_THRESHOLD = 0.05
+  /** 探测轮询间隔（ms），500ms 已足够识别说话停顿 */
+  const _SPEAKING_TICK_MS = 500
+
+  /** 读取远端 Consumer 的即时音量（0-1） */
+  const _readRemoteAudioLevel = (consumer) => {
+    // #ifdef H5
+    if (!consumer || !consumer.rtpReceiver) return 0
+    try {
+      const sources = consumer.rtpReceiver.getSynchronizationSources?.() || []
+      if (sources.length === 0) return 0
+      // audioLevel 是 0-1 的浮点数（W3C Spec），Chrome/Edge 原生支持
+      // Firefox 可能返回 undefined，此时回退为 0（不影响其他远端检测）
+      const level = sources[0].audioLevel
+      return typeof level === 'number' ? level : 0
+    } catch {
+      return 0
+    }
+    // #endif
+    // #ifndef H5
+    return 0
+    // #endif
+  }
+
+  /** 读取本地 AnalyserNode 的 RMS（0-1） */
+  const _readLocalAudioLevel = () => {
+    // #ifdef H5
+    if (!_localAnalyser) return 0
+    try {
+      const buf = new Float32Array(_localAnalyser.fftSize)
+      _localAnalyser.getFloatTimeDomainData(buf)
+      let sum = 0
+      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
+      const rms = Math.sqrt(sum / buf.length)
+      // RMS 天然偏小，乘 3 放大到与 audioLevel 相似数量级
+      return Math.min(1, rms * 3)
+    } catch {
+      return 0
+    }
+    // #endif
+    // #ifndef H5
+    return 0
+    // #endif
+  }
+
+  /**
+   * 防抖更新：level >= 阈值 1 tick 即判定 speaking=true，
+   * level < 阈值连续 2 tick 才 false，避免说话时短暂停顿 UI 闪烁
+   */
+  const _updateSpeakingWithDebounce = (userId, level) => {
+    if (!_speakingDebounce[userId]) {
+      _speakingDebounce[userId] = { inCount: 0, outCount: 0 }
+    }
+    const state = _speakingDebounce[userId]
+    const above = level >= _SPEAKING_LEVEL_THRESHOLD
+    if (above) {
+      state.inCount += 1
+      state.outCount = 0
+      if (state.inCount >= 1 && !speakingMap[userId]) {
+        speakingMap[userId] = true
+      }
+    } else {
+      state.inCount = 0
+      state.outCount += 1
+      if (state.outCount >= 2 && speakingMap[userId]) {
+        speakingMap[userId] = false
+      }
+    }
+  }
+
+  /** 初始化本地 WebAudio 管道（仅在有本地 audio track 时建） */
+  const _ensureLocalAnalyser = () => {
+    // #ifdef H5
+    const track = getLocalTrack('audio')
+    if (!track) {
+      _teardownLocalAnalyser()
+      return
+    }
+    // 若已有管道且 track 未变，直接复用；否则重建（例：麦克风切换设备）
+    if (_localAnalyser && _localSource && _localSource.mediaStream?.getAudioTracks()[0]?.id === track.id) {
+      return
+    }
+    _teardownLocalAnalyser()
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext
+      if (!AC) return
+      _localAudioCtx = new AC()
+      const stream = new MediaStream([track])
+      _localSource = _localAudioCtx.createMediaStreamSource(stream)
+      _localAnalyser = _localAudioCtx.createAnalyser()
+      _localAnalyser.fftSize = 1024
+      _localSource.connect(_localAnalyser)
+    } catch (e) {
+      _log('warn', '[Meeting] 本地 AnalyserNode 初始化失败', e)
+      _teardownLocalAnalyser()
+    }
+    // #endif
+  }
+
+  const _teardownLocalAnalyser = () => {
+    // #ifdef H5
+    try { _localSource?.disconnect?.() } catch {}
+    try { _localAnalyser?.disconnect?.() } catch {}
+    try { _localAudioCtx?.close?.() } catch {}
+    _localSource = null
+    _localAnalyser = null
+    _localAudioCtx = null
+    // #endif
+  }
+
+  /** 500ms 轮询：计算所有远端 + 本地的音量并防抖更新 speakingMap */
+  const _speakingTick = () => {
+    const userStore = useUserStore()
+    const myUid = userStore.userInfo?.id
+
+    // 远端：遍历所有有 audio consumer 的用户
+    Object.keys(remoteConsumers).forEach(uidStr => {
+      const uid = Number(uidStr)
+      const slot = remoteConsumers[uid]
+      const level = slot?.audio ? _readRemoteAudioLevel(slot.audio) : 0
+      _updateSpeakingWithDebounce(uid, level)
+    })
+
+    // 本地：仅在本地 audio 开启时探测
+    if (myUid) {
+      if (localAudioEnabled.value) {
+        _ensureLocalAnalyser()
+        const level = _readLocalAudioLevel()
+        _updateSpeakingWithDebounce(myUid, level)
+      } else {
+        // 关麦后直接清零并销毁 AnalyserNode
+        if (speakingMap[myUid]) speakingMap[myUid] = false
+        if (_speakingDebounce[myUid]) _speakingDebounce[myUid] = { inCount: 0, outCount: 0 }
+        _teardownLocalAnalyser()
+      }
+    }
+  }
+
+  const _startSpeakingDetection = () => {
+    if (_speakingTimer) return
+    // #ifdef H5
+    _speakingTimer = setInterval(_speakingTick, _SPEAKING_TICK_MS)
+    // #endif
+  }
+
+  const _stopSpeakingDetection = () => {
+    if (_speakingTimer) {
+      clearInterval(_speakingTimer)
+      _speakingTimer = null
+    }
+    _teardownLocalAnalyser()
+    Object.keys(speakingMap).forEach(k => delete speakingMap[k])
+    Object.keys(_speakingDebounce).forEach(k => delete _speakingDebounce[k])
   }
 
   // ==================== 进入会议（公共私有） ====================
@@ -487,7 +771,19 @@ export const useMeetingStore = defineStore('meeting', () => {
 
     _registerListeners()
 
+    // 提前拉取参与者列表：让 OnRoomJoin 触发的 existing state.changed / producer.new
+    // 到达时 participants 已就绪，避免后入者的 _onMemberStateChanged 找不到 participant 而丢状态
+    try {
+      const detail = await meetingApi.getRoom(currentRoom.value.room_code)
+      if (detail && Array.isArray(detail.participants)) {
+        participants.value = _mergeParticipantsFromRest(detail.participants)
+      }
+    } catch (e) {
+      _log('warn', '[Meeting] 拉取参与者详情失败，保留广播缓存', e)
+    }
+
     // 告知后端 WS 我已绑定本房间（用于 WS 连接 ↔ roomCode 映射）
+    // 后端在此事件内部异步 pushExistingRoomState，补推房间其他用户的 producer.new 与 state.changed
     await wsService.sendWithAck(MEETING_WS_ROOM_JOIN, {
       room_code: currentRoom.value.room_code
     })
@@ -496,27 +792,33 @@ export const useMeetingStore = defineStore('meeting', () => {
     await _engine.ensureSendTransport()
     await _engine.ensureRecvTransport()
 
-    // 拉取最新参与者列表（广播里只有 ID，这里补齐完整 DTO）
-    try {
-      const detail = await meetingApi.getRoom(currentRoom.value.room_code)
-      if (detail && Array.isArray(detail.participants)) {
-        participants.value = detail.participants
-      }
-    } catch (e) {
-      _log('warn', '[Meeting] 拉取参与者详情失败，保留广播缓存', e)
-    }
-
     localState.value = MEETING_LOCAL_STATE_CONNECTED
 
+    // 启动说话者探测（Task 15）：500ms 轮询，远端读 RTP audioLevel，本地用 WebAudio RMS
+    _startSpeakingDetection()
+
     // mediaPrefs 自动推流：失败仅告警，不阻断入会流程，允许用户在会议室内手动重试开麦/开摄像头
+    // 预览页已申请过 track 时会通过 mediaPrefs.audioTrack/videoTrack 透传过来，避免 iOS 二次 getUserMedia
     if (mediaPrefs) {
       if (mediaPrefs.startAudio) {
-        try { await startLocalAudio(mediaPrefs.audioDeviceId) }
-        catch (e) { _log('warn', '[Meeting] 自动开麦失败', e) }
+        try {
+          await startLocalAudio(mediaPrefs.audioDeviceId, mediaPrefs.audioTrack)
+        } catch (e) {
+          _log('warn', '[Meeting] 自动开麦失败', e)
+          // #ifdef H5
+          try { uni.showToast({ title: `自动开麦失败：${e?.message || e?.name || e}`, icon: 'none', duration: 3500 }) } catch {}
+          // #endif
+        }
       }
       if (mediaPrefs.startVideo) {
-        try { await startLocalVideo(mediaPrefs.videoDeviceId) }
-        catch (e) { _log('warn', '[Meeting] 自动开摄像头失败', e) }
+        try {
+          await startLocalVideo(mediaPrefs.videoDeviceId, mediaPrefs.videoTrack)
+        } catch (e) {
+          _log('warn', '[Meeting] 自动开摄像头失败', e)
+          // #ifdef H5
+          try { uni.showToast({ title: `自动开摄像头失败：${e?.message || e?.name || e}`, icon: 'none', duration: 3500 }) } catch {}
+          // #endif
+        }
       }
     }
   }
@@ -532,6 +834,9 @@ export const useMeetingStore = defineStore('meeting', () => {
     if (isInMeeting.value) {
       throw new Error('你当前已在其他会议中')
     }
+    // 上一次会议若以 ENDED 收尾（被主持人/后端结束），Store 中仍会残留 participants/remoteConsumers/
+    // devicePreview 等旧状态；显式 _reset 一次避免污染新会议（典型症状：再次入会看不到自己）
+    _reset()
     localState.value = MEETING_LOCAL_STATE_JOINING
     try {
       // 首次调用时抑制失败 toast：失败后若是 stale 残留会自动清理 + 重试，对用户无感
@@ -572,6 +877,8 @@ export const useMeetingStore = defineStore('meeting', () => {
     if (isInMeeting.value) {
       throw new Error('你当前已在其他会议中')
     }
+    // 与 createAndEnter 同理：消除上一次 ENDED 会议残留的 Store 状态
+    _reset()
     localState.value = MEETING_LOCAL_STATE_JOINING
     try {
       // 首次调用时抑制失败 toast：失败后若是 stale 残留会自动清理 + 重试，对用户无感
@@ -630,36 +937,47 @@ export const useMeetingStore = defineStore('meeting', () => {
    * 开启本地音频
    * @param {string} [deviceId] - 指定麦克风 deviceId（从 enumerateDevices 获取），为空则走系统默认
    */
-  const startLocalAudio = async (deviceId) => {
+  const startLocalAudio = async (deviceId, existingTrack) => {
     if (!_engine) throw new Error('未连接')
     if (localProducers.audio) return
-    const audioConstraints = deviceId ? { deviceId: { exact: deviceId } } : true
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })
-    const track = stream.getAudioTracks()[0]
+    // 优先复用预览页已申请的 track，避开 iOS Safari/Chrome 连续两次 getUserMedia
+    // 触发 NotReadableError（预览页 track.stop() 后相机硬件有释放延迟）
+    let track = existingTrack && existingTrack.readyState === 'live' ? existingTrack : null
+    if (!track) {
+      const audioConstraints = deviceId ? { deviceId: { exact: deviceId } } : true
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })
+      track = stream.getAudioTracks()[0]
+    }
     const producer = await _engine.produce({ kind: 'audio', track })
     localProducers.audio = producer.id
     localAudioEnabled.value = true
+    _broadcastSelfState({ audio_enabled: true })
   }
 
   /**
    * 开启本地视频
    * @param {string} [deviceId] - 指定摄像头 deviceId，为空则走系统默认
    */
-  const startLocalVideo = async (deviceId) => {
+  const startLocalVideo = async (deviceId, existingTrack) => {
     if (!_engine) throw new Error('未连接')
     if (localProducers.video) return
-    // 与预览页保持一致的 HD 分辨率（ideal 1280x720，允许浏览器在设备不支持时降级）
-    const videoConstraints = {
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-      frameRate: { ideal: 24, max: 30 },
-      ...(deviceId ? { deviceId: { exact: deviceId } } : {})
+    // 优先复用预览页已申请的 track，避开 iOS Safari/Chrome 连续两次 getUserMedia
+    // 触发 NotReadableError（预览页 track.stop() 后相机硬件有释放延迟）
+    let track = existingTrack && existingTrack.readyState === 'live' ? existingTrack : null
+    if (!track) {
+      const videoConstraints = {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 24, max: 30 },
+        ...(deviceId ? { deviceId: { exact: deviceId } } : {})
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints })
+      track = stream.getVideoTracks()[0]
     }
-    const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints })
-    const track = stream.getVideoTracks()[0]
     const producer = await _engine.produce({ kind: 'video', track })
     localProducers.video = producer.id
     localVideoEnabled.value = true
+    _broadcastSelfState({ video_enabled: true })
   }
 
   /** 关闭本地音频 */
@@ -668,6 +986,7 @@ export const useMeetingStore = defineStore('meeting', () => {
     await _engine.closeProducer(localProducers.audio)
     localProducers.audio = null
     localAudioEnabled.value = false
+    _broadcastSelfState({ audio_enabled: false })
   }
 
   /** 关闭本地视频 */
@@ -676,6 +995,26 @@ export const useMeetingStore = defineStore('meeting', () => {
     await _engine.closeProducer(localProducers.video)
     localProducers.video = null
     localVideoEnabled.value = false
+    _broadcastSelfState({ video_enabled: false })
+  }
+
+  /**
+   * Task 15：向房间其他成员广播自身音视频状态
+   * - 后端 meeting.member.state.changed 语义：操作自己无需 target_user_id
+   * - 后端会广播给房间其他成员（不回显给本人）
+   * - 容错：WS 未连接或 ACK 失败仅 warn 日志，不影响本地状态机
+   */
+  const _broadcastSelfState = (patch) => {
+    if (!currentRoom.value) return
+    if (!patch || typeof patch !== 'object') return
+    const payload = { room_code: currentRoom.value.room_code }
+    if (typeof patch.audio_enabled === 'boolean') payload.audio_enabled = patch.audio_enabled
+    if (typeof patch.video_enabled === 'boolean') payload.video_enabled = patch.video_enabled
+    if (Object.keys(payload).length <= 1) return
+    wsService.sendWithAck(MEETING_WS_MEMBER_STATE_CHANGED, payload, 3000)
+      .catch((err) => {
+        _log('warn', '[Meeting] 上报本地音视频状态失败', err)
+      })
   }
 
   /**
@@ -752,6 +1091,25 @@ export const useMeetingStore = defineStore('meeting', () => {
     await meetingApi.kickMember(currentRoom.value.room_code, userId)
   }
 
+  /**
+   * 主持人静音他人 / 请他开麦（Task 15 主持人权限四件套第 4 件）
+   *
+   * 通过 WS meeting.member.state.changed 携带 target_user_id，
+   * 后端已实现 host 校验与广播逻辑（meeting_signal_service.go），前端仅需发送。
+   *
+   * @param {number} targetUserId 被操作对象 user_id
+   * @param {boolean} mute true=静音，false=请他开麦
+   */
+  const muteMember = async (targetUserId, mute = true) => {
+    if (!currentRoom.value) throw new Error('未入会')
+    if (!isHost.value) throw new Error('仅主持人可操作')
+    await wsService.sendWithAck(MEETING_WS_MEMBER_STATE_CHANGED, {
+      room_code: currentRoom.value.room_code,
+      target_user_id: targetUserId,
+      audio_enabled: !mute
+    }, 3000)
+  }
+
   const inviteUsers = async (inviteeIds) => {
     if (!currentRoom.value) throw new Error('未入会')
     return meetingApi.inviteUsers(currentRoom.value.room_code, inviteeIds)
@@ -809,12 +1167,15 @@ export const useMeetingStore = defineStore('meeting', () => {
     remoteConsumers,
     draftCreatePayload,
     devicePreview,
+    speakingMap,
+    uiPrefs,
 
     // getters
     isInMeeting,
     isConnected,
     isHost,
     activeParticipants,
+    isAllMuted,
 
     // lifecycle
     createAndEnter,
@@ -837,6 +1198,7 @@ export const useMeetingStore = defineStore('meeting', () => {
     markChatsRead,
     transferHost,
     kickMember,
+    muteMember,
     inviteUsers,
     cleanupStaleMeetings,
 

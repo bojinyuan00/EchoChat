@@ -105,6 +105,11 @@ async function bootstrap(): Promise<void> {
         host: config.http.host,
         port: config.http.port,
         env: config.nodeEnv,
+        mediasoup: {
+          listenIp: config.mediasoup.listenIp,
+          announcedIp: config.mediasoup.announcedIp ?? '(none)',
+          rtcPortRange: `${config.mediasoup.rtcMinPort}-${config.mediasoup.rtcMaxPort}`,
+        },
       },
       'media-server listening',
     );

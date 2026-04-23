@@ -184,12 +184,32 @@ export function createMediaEngine({ roomCode, userId, sendWithAck, logger = defa
     })
   }
 
-  /** 按需创建 sendTransport（已存在则复用） */
+  /** in-flight Promise：sendTransport 创建并发锁；避免突发并发下重复创建 */
+  let sendTransportPromise = null
+  /** in-flight Promise：recvTransport 创建并发锁；Task 15 后入者 burst 订阅时尤其关键 */
+  let recvTransportPromise = null
+
+  /** 按需创建 sendTransport（已存在则复用，并发调用共享同一个 in-flight Promise） */
   const ensureSendTransport = async () => {
     ensureDeviceLoaded()
     if (sendTransport && !sendTransport.closed) {
       return sendTransport
     }
+    if (sendTransportPromise) {
+      return sendTransportPromise
+    }
+    sendTransportPromise = (async () => {
+      try {
+        return await _createSendTransport()
+      } finally {
+        sendTransportPromise = null
+      }
+    })()
+    return sendTransportPromise
+  }
+
+  /** 首次创建 sendTransport 的底层流程，原本 inline 在 ensureSendTransport 中 */
+  const _createSendTransport = async () => {
     const info = await requestTransportInfo('send')
     sendTransport = device.createSendTransport({
       id: info.id,
@@ -203,12 +223,27 @@ export function createMediaEngine({ roomCode, userId, sendWithAck, logger = defa
     return sendTransport
   }
 
-  /** 按需创建 recvTransport（已存在则复用） */
+  /** 按需创建 recvTransport（已存在则复用，并发调用共享同一个 in-flight Promise） */
   const ensureRecvTransport = async () => {
     ensureDeviceLoaded()
     if (recvTransport && !recvTransport.closed) {
       return recvTransport
     }
+    if (recvTransportPromise) {
+      return recvTransportPromise
+    }
+    recvTransportPromise = (async () => {
+      try {
+        return await _createRecvTransport()
+      } finally {
+        recvTransportPromise = null
+      }
+    })()
+    return recvTransportPromise
+  }
+
+  /** 首次创建 recvTransport 的底层流程 */
+  const _createRecvTransport = async () => {
     const info = await requestTransportInfo('recv')
     recvTransport = device.createRecvTransport({
       id: info.id,

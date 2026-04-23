@@ -11,7 +11,7 @@
   - 按钮带 loading 态，禁用期间点击不派发事件
 -->
 <template>
-  <view class="toolbar">
+  <view class="toolbar" :class="{ 'toolbar-all-muted': allMuted }">
     <button class="btn" :class="{ active: audioEnabled, loading: audioLoading }" :disabled="audioLoading" @click="emitIf('mic-toggle')">
       <view class="icon">
         <svg v-if="audioEnabled" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -100,7 +100,9 @@ const props = defineProps({
   videoLoading: { type: Boolean, default: false },
   memberCount: { type: Number, default: 0 },
   unreadChatCount: { type: Number, default: 0 },
-  allowChat: { type: Boolean, default: true }
+  allowChat: { type: Boolean, default: true },
+  /** Task 15 原创特色 4：全员静音氛围色 */
+  allMuted: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['mic-toggle', 'cam-toggle', 'invite', 'members', 'chat', 'leave'])
@@ -130,6 +132,13 @@ const emitIf = (name) => {
   flex-shrink: 0;
   position: relative;
   z-index: 210;
+  transition: background 0.4s ease, border-top-color 0.4s ease;
+}
+/* Task 15 原创特色 4：全员静音氛围色
+   冷蓝渐变暗示"全房间安静"，触发条件由父组件 computed (allMuted) 控制 */
+.toolbar.toolbar-all-muted {
+  background: linear-gradient(to top, rgba(30, 58, 138, 0.88), rgba(30, 64, 175, 0.78));
+  border-top-color: rgba(96, 165, 250, 0.18);
 }
 
 .btn {

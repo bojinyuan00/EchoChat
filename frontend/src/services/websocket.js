@@ -13,7 +13,21 @@
 import { BASE_URL } from '@/utils/request'
 import { getToken } from '@/utils/storage'
 
-const WS_BASE = BASE_URL.replace(/^http/, 'ws')
+// WebSocket 基础地址推导：
+// - 若 BASE_URL 非空（生产 CDN 直连场景），将其协议从 http(s) 替换成 ws(s)
+// - 若 BASE_URL 为空（开发 vite proxy / 生产同源 Nginx），用当前页面 origin 推导同源 ws(s)
+// 这样 WebSocket 天然随页面协议走：HTTPS 页面用 wss，HTTP 页面用 ws，避免混合内容被浏览器阻断
+const resolveWsBase = () => {
+  if (BASE_URL) return BASE_URL.replace(/^http/, 'ws')
+  // #ifdef H5
+  if (typeof window !== 'undefined' && window.location) {
+    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${wsProto}//${window.location.host}`
+  }
+  // #endif
+  return ''
+}
+const WS_BASE = resolveWsBase()
 const HEARTBEAT_INTERVAL = 30000
 const RECONNECT_BASE_DELAY = 1000
 const RECONNECT_MAX_DELAY = 30000

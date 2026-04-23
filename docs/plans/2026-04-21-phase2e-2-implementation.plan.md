@@ -1,11 +1,11 @@
 # Phase 2e-2 实施计划：会议 MVP（多人音视频）
 
-> **状态：** 🚧 代码开发中（Task 0-14 ✅ / Task 15-16 待执行）
+> **状态：** 🚧 代码开发中（Task 0-15 ✅ / Task 16 待执行）
 > **设计文档：** [Phase 2e-2 设计文档](./2026-04-21-phase2e-2-design.md)
 > **上级路线图：** [Phase 2e 整体路线图](./2026-04-20-phase2e-design.md)
 > **分支：** `feature/phase2e-2-meeting-mvp`
 > **预估总工时：** **约 17 人日**（17 个 Task，含 PoC 与 UI 打磨）
-> **最后更新：** 2026-04-24（Task 14 ✅ docker-compose 双态扩展完成：新增 media-server + coturn（public profile）容器编排、三份 .env 模板、scripts/start|stop|status.sh 支持 full 子命令、scripts/deploy-public.sh 公网部署校验脚本、docs/deployment/meeting-mvp.md 双态部署指南。下一步 Task 15 UI 打磨）
+> **最后更新：** 2026-04-23（Task 15 ✅ UI 打磨 + 主持人权限四件套完成：6 项原创 UI 特色落地 / 说话者探测双源（RTP stats + WebAudio） / `SelfVideoFloat` 桌面恒浮窗 + 图钉切换 / `isAllMuted` 静音氛围色 / `NetworkBadge` 3 条波浪 / 主持人"请他静音/开麦/转让/踢出"四件套 / 4 屏 design-system 文档 / Playwright MCP 7 屏截图回归通过。下一步 Task 16 E2E + 文档同步）
 
 ### 进度看板
 
@@ -26,7 +26,7 @@
 | **Task 12** | **会议内聊天面板** | ✅ | `ChatPanel.vue` + WS `meeting.chat.new` + user_name/avatar 补齐 |
 | **Task 13** | **meeting_invite 通知对接** | ✅ | extra 补齐 inviter_* / expired_at；前端"立即加入/稍后"+ 过期态 + deep-link |
 | **Task 14** | **docker-compose + 双态** | ✅ | `media-server` + `coturn(public)` 编排 + 3 份 .env 模板 + `deploy-public.sh` + `docs/deployment/meeting-mvp.md` |
-| Task 15 | 观测性与告警 | ⏳ |  |
+| **Task 15** | **`ui-ux-pro-max` UI 打磨 + 主持人权限四件套** | ✅ | 6 项原创 UI（流光/柔性网格/浮窗/氛围色/滑入/波浪）+ 双源说话者探测 + 四件套 + 4 份设计文档 + Playwright MCP 7 屏回归 |
 | Task 16 | E2E + 文档同步 | ⏳ |  |
 
 ### 2026-04-22 UI 打磨专项（Task 10-12 之后的体验收敛）
@@ -542,28 +542,35 @@ flowchart LR
   - 真实 `compose build media-server` 因 mediasoup arm64 编译耗时 > 15 min 未最终完成镜像落盘，不影响 Task 14 核心目标（配置 + 脚本 + 文档），公网服务器标准 x86 环境下属正常时间范围。
 - **工作量**：**0.5 人日（实际约 0.4 人日）**
 
-### Task 15：`ui-ux-pro-max` 定制 UI 打磨
+### Task 15：`ui-ux-pro-max` 定制 UI 打磨 + 主持人权限四件套 ✅
 
-- **目标**：调用技能包产出 4 屏 EchoChat 原创风格，落地到代码
+- **目标**：调用技能包产出 4 屏 EchoChat 原创风格，落地 6 项原创 UI + 主持人四件套
 - **依赖**：T11
-- **主要产出**：
-  - 调用：`npx openskills read ui-ux-pro-max` + 4 屏 brief（设计 §9.1）
-  - 设计落地：
-    - `design-system/echochat/pages/meeting-home.md`
-    - `design-system/echochat/pages/meeting-preview.md`
-    - `design-system/echochat/pages/meeting-room.md`
-    - `design-system/echochat/pages/meeting-invite.md`
-  - 代码落地：
-    - `VideoTile.vue` 说话者流光轮廓动效
-    - 柔性网格：2/3 人布局的非等分样式
-    - 自视频浮窗四角吸附（`draggable` + 吸附计算）
-    - 静音氛围色（工具栏底色绑定 computed `allMuted`）
-    - `NetworkBadge.vue` 3 档波浪动效
-- **检查点**：
-  - 视觉走查：4 屏与设计产物一致，色彩 / 留白 / 动效符合飞书简洁 + EchoChat 原创要求
-  - 动效性能：不影响 60fps（Chrome Performance 面板确认）
-  - 代码审查：`ui-ux-pro-max` 产物被真正使用，不留下"代码 vs 设计产物"脱节
-- **工作量**：**2 人日**
+- **实际产出**（相对设计预期"满配"，无裁剪）：
+  - 计划：`docs/plans/2026-04-24-phase2e-2-task15-ui-polish.plan.md`（设计规范 + 10 子任务 + 验收点 + 风险）
+  - 4 屏 design-system 文档：
+    - `design-system/echochat/pages/meeting-home.md` ✅
+    - `design-system/echochat/pages/meeting-preview.md` ✅
+    - `design-system/echochat/pages/meeting-room.md` ✅（核心，含 Z-index / CSS / 动效 / 降级完整规格）
+    - `design-system/echochat/pages/meeting-invite.md` ✅
+  - 6 项原创 UI 特色：
+    - ✅ 说话者流光轮廓：`VideoTile.vue` + `@property --flow-angle` + `conic-gradient` + Safari 降级
+    - ✅ 说话者探测双源：`store/meeting.js` + `RTCRtpReceiver.audioLevel`（远端）+ WebAudio RMS（本地）+ 500ms 轮询 + in/out 防抖
+    - ✅ 柔性网格：`VideoGrid.vue` + `layout-2-flex`（65/35） / `layout-3-tri`（左大右双小） / `layout-grid-3` / `sqrt`
+    - ✅ 自视频浮窗：`SelfVideoFloat.vue` 新增 + 桌面 280×180 恒浮窗 / 移动 160×100 + 拖拽 + 四角吸附 + 图钉切换
+    - ✅ 静音氛围色：`MeetingToolbar.vue` + `isAllMuted` computed（≥2 人全员静音触发蓝紫渐变）
+    - ✅ 入会滑入：`VideoGrid.vue` `@keyframes tile-slide-in` + 新 tile 挂载时一次性 360ms
+    - ✅ NetworkBadge 3 条波浪：`NetworkBadge.vue` 重写 + 3 SVG `<path>` + `@keyframes wave-flow` 相位错开
+  - 主持人四件套：
+    - ✅ 请他静音 / 开麦（条件渲染）：`MemberPanel.vue` + `store.muteMember` + WS `meeting.member.state.changed`
+    - ✅ 被静音侧体验：`_onMemberStateChanged` 检测 `changed_by !== myUid` → `stopLocalAudio` + `uni.showToast`
+    - ✅ 转让主持人 / 踢出会议（既有 Task 13 实现，菜单统一重构）
+- **验收记录**：
+  - `ReadLints`：零错误
+  - `npm run build:h5`：通过
+  - Playwright MCP 7 屏截图回归：`.playwright-mcp/task15/{01..07}-*.png` + `README.md`
+    - 01 首页 / 02 设备预览 / 03 空场浮窗+波浪 / 04 单人静音 / 05 **流光+柔性3-tri+氛围色**（核心）/ 06 图钉切回 4 人网格 / 07 主持人菜单条件渲染
+- **工作量**：**2 人日（实际 ~1.5 人日）**
 
 ### Task 16：E2E 验证 + Playwright MCP 回归 + 代码审查 + 文档同步
 

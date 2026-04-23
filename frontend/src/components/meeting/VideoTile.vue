@@ -165,9 +165,39 @@ onBeforeUnmount(() => {
   transition: box-shadow 0.18s ease, transform 0.18s ease;
   border: 2rpx solid transparent;
 }
+/* Fallback：不支持 @property 的浏览器（Safari 17-）降级为静态蓝色描边 */
 .tile.speaking {
   border-color: #3B82F6;
   box-shadow: 0 0 0 2rpx rgba(59, 130, 246, 0.18), 0 0 28rpx rgba(59, 130, 246, 0.35);
+}
+
+/* EchoChat 原创特色：说话者流光轮廓
+   通过 @property 声明可动画化的自定义属性 --flow-angle，
+   驱动 conic-gradient 环绕旋转；双层 background 方案：
+   - padding-box：实色填充视频块内容
+   - border-box：渐变仅生效于 border 区域，形成霓虹光圈效果 */
+@supports (background: conic-gradient(from 0deg, red, blue)) and (--flow-angle: 0deg) {
+  @property --flow-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+  }
+  .tile.speaking {
+    border-color: transparent;
+    background:
+      linear-gradient(#0B1220, #0B1220) padding-box,
+      conic-gradient(from var(--flow-angle), #10B981, #2563EB, #6366F1, #F59E0B, #10B981) border-box;
+    box-shadow: 0 0 24rpx rgba(99, 102, 241, 0.45);
+    animation: flow-rotate 3s linear infinite;
+  }
+}
+@keyframes flow-rotate {
+  to { --flow-angle: 360deg; }
+}
+
+/* 可访问性：尊重系统减少动画偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .tile.speaking { animation: none; }
 }
 .tile.local::after {
   content: '';

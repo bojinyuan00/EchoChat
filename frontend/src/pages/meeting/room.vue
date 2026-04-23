@@ -36,8 +36,8 @@
 
     <!-- 主区：左视频 + 右侧聊天面板（仅 chatVisible 时侧栏展开） -->
     <view class="body">
-      <view class="video-col">
-        <VideoGrid :tiles="tiles">
+      <view ref="videoCol" class="video-col">
+        <VideoGrid :tiles="gridTiles">
           <template #tile="{ tile }">
             <VideoTile
               :user-id="tile.userId"
@@ -48,9 +48,25 @@
               :video-enabled="tile.videoEnabled"
               :audio-track="tile.audioTrack"
               :video-track="tile.videoTrack"
+              :is-speaking="!!speakingMap[tile.userId]"
             />
           </template>
         </VideoGrid>
+
+        <!-- 自视频浮窗（Task 15）：仅桌面端浮窗模式开启时显示；图钉切换后本地 tile 回到网格里 -->
+        <SelfVideoFloat
+          v-if="floatEnabled && selfTile"
+          :user-id="selfTile.userId"
+          :name="selfTile.name"
+          :is-host="selfTile.isHost"
+          :audio-enabled="selfTile.audioEnabled"
+          :video-enabled="selfTile.videoEnabled"
+          :audio-track="selfTile.audioTrack"
+          :video-track="selfTile.videoTrack"
+          :is-speaking="!!speakingMap[selfTile.userId]"
+          :container="videoCol"
+          @pin-click="togglePin"
+        />
       </view>
       <view class="chat-col" :class="{ open: chatVisible }">
         <ChatPanel
@@ -77,6 +93,7 @@
       :member-count="tiles.length"
       :unread-chat-count="unreadChatCount"
       :allow-chat="allowChat"
+      :all-muted="allMuted"
       @mic-toggle="onMicToggle"
       @cam-toggle="onCamToggle"
       @invite="openInvite"
@@ -96,6 +113,7 @@
       @close="memberVisible = false"
       @kick="onKickMember"
       @transfer-host="onTransferHost"
+      @mute-member="onMuteMember"
     />
 
     <!-- 邀请弹窗 -->
@@ -149,6 +167,7 @@ import MemberPanel from '@/components/meeting/MemberPanel.vue'
 import InviteDialog from '@/components/meeting/InviteDialog.vue'
 import NetworkBadge from '@/components/meeting/NetworkBadge.vue'
 import ChatPanel from '@/components/meeting/ChatPanel.vue'
+import SelfVideoFloat from '@/components/meeting/SelfVideoFloat.vue'
 
 const meetingStore = useMeetingStore()
 const userStore = useUserStore()
@@ -160,10 +179,19 @@ const leaveDialogVisible = ref(false)
 const audioLoading = ref(false)
 const videoLoading = ref(false)
 const chatLoadingMore = ref(false)
-const networkLevel = ref(4) // Task 15 接入真实 getStats 后动态更新
+const networkLevel = ref(4) // 持续接入 getStats 后动态更新（Task 16 进一步收敛）
 const startedAt = ref(0)
 const nowTs = ref(Date.now())
 let timerHandle = null
+
+/** 视频区容器引用：传给 SelfVideoFloat 计算吸附边界 */
+const videoCol = ref(null)
+
+/** 说话者映射由 meeting store 探测出（Task 15），浮窗和网格都订阅它来驱动流光动效 */
+const speakingMap = computed(() => meetingStore.speakingMap)
+
+/** 全员静音标记，用于 Task 15 工具栏冷色氛围（允许单人时恒为 false） */
+const allMuted = computed(() => meetingStore.isAllMuted)
 
 // ============ 基础映射 ============
 
@@ -307,23 +335,28 @@ const tiles = computed(() => {
   participants.value.forEach(p => {
     if (!p.is_active && p.is_active !== undefined) return
     const isLocal = p.user_id === myUid
+    let audioTrack = null
+    let videoTrack = null
+    if (isLocal) {
+      audioTrack = meetingStore.getLocalTrack('audio')
+      videoTrack = meetingStore.getLocalTrack('video')
+    } else {
+      audioTrack = meetingStore.getRemoteTrack(p.user_id, 'audio')
+      videoTrack = meetingStore.getRemoteTrack(p.user_id, 'video')
+    }
+    // Task 15 回归修复：tile 是否渲染 <video>/<audio> 以 track 实际存在为准
+    // 参会者的 audio_enabled/video_enabled 仅作为 MemberPanel 状态图标色彩依据，
+    // 不再决定 VideoTile 媒体元素的挂载；否则一旦 state 字段滞后就会屏蔽实际画面
     const tile = {
       key: `u_${p.user_id}`,
       userId: p.user_id,
       name: isLocal ? '你' : nameOf(p.user_id),
       isLocal,
       isHost: p.user_id === hostId.value,
-      audioEnabled: isLocal ? audioEnabled.value : (p.audio_enabled !== false),
-      videoEnabled: isLocal ? videoEnabled.value : (p.video_enabled !== false),
-      audioTrack: null,
-      videoTrack: null
-    }
-    if (isLocal) {
-      tile.audioTrack = meetingStore.getLocalTrack('audio')
-      tile.videoTrack = meetingStore.getLocalTrack('video')
-    } else {
-      tile.audioTrack = meetingStore.getRemoteTrack(p.user_id, 'audio')
-      tile.videoTrack = meetingStore.getRemoteTrack(p.user_id, 'video')
+      audioEnabled: isLocal ? audioEnabled.value : !!audioTrack,
+      videoEnabled: isLocal ? videoEnabled.value : !!videoTrack,
+      audioTrack,
+      videoTrack
     }
     list.push(tile)
   })
@@ -343,6 +376,36 @@ const tiles = computed(() => {
   }
   return list
 })
+
+// ============ Task 15 浮窗模式 ============
+
+/**
+ * 浮窗开关：从 store.uiPrefs 读取，默认桌面端开启浮窗
+ * 点击图钉按钮时 togglePin 切换，本地 tile 会在浮窗 <-> 网格间迁移
+ */
+const floatEnabled = computed(() => meetingStore.uiPrefs?.selfVideoFloat !== false)
+
+/**
+ * 自视频 tile：浮窗模式下从 tiles 中剥离出来单独挂载
+ * 若 floatEnabled=false 则返回 null，自视频仍保留在 Grid 里
+ */
+const selfTile = computed(() => {
+  if (!floatEnabled.value) return null
+  return tiles.value.find(t => t.isLocal) || null
+})
+
+/**
+ * 网格 tiles：浮窗开启时剔除本地 tile（只渲染远端），否则保持原始
+ * 这样 VideoGrid 的 layout-1/2/3/N 档位判断基于远端人数，符合用户认知
+ */
+const gridTiles = computed(() => {
+  if (!floatEnabled.value) return tiles.value
+  return tiles.value.filter(t => !t.isLocal)
+})
+
+const togglePin = () => {
+  meetingStore.uiPrefs.selfVideoFloat = !meetingStore.uiPrefs.selfVideoFloat
+}
 
 // ============ 事件处理 ============
 
@@ -434,6 +497,15 @@ const onKickMember = async (uid) => {
   try {
     await meetingStore.kickMember(uid)
     uni.showToast({ title: '已踢出', icon: 'success' })
+  } catch (err) {
+    uni.showToast({ title: err?.message || '操作失败', icon: 'none' })
+  }
+}
+
+const onMuteMember = async ({ userId: uid, mute }) => {
+  try {
+    await meetingStore.muteMember(uid, mute)
+    uni.showToast({ title: mute ? '已请对方静音' : '已请对方开麦', icon: 'none' })
   } catch (err) {
     uni.showToast({ title: err?.message || '操作失败', icon: 'none' })
   }
