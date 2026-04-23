@@ -1,11 +1,12 @@
 # Phase 2e-2 Task 15：UI 打磨 + 主持人权限四件套补齐
 
-> **状态：** 📋 设计阶段（等待用户 Review）
+> **状态：** ✅ 已完成（2026-04-24，随 Task 16 收官一并切 ✅）
 > **上级实施计划：** [docs/plans/2026-04-21-phase2e-2-implementation.plan.md §Task 15](./2026-04-21-phase2e-2-implementation.plan.md)
 > **设计依据：** [Phase 2e-2 设计文档 §9.1 / §9.2 / §3.3 D08](./2026-04-21-phase2e-2-design.md)
 > **分支：** `feature/phase2e-2-meeting-mvp`
 > **预估工时：** 1.5-2 人日
 > **范围锁定：** 满配（6 条原创特色 + 静音他人 + 4 屏设计文档 + 桌面端恒浮窗 + RTP stats 双源说话者探测）
+> **交付记录：** 已合并到 Task 15 commits + Task 16 P0/P1 修复批次；实际回归问题已随 Task 16 P0/P1（media ownership、成员列表状态同步、consumer 精确清理）一并闭环。详见 [CURRENT_STATUS.md Task 15 / 16 交付条目](../progress/CURRENT_STATUS.md)。
 
 ---
 

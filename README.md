@@ -188,37 +188,51 @@ npm run dev
 
 ---
 
-## MVP 功能规划（第一期）
+## 开发进度
 
-### Phase 1 — 基础设施与用户认证 ✅
+> 最新进度、里程碑与技术决策以 [docs/progress/CURRENT_STATUS.md](docs/progress/CURRENT_STATUS.md) 为准（本节为概览）。
 
-- [x] 设计方案与架构文档
-- [x] Docker Compose 开发环境（PostgreSQL + Redis）
-- [x] Go 后端服务骨架（Gin + GORM + Wire + Zap）
-- [x] 用户注册/登录 API（用户名+邮箱+密码）
-- [x] JWT Token 认证（有状态 JWT + Redis）
-- [x] RBAC 角色权限（user / admin / super_admin）
-- [x] 前台 uni-app 骨架 + 登录/注册/TabBar/个人中心
-- [x] 后台 Vue 3 管理端 + 登录/布局/用户管理
-- [x] Go 服务 Dockerfile + Docker Compose 全栈部署
+### Phase 1 — 基础设施与用户认证 ✅（2026-03 完成）
 
-### Phase 2 — 即时通讯（待开始）
+- [x] 设计方案与架构文档 · Docker Compose（PostgreSQL + Redis + MinIO）
+- [x] Go 后端骨架（Gin + GORM + Wire + Zap）+ JWT + RBAC
+- [x] 前台 uni-app 骨架 + 后台 Vue 3 管理端 + Docker 化
 
-- [ ] 即时聊天（单聊 + 群聊，文字/图片/文件）
-- [ ] 联系人/好友管理
-- [ ] 消息通知系统
+### Phase 2a / 2b / 2c / 2d — 即时通讯全量 ✅（2026-03 完成）
 
-### Phase 3 — 音视频会议（待开始）
+- [x] 联系人 / 好友管理（2a）
+- [x] WebSocket 长连接 + 单聊即时通讯（2b）
+- [x] 群聊 + 已读回执（2c）
+- [x] 消息类型扩展（图片 / 文件 / 语音，含 MinIO S3 存储）（2d）
 
-- [ ] 多人音视频会议（即时会议 + 预约会议）
-- [ ] 后台管理端会议监控
+### Phase 2e-1 — 统一通知中心 ✅（2026-04-20 完成）
+
+- [x] 通知数据模型 + `notify.Pusher` 统一推送抽象
+- [x] 前端通知中心页 + 卡片渲染 + WS 实时推送
+- [x] `meeting_invite` 预留类型（供 Phase 2e-2 联动）
+
+### Phase 2e-2 — 多人音视频会议 MVP ✅（2026-04-24 完成）
+
+- [x] 技术栈：mediasoup Node 媒体控制层 + C++ SFU Worker + mediasoup-client（WebRTC）
+- [x] 控制面：Go 会议 service + 9 REST API + 14 WS 事件（创建 / 加入 / 离开 / 主持人四件套 / 邀请 / 聊天 / 生命周期）
+- [x] 媒体面：Node 媒体服务 12 内部 REST（Router / Transport / Producer / Consumer / Stats）+ Token 内部鉴权
+- [x] 前端会议闭环：Hub → 预览 → 房间（网格 / 演讲者 / 工具栏 / 聊天 / 成员列表 / 主持人菜单）
+- [x] 会议生命周期：host 掉线 2 分钟宽限 + 自动转让 + 空房 5 分钟 TTL + 定时兜底清理
+- [x] 双态部署：本机 Docker Compose 即装即用 + 公网（announcedIp + coturn `--profile public`）
+- [x] 原创 UI 特色 6 条（桌面端恒浮窗 / 加入时视频块滑入等）+ 主持人权限四件套（静音他人 / 移除 / 转让 / 结束）
+- [x] 代码审查闭环：4 P0 + 8 P1 + 7 P2 + 7 Nit 全部修复，5 项（WS token 迁出 URL / Chat 服务拆分等）登记推迟到 Phase 2f/3
+- [x] 验收产物：[test-report-phase2e-2-meeting.md](test-report-phase2e-2-meeting.md)（八章完整报告）+ 5 份 Playwright MCP E2E 剧本
+
+### Phase 2e-3 / Phase 3 — 待启动（规划中）
+
+- [ ] 预约会议 + 会议提醒 + 等候室 + 预览高级参数（2e-3）
+- [ ] 屏幕共享 + 会议录制与回放（3）
+- [ ] 互动直播（主播 / 观众 / 弹幕）（3）
+- [ ] WS token 从 URL 迁出 + MeetingChatService 拆分（P2 推迟项）
 
 ## 后续规划
 
-- 屏幕共享
 - 微信授权登录
-- 互动直播（主播/观众/弹幕）
-- 会议录制与回放
 - 微服务拆分 + K8s 部署
 - AI 辅助功能（语音转文字、会议纪要）
 
@@ -228,9 +242,14 @@ npm run dev
 
 | 文档 | 路径 | 说明 |
 |------|------|------|
-| 项目进度 | [docs/progress/CURRENT_STATUS.md](docs/progress/CURRENT_STATUS.md) | 当前开发进度与技术决策 |
+| 项目进度 | [docs/progress/CURRENT_STATUS.md](docs/progress/CURRENT_STATUS.md) | 当前开发进度与技术决策（SSOT） |
 | 整体设计方案 | [docs/plans/2026-02-27-echochat-system-design.md](docs/plans/2026-02-27-echochat-system-design.md) | 系统完整设计方案 |
-| 第一阶段实施计划 | [docs/plans/2026-02-27-phase1-foundation-and-auth.md](docs/plans/2026-02-27-phase1-foundation-and-auth.md) | 基础设施+用户体系实施步骤 |
+| Phase 2e 路线图 | [docs/plans/2026-04-20-phase2e-design.md](docs/plans/2026-04-20-phase2e-design.md) | Phase 2e-1 / 2e-2 / 2e-3 三子阶段总览 |
+| Phase 2e-2 设计 | [docs/plans/2026-04-21-phase2e-2-design.md](docs/plans/2026-04-21-phase2e-2-design.md) | 会议 MVP 专项设计（✅ 已完成） |
+| Phase 2e-2 实施 | [docs/plans/2026-04-21-phase2e-2-implementation.plan.md](docs/plans/2026-04-21-phase2e-2-implementation.plan.md) | Task 0-16 实施计划 |
+| Phase 2e-2 代码审查 | [docs/reviews/2026-04-23-phase2e-2-code-review.md](docs/reviews/2026-04-23-phase2e-2-code-review.md) | 26 项审计结果 + Task 16 修复追踪 |
+| Phase 2e-2 验收报告 | [test-report-phase2e-2-meeting.md](test-report-phase2e-2-meeting.md) | 八章完整测试报告 |
+| 会议 MVP 部署指南 | [docs/deployment/meeting-mvp.md](docs/deployment/meeting-mvp.md) | 本机 Demo + 公网双态部署手册 |
 | 系统架构文档 | [docs/architecture/system-architecture.md](docs/architecture/system-architecture.md) | 架构分层与技术选型 |
 | API 接口文档 | [docs/api/](docs/api/) | 按端+模块拆分的 REST API + WebSocket 事件定义 |
 

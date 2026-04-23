@@ -1012,7 +1012,7 @@ services:
 - 管理端消息管理功能
 - 详见 `docs/plans/2026-03-04-phase2d-design.md`
 
-#### Phase 2e：会议与通知 🚧 拆分为三子阶段（详见 `docs/plans/2026-04-20-phase2e-design.md`）
+#### Phase 2e：会议与通知 🚧 拆分为三子阶段（2e-1 ✅ / 2e-2 ✅ / 2e-3 📋 待启动；详见 `docs/plans/2026-04-20-phase2e-design.md`）
 
 - **Phase 2e-1：通知系统** ✅ 已完成
   - 统一通知中心（好友/群聊事件 + 系统广播 + 会议通知类型预留）
@@ -1023,7 +1023,7 @@ services:
   - 跨模块 Pusher 接口（contact/group 模块解耦集成）；后期接入 meeting 模块（Phase 2e-2）
   - 专用设计：`docs/plans/2026-04-20-phase2e-1-design.md`；实施计划：`docs/plans/2026-04-20-phase2e-1-implementation.plan.md`
 
-- **Phase 2e-2：会议 MVP** 📋 设计阶段完成（2026-04-21），代码开发待启动
+- **Phase 2e-2：会议 MVP** ✅ 已完成（2026-04-24，Task 0-16 全量落地 + 代码审查 4 P0 + 8 P1 + 7 P2 + 7 Nit 闭环）
   - mediasoup Node.js 独立 `media-server/` 子项目 + mediasoup-client 前端集成
   - 即时会议（≤ 8 人）、会议号 `XXX-XXX-XXX`、可选密码（**bcrypt**）、音视频开关、主持人四件套（静音/移除/转让/结束）
   - **入会前设备预览页**（设备选择 + 本地画面 + 音量检测）

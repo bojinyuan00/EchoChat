@@ -1,8 +1,8 @@
 # EchoChat 会议 MVP 部署指南
 
-> **适用阶段**：Phase 2e-2（会议 MVP）  
-> **覆盖形态**：本机 Demo（零配置）+ 公网部署（含 TURN）  
-> **最后更新**：2026-04-23（Task 14 双态部署脚本 + docker-compose 扩展完成）
+> **适用阶段**：Phase 2e-2（会议 MVP ✅ 已完成）
+> **覆盖形态**：本机 Demo（零配置）+ 公网部署（含 TURN）
+> **最后更新**：2026-04-24（Phase 2e-2 Task 16 收官：E2E 回归 + 代码审查修复 + 资源生命周期审计；本指南 Task 14 双态部署脚本仍为最新有效版本，Task 16 追加 `REDIS_PASSWORD` 与 `redis.conf requirepass` 联动校验，详见 [Task 16 收官说明](../progress/CURRENT_STATUS.md)）
 
 ## 一、双态部署总览
 
