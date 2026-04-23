@@ -1,11 +1,11 @@
 # Phase 2e-2 实施计划：会议 MVP（多人音视频）
 
-> **状态：** 🚧 代码开发中（Task 0-15 ✅ / Task 16 待执行）
+> **状态：** ✅ 代码开发完成（Task 0-16 全部 ✅）
 > **设计文档：** [Phase 2e-2 设计文档](./2026-04-21-phase2e-2-design.md)
 > **上级路线图：** [Phase 2e 整体路线图](./2026-04-20-phase2e-design.md)
 > **分支：** `feature/phase2e-2-meeting-mvp`
 > **预估总工时：** **约 17 人日**（17 个 Task，含 PoC 与 UI 打磨）
-> **最后更新：** 2026-04-23（Task 15 ✅ UI 打磨 + 主持人权限四件套完成：6 项原创 UI 特色落地 / 说话者探测双源（RTP stats + WebAudio） / `SelfVideoFloat` 桌面恒浮窗 + 图钉切换 / `isAllMuted` 静音氛围色 / `NetworkBadge` 3 条波浪 / 主持人"请他静音/开麦/转让/踢出"四件套 / 4 屏 design-system 文档 / Playwright MCP 7 屏截图回归通过。下一步 Task 16 E2E + 文档同步）
+> **最后更新：** 2026-04-24（Task 16 ✅ E2E 总回归 + 文档同步完成：code-reviewer 全栈审计 4 P0 + 8 P1 + 7 P2 + 7 Nit 闭环修复，5 项登记推迟至 Phase 2f/3；资源生命周期专项审计（前端 Pinia _reset + _broadcastSelfState timer / 后端 Redis resourceTrackKey + memberStateKey + lifecycle timer）；Playwright MCP 5 场景 + 手工回归剧本落盘 `.playwright-mcp/task16/`；test-report-phase2e-2-meeting.md 落盘；4 commits：cdaa39d P0 / ea2bf96 P1 / f5ae095 资源生命周期 / 5ed14c2 E2E 剧本 / c35097a P2+Nit）
 
 ### 进度看板
 
@@ -27,7 +27,7 @@
 | **Task 13** | **meeting_invite 通知对接** | ✅ | extra 补齐 inviter_* / expired_at；前端"立即加入/稍后"+ 过期态 + deep-link |
 | **Task 14** | **docker-compose + 双态** | ✅ | `media-server` + `coturn(public)` 编排 + 3 份 .env 模板 + `deploy-public.sh` + `docs/deployment/meeting-mvp.md` |
 | **Task 15** | **`ui-ux-pro-max` UI 打磨 + 主持人权限四件套** | ✅ | 6 项原创 UI（流光/柔性网格/浮窗/氛围色/滑入/波浪）+ 双源说话者探测 + 四件套 + 4 份设计文档 + Playwright MCP 7 屏回归 |
-| Task 16 | E2E + 文档同步 | ⏳ |  |
+| Task 16 | E2E + 文档同步 | ✅ | code-reviewer 审计 + P0/P1/P2/Nit 闭环 + 资源清理审计 + Playwright 5 场景 + 测试报告 |
 
 ### 2026-04-22 UI 打磨专项（Task 10-12 之后的体验收敛）
 
@@ -596,6 +596,25 @@ flowchart LR
   - 所有文档链接可达、无 404
   - 清理所有 TODO / FIXME / `console.log` 调试残留
 - **工作量**：**1 人日**
+
+- **实际交付（2026-04-24 ✅）**：
+  - **code-reviewer 全栈审计**：`docs/reviews/2026-04-23-phase2e-2-code-review.md`（4 P0 + 8 P1 + 8 P2 + 11 Nit）
+  - **修复闭环**（详见 commit history）：
+    - `cdaa39d` 4 P0（producer/consumer/transport 归属校验 / CreateRoom Router 失败补偿 / 密码 in-memory store）
+    - `ea2bf96` 8 P1（主持人转让原子事务 / List* 走 DAO 分页 / goroutine trace_id 透传 / broadcast ack 重试 / TTL 分布式锁兜底 / REST+WS 顺序归一等）
+    - `f5ae095` 资源生命周期专项（MeetingLifecycleService.OnRoomEnded 定时器统一撤销 / Redis `resourceTrackKey` + `memberStateKey` 显式 DEL / 前端 Pinia `_reset` + `_pendingBroadcastTimers` 清理）
+    - `c35097a` 7 P2 + 7 Nit（transport 清理 / preview 竞态防抖 / redirect return / chat 长度+频率限制 / kicked label / SplitN / 资源 TTL 中央化 / CheckOrigin 白名单 / doRequest 超时+重试 / REDIS_PASSWORD 联动校验 / isPrivatePath path 匹配 + 走读复核）
+    - 5 项登记推迟（P2-4 WS token、P2-5 ChatService 拆分、docker-compose 端口收敛、producer.appData 校验、时间格式 RFC3339 统一），全部写入审查报告"推迟到独立阶段"小节
+  - **Playwright MCP 5 场景剧本**（`.playwright-mcp/task16/scenarios/` commit `5ed14c2`）：
+    - `01-create-and-join-by-code.md`：发起会议 + 会议号入会 + 互推音视频
+    - `02-invite-link-with-password.md`：邀请链接 + 密码入会
+    - `03-notify-quickjoin.md`：通知中心一键入会
+    - `04-host-toolkit-and-transfer.md`：主持人四件套 + 主动/被动转让
+    - `05-reopen-5times-resource-cleanup.md`：连续 5 次开/散会资源清理回归
+    - `manual-regression.md`：纯手工验收点 checklist
+  - **文档同步**：本计划 + `CURRENT_STATUS.md` + `project-context.mdc` + `phase2e-design.md` + code-review 报告 + `test-report-phase2e-2-meeting.md` 落盘
+  - **清理复核**：grep console.log/TODO/FIXME 确认 0 残留（仅保留结构化日志入口）
+  - **构建验证**：go vet / go build / npm run build:h5 / npx tsc 全绿
 
 ---
 

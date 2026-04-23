@@ -1,9 +1,9 @@
 # Phase 2e 设计文档：会议与通知系统
 
-> **状态：** 🚧 进行中（2e-1 ✅ 已完成，2e-2 📋 **设计阶段完成待进入编码**，2e-3 📋 待开发）
+> **状态：** 🚧 进行中（2e-1 ✅ 已完成，2e-2 ✅ **已完成**，2e-3 📋 待开发）
 > **分支：** `feature/phase2e-meeting-notification`（2e-1）；`feature/phase2e-2-meeting-mvp`（2e-2，基于 `origin/feature/phase2c-group-read-receipt`）
 > **前置依赖：** Phase 2a（联系人 + WS）、Phase 2b（即时通讯）、Phase 2c（群聊+已读）、Phase 2d（消息类型扩展）全部完成
-> **最后更新：** 2026-04-24（Phase 2e-2 Task 0-14 ✅ 已完成：PoC / media-server 骨架 / REST / DDL / Go 骨架 / 会议 REST / WS 信令 / Go↔Node HTTP / 生命周期 / 前端 mediasoup / 会议前后端页面 / 会议聊天 / meeting_invite 卡片 / docker-compose 双态；剩 Task 15 UI 打磨 + Task 16 E2E 收官）
+> **最后更新：** 2026-04-24（Phase 2e-2 Task 0-16 ✅ 全部完成：Task 15 UI 打磨 + 主持人四件套 + Task 16 code-reviewer 全栈审计 + 4 P0/8 P1/7 P2/7 Nit 修复闭环 + 5 项登记推迟 + 资源生命周期专项审计 + Playwright 5 场景剧本 + test-report-phase2e-2-meeting.md 落盘；Phase 2e-2 整体切 ✅，待合入主干）
 > **子阶段专用文档：**
 > - 2e-1：`docs/plans/2026-04-20-phase2e-1-design.md` + `docs/plans/2026-04-20-phase2e-1-implementation.plan.md`（✅ 已完成，含 TabBar「我的」未读红点优化）
 > - 2e-2：`docs/plans/2026-04-21-phase2e-2-design.md`（16 章节）+ `docs/plans/2026-04-21-phase2e-2-implementation.plan.md`（17 个 Task，约 17 人日）
@@ -19,7 +19,7 @@
 
 **核心交付物（按子阶段）：**
 - **Phase 2e-1 通知系统**（3-4 人日）✅ 已完成：统一通知中心 + 11 种通知类型预留 + 跨模块 Pusher 接口 + TabBar「我的」未读红点
-- **Phase 2e-2 会议 MVP**（约 17 人日）📋 设计阶段完成：mediasoup Node 媒体服务 + 即时会议（≤8 人）+ 密码/邀请链接/通知邀请三合一 + 设备预览页 + 主持人四件套 + 会议内聊天 + 双态部署（本机/公网 coturn）+ 桌面/手机响应式
+- **Phase 2e-2 会议 MVP**（约 17 人日）✅ 已完成：mediasoup Node 媒体服务 + 即时会议（≤8 人）+ 密码/邀请链接/通知邀请三合一 + 设备预览页 + 主持人四件套 + 会议内聊天 + 双态部署（本机/公网 coturn）+ 桌面/手机响应式 + 全栈 code-reviewer 审计闭环（验证报告：`test-report-phase2e-2-meeting.md`）
 - **Phase 2e-3 会议增强**（7-10 人日）：预约会议 + 定时提醒 + 等候室/锁定会议 + 设备预览高级参数（降噪/回声/虚拟背景）
 
 **不包含（明确推迟）：** 见 [§九 后续规划清单](#九后续规划清单必须留档)

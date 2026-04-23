@@ -1,14 +1,101 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-23（Phase 2e-2 Task 15 UI 打磨 + 主持人权限四件套完成 + 媒体层稳定性补丁 + Task 16 全栈 code-reviewer 审计 + P0×4 / P1×7 修复落地）
-> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-15 ✅ / Task 16 进行中：审计 ✅ / P0 ✅ / P1 ✅ / P2+Nit + E2E 脚本 + 文档同步待执行）
+> **最后更新**：2026-04-24（Phase 2e-2 Task 16 ✅ 代码审查 + 资源生命周期审计 + P0/P1/P2/Nit 修复闭环 + Playwright 5 场景剧本 + 测试报告落盘）
+> **当前阶段**：Phase 2e-2 会议 MVP **已完成** ✅（Task 0-16 全部 ✅，分支 `feature/phase2e-2-meeting-mvp` 待合并主干）
 > **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
 > **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（✅ 已完成）
 > **Phase 2e-1 实施计划**：`docs/plans/2026-04-20-phase2e-1-implementation.plan.md`（✅ 11 个 Task 全部完成）
 > **Phase 2e-1 验证报告**：`test-report-phase2e-1-notification.md`
-> **Phase 2e-2 专用设计**：`docs/plans/2026-04-21-phase2e-2-design.md`（📋 设计阶段，16 章节）
-> **Phase 2e-2 实施计划**：`docs/plans/2026-04-21-phase2e-2-implementation.plan.md`（📋 17 个 Task 共约 17 人日）
+> **Phase 2e-2 专用设计**：`docs/plans/2026-04-21-phase2e-2-design.md`（✅ 已完成，16 章节）
+> **Phase 2e-2 实施计划**：`docs/plans/2026-04-21-phase2e-2-implementation.plan.md`（✅ 17 个 Task 全部完成）
+> **Phase 2e-2 代码审查**：`docs/reviews/2026-04-23-phase2e-2-code-review.md`（4 P0 + 8 P1 + 8 P2 + 11 Nit，已闭环 26 项 / 推迟 5 项）
+> **Phase 2e-2 验证报告**：`test-report-phase2e-2-meeting.md`
+> **Phase 2e-2 E2E 剧本**：`.playwright-mcp/task16/scenarios/`（5 场景 + 手工回归 checklist）
+
+---
+
+## 🏁 2026-04-24 Phase 2e-2 Task 16：E2E 总回归 + P2/Nit 收尾 + 资源生命周期审计 + 文档同步 ✅
+
+**交付**：Phase 2e-2 会议 MVP 全部 17 个 Task 收官。Task 16 在 2026-04-23 完成 code-reviewer 全栈审计 + P0×4 + P1×8 修复（commit `cdaa39d` / `ea2bf96`）后，2026-04-24 继续完成：资源生命周期专项审计 + Playwright MCP 5 场景剧本化 + P2×7 + Nit×7 闭环 + 5 项登记推迟 + 文档同步。构建链 `go vet ./...` / `go build ./...` / `npm run build:h5` / `npx tsc --noEmit` 全绿。
+
+### 本次增量（2026-04-24）
+
+#### 1. 资源生命周期专项（commit `f5ae095`）
+
+针对"会议结束后资源必须清理干净"的硬性约束，从前端 Pinia / 后端 Redis / lifecycle 定时器三维度补齐：
+
+- **前端 `store/meeting.js`**：
+  - `_broadcastSelfState` 重试 setTimeout 通过 `_pendingBroadcastTimers: Set<number>` 追踪，`_cleanupMedia` 与 `exitEndedRoom` 集中清理，杜绝会议结束后计时器残留回调
+  - `_onRoomEnded` 补齐 `_cleanupMedia` + `_unregisterListeners`；新增 `exitEndedRoom` action 供用户主动退出"已结束"态时触发完整 `_reset`
+  - `room.vue` 补 `onUnload` 钩子：离页时若仍持有 MediaEngine，显式 `_cleanupMedia` 兜底
+- **后端 `meeting_signal_service.go`**：
+  - 新增 `cleanupRoomRedisResidual`（DEL `resourceTrackKey:*` + `memberStateKey`），由 `EndRoom` / `HandleEmptyRoomExpired` / `HandleHostGraceExpired` 统一触发
+  - 与 P2-1 CloseTransport 形成"mediasoup 资源 + Redis 信令状态"双重闭环
+- **后端 `meeting_lifecycle_service.go`**：
+  - 新增 `OnRoomEnded(ctx, code)` 中央清理钩子：撤销 hostGrace / emptyTTL 的 local timer + DEL Redis key，避免会议提前结束后定时器继续烧 CPU
+  - `EndRoom` 路径结束后调用 `OnRoomEnded`；`HandleHostGraceExpired` / `HandleEmptyRoomExpired` 各自执行完也调用（幂等）
+
+#### 2. Playwright MCP 5 场景剧本（commit `5ed14c2`）
+
+在 `.playwright-mcp/task16/scenarios/` 落盘 5 份场景脚本 + 1 份手工回归 checklist + 1 份 README：
+
+| 编号 | 文件 | 覆盖要点 |
+|---|---|---|
+| 01 | `01-create-and-join-by-code.md` | 发起会议 + 会议号加入 + 互推音视频 + 会议号/链接/二维码三通道入会 |
+| 02 | `02-invite-link-with-password.md` | 邀请链接 + 密码入会 + 密码错/会议已结束边界 |
+| 03 | `03-notify-quickjoin.md` | 通知中心一键入会（`meeting_invite` 卡片） |
+| 04 | `04-host-toolkit-and-transfer.md` | 请他静音/开麦/踢出/转让四件套 + 主持人主动转让 + 掉线 120s 被动自动转让 |
+| 05 | `05-reopen-5times-resource-cleanup.md` | 连续 5 次开/散会压测 Redis `resourceTrackKey` / mediasoup Router / 定时器无泄漏 |
+| - | `manual-regression.md` | 纯手工验收点（浏览器权限、移动端横竖屏、设备热插拔） |
+
+`.gitignore` 同步精细化：`.playwright-mcp/**/*.png|.log|.yml|.txt|.jpg` 默认忽略 + Task 16 Markdown 剧本精确白名单放行（历次 `task15/` 截图仍保持不跟踪）。
+
+#### 3. P2/Nit 收尾批次（commit `c35097a`）
+
+**P2 × 7 修复**：
+
+| ID | 范围 | 修复点 |
+|---|---|---|
+| P2-1 | meeting_signal_service / media-server / orchestrator | `cleanupUserResources` 新增 `transport` 分支；media-server 新增 `DELETE /internal/v1/transports/:id`；Go 端 `MediaOrchestrator.CloseTransport` 走 `doCloseRequest` 幂等重试 |
+| P2-2 | `preview.vue` | `previewSeq` 序号 + `nextTick` 后 stale 判断丢弃过期 getUserMedia 结果；`onVideoChange`/`onAudioChange` 走 `scheduleRestartPreview` 200ms 防抖；`onBeforeUnmount` 清理定时器 |
+| P2-3 | `room.vue` | `onLoad` redirectTo 时置 `redirectingToJoin=true` + return；`onMounted` 早期 return 跳过初始化，杜绝跳转页面的闪 UI |
+| P2-6 | `meeting_service.go` | `generateUniqueRoomCode` 重试成功时 Warn 码空间健康度；耗尽时 Error + `ErrRoomCodeConflict` |
+| P2-7 | `meeting_service.go` + controller | `SendChatMessage` 服务端 `utf8.RuneCountInString` 500 字符上限；Redis INCR + EXPIRE 滑动窗口 30 条/60s；新错误类型 `ErrChatContentEmpty` / `ErrChatContentTooLong` / `ErrChatRateLimited` 映射 HTTP 400 |
+| P2-8 | `constants/meeting.js` + `store/meeting.js` + `meeting_signal_service.go` | 新增 `MEETING_ENDED_REASON_KICKED` + label 文案；后端 `OnWSDisconnect` 硬编码 `"ws_disconnect"` → `constants.MeetingLeftReasonDisconnect` |
+| - | - | P2-4（WS token 迁出 URL query）/ P2-5（ChatService 拆分）登记推迟至 Phase 2f 安全 & 架构专项 |
+
+**Nit × 7 修复 / 走读**：
+
+| ID | 修复点 |
+|---|---|
+| SplitN | `meeting_signal_service.go` 的 `kind:id` 解析两处统一使用 `strings.SplitN` |
+| resourceTTL | 中央化到 `constants.MeetingResourceTrackTTLSeconds = 3600` |
+| CheckOrigin | `ws/handler.go` 按 `config.Server.WSAllowedOrigins` + `Mode` 收敛：dev 模式放行 / release 同源放行 + 严格白名单 |
+| doRequest | 默认 `TimeoutMS` 5000→10000ms 兼容 mediasoup Worker 冷启动；新增 `CreateRouterRetry`（默认 1 次、300ms 退避）仅对非 404 错误重试 |
+| REDIS_PASSWORD | `deploy-public.sh` 追加 `REDIS_PASSWORD` × `redis.conf` requirepass 联动校验；`redis.conf` 添加公网部署 TODO 注释 |
+| isPrivatePath | `media-server/internal-auth.ts` 剔除 `?`/`#` 后再匹配白名单，避免 query 语义混淆 |
+| inflight lock | `mediasoup-client.js` 走读确认 `finally` 已覆盖 resolve/reject 两路，追加注释强化 |
+| cleanup 粒度 | `meeting.js` 走读复核：`_onMemberLeft`(整槽关闭) vs `_onProducerNew closed=true`(精确匹配 producerId) 粒度正确，无需改动 |
+| docker 端口 / appData 校验 / RFC3339 | 登记推迟（见审查报告推迟登记表） |
+
+#### 4. 文档同步
+
+- `docs/reviews/2026-04-23-phase2e-2-code-review.md` 追加"Task 16 修复追踪（2026-04-24 更新）"小节，含已修复表 + 推迟登记表
+- `docs/plans/2026-04-21-phase2e-2-implementation.plan.md` Task 16 切 ✅ + 实际交付小节
+- `CURRENT_STATUS.md`（本文件）收尾
+- `test-report-phase2e-2-meeting.md` 落盘（本次新增）
+- `project-context.mdc` 当前进度同步
+
+### Phase 2e-2 完成度汇总
+
+| 维度 | 状态 |
+|---|---|
+| Task 0-16 | 17 个 Task 全部 ✅ |
+| 代码审查 | 4 P0 ✅ / 8 P1 ✅ / 7 P2 ✅ + 1 P2 推迟 / 7 Nit ✅ + 4 Nit 推迟 |
+| 构建 | go vet / go build / npm run build:h5 / npx tsc --noEmit 全绿 |
+| E2E | 5 场景剧本 + 手工回归 checklist 落盘，待用户 HTTPS 双端实机回归 |
+| 分支 | `feature/phase2e-2-meeting-mvp`（待合入主干） |
 
 ---
 
