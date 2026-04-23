@@ -18,8 +18,11 @@ import (
 
 // Redis key 前缀（设计文档 §5.4 生命周期 keys；Task 8 落地）
 const (
-	redisKeyHostGracePrefix = "echo:meeting:host_grace:"
-	redisKeyEmptyTTLPrefix  = "echo:meeting:empty_ttl:"
+	redisKeyHostGracePrefix        = "echo:meeting:host_grace:"
+	redisKeyEmptyTTLPrefix         = "echo:meeting:empty_ttl:"
+	redisKeyHostGraceHandlingLock  = "echo:meeting:host_grace_handling:"  // Task 16 P1-7：处理互斥锁
+	redisKeyEmptyTTLHandlingLock   = "echo:meeting:empty_ttl_handling:"   // Task 16 P1-7：空房处理互斥锁
+	handlingLockTTLSeconds         = 60                                   // 处理锁 60s，远大于正常处理耗时（P99 <2s）
 )
 
 // hostGracePayload host 宽限期 Redis value 结构
@@ -154,25 +157,48 @@ func (s *MeetingLifecycleService) OnHostReconnect(ctx context.Context, roomCode 
 
 // HandleHostGraceExpired host 宽限期过期处理
 // 触发时机：本地 timer 到期 或 cleanup task 扫到 key TTL <=0
+// Task 16 P1-7 强化并发控制：
+//   旧版依赖 DEL host_grace 主 key 返回值作为唯一处理权判据；但在 Redis TTL 自然过期 >
+//   本地 timer 到点的极端场景（时钟漂移 / 进程重启 RescheduleFromRedis 丢 timer 后 cleanup 扫到前 Redis 已自然过期），
+//   本地 AfterFunc 执行 DEL 返回 0 被误判为"已处理"，主持人宽限转让彻底丢失。
+// 现引入独立的 host_grace_handling 处理锁 (SETNX + 60s TTL)：
+//   - 拿到锁 → 当前协程是唯一处理者，继续执行转让逻辑；无论主 key 是否还存在
+//   - 未拿到锁 → 其他协程/节点正在处理，当前跳过
+//   主 key DEL 仅作为"重连撤销"语义（OnHostReconnect 调用），不再作为处理权判据。
 // 流程：
-//  1. DEL host_grace key → 返回 0 表示已被其他路径处理，直接 return 防止重复转让
-//  2. 加载 room + 活跃成员；若 room 已 Ended / host 已变更，视为幂等完成
-//  3. 活跃成员存在：选最早加入者转 host（事务），广播 host.changed，auto_reason=host_grace_expired
-//  4. 无活跃成员：走 OnAllMembersLeft 路径（置 empty_ttl）
+//  1. SET NX host_grace_handling key → 失败则跳过
+//  2. cancelTimer 防重入
+//  3. 取消原 host_grace key（正常清理，允许失败）
+//  4. 加载 room + 活跃成员；若 room 已 Ended / host 已变更，视为幂等完成
+//  5. 活跃成员存在：选最早加入者转 host（事务），广播 host.changed
+//  6. 无活跃成员：走 OnAllMembersLeft 路径（置 empty_ttl）
 func (s *MeetingLifecycleService) HandleHostGraceExpired(ctx context.Context, roomCode string) {
 	funcName := "service.meeting_lifecycle_service.HandleHostGraceExpired"
 
-	deleted, err := s.redis.Del(ctx, HostGraceKey(roomCode)).Result()
-	if err != nil {
-		logs.Warn(ctx, funcName, "DEL host_grace key 失败（跳过本次处理）",
-			zap.String("room_code", roomCode), zap.Error(err))
+	handlingKey := redisKeyHostGraceHandlingLock + roomCode
+	locked, lockErr := s.redis.SetNX(ctx, handlingKey, "1", handlingLockTTLSeconds*time.Second).Result()
+	if lockErr != nil {
+		logs.Warn(ctx, funcName, "抢占 host_grace 处理锁失败（跳过本次处理）",
+			zap.String("room_code", roomCode), zap.Error(lockErr))
 		return
 	}
-	s.cancelTimer(&s.graceTimers, roomCode)
-	if deleted == 0 {
-		logs.Debug(ctx, funcName, "host_grace key 不存在（已被重连/其他节点清走）",
+	if !locked {
+		logs.Debug(ctx, funcName, "host_grace 处理锁被其他协程持有，跳过",
 			zap.String("room_code", roomCode))
 		return
+	}
+	// 处理完成后释放锁（防止同 roomCode 60s 内无法重入正常排班）
+	defer func() {
+		if err := s.redis.Del(ctx, handlingKey).Err(); err != nil {
+			logs.Warn(ctx, funcName, "释放 host_grace 处理锁失败（60s 后自然过期）",
+				zap.String("room_code", roomCode), zap.Error(err))
+		}
+	}()
+
+	s.cancelTimer(&s.graceTimers, roomCode)
+	if err := s.redis.Del(ctx, HostGraceKey(roomCode)).Err(); err != nil {
+		logs.Warn(ctx, funcName, "DEL host_grace 主 key 失败（继续处理，锁已持有）",
+			zap.String("room_code", roomCode), zap.Error(err))
 	}
 
 	room, err := s.roomDAO.GetByCode(ctx, roomCode)
@@ -212,14 +238,11 @@ func (s *MeetingLifecycleService) HandleHostGraceExpired(ctx context.Context, ro
 	}
 
 	newHostID := candidates[0]
+	// P1-1：TransferHost 内部事务已原子更新 meeting_rooms.host_id，不再需要单独 UpdateHost
 	if err := s.participantDAO.TransferHost(ctx, room.ID, room.HostID, newHostID); err != nil {
 		logs.Error(ctx, funcName, "host 自动转让 TransferHost 失败",
 			zap.String("room_code", roomCode), zap.Error(err))
 		return
-	}
-	if err := s.roomDAO.UpdateHost(ctx, room.ID, newHostID); err != nil {
-		logs.Warn(ctx, funcName, "UpdateHost 失败（已发生参与者 role 变更）",
-			zap.String("room_code", roomCode), zap.Error(err))
 	}
 	// 老 host 彻底离会（宽限期内未重连视为网络断开）
 	_, _ = s.participantDAO.LeaveRoom(ctx, room.ID, room.HostID, constants.MeetingLeftReasonDisconnect)
@@ -272,21 +295,34 @@ func (s *MeetingLifecycleService) CancelEmptyTTL(ctx context.Context, roomCode s
 }
 
 // HandleEmptyRoomExpired 空房 TTL 过期处理
-// 流程：DEL empty_ttl key → 确认没被新成员清走 → MarkEnded(reason=empty_ttl) + CloseRouter 幂等
+// Task 16 P1-7：采用 empty_ttl_handling 独立处理锁避免"Redis 自然过期 + 本地 timer 到点 + DEL 返回 0"盲区
+// 新成员重入由 "DEL 成功 → DB activeCount==0" 复合校验保证（持锁期间仍会被 CountActiveByRoom 二次校验）
 func (s *MeetingLifecycleService) HandleEmptyRoomExpired(ctx context.Context, roomCode string) {
 	funcName := "service.meeting_lifecycle_service.HandleEmptyRoomExpired"
 
-	deleted, err := s.redis.Del(ctx, EmptyTTLKey(roomCode)).Result()
-	if err != nil {
-		logs.Warn(ctx, funcName, "DEL empty_ttl key 失败",
-			zap.String("room_code", roomCode), zap.Error(err))
+	handlingKey := redisKeyEmptyTTLHandlingLock + roomCode
+	locked, lockErr := s.redis.SetNX(ctx, handlingKey, "1", handlingLockTTLSeconds*time.Second).Result()
+	if lockErr != nil {
+		logs.Warn(ctx, funcName, "抢占 empty_ttl 处理锁失败（跳过本次处理）",
+			zap.String("room_code", roomCode), zap.Error(lockErr))
 		return
 	}
-	s.cancelTimer(&s.emptyTTLTimers, roomCode)
-	if deleted == 0 {
-		logs.Debug(ctx, funcName, "empty_ttl key 已消失（有人重入 或 已处理过）",
+	if !locked {
+		logs.Debug(ctx, funcName, "empty_ttl 处理锁被其他协程持有，跳过",
 			zap.String("room_code", roomCode))
 		return
+	}
+	defer func() {
+		if err := s.redis.Del(ctx, handlingKey).Err(); err != nil {
+			logs.Warn(ctx, funcName, "释放 empty_ttl 处理锁失败（60s 后自然过期）",
+				zap.String("room_code", roomCode), zap.Error(err))
+		}
+	}()
+
+	s.cancelTimer(&s.emptyTTLTimers, roomCode)
+	if err := s.redis.Del(ctx, EmptyTTLKey(roomCode)).Err(); err != nil {
+		logs.Warn(ctx, funcName, "DEL empty_ttl 主 key 失败（继续处理，锁已持有）",
+			zap.String("room_code", roomCode), zap.Error(err))
 	}
 
 	room, err := s.roomDAO.GetByCode(ctx, roomCode)
@@ -299,7 +335,7 @@ func (s *MeetingLifecycleService) HandleEmptyRoomExpired(ctx context.Context, ro
 		return
 	}
 
-	// 二次校验：DEL 成功与 DB 校验之间可能有新成员加入（并发场景）
+	// 二次校验：处理锁 ≠ 新成员重入阻断，若进入执行时已有活跃成员则放弃销毁
 	activeCount, _ := s.participantDAO.CountActiveByRoom(ctx, room.ID)
 	if activeCount > 0 {
 		logs.Info(ctx, funcName, "检测到活跃成员，放弃销毁",

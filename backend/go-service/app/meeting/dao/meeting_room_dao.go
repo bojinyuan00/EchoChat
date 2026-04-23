@@ -11,6 +11,7 @@ import (
 	"github.com/echochat/backend/pkg/logs"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // MeetingRoomDAO 会议房间数据访问对象
@@ -21,6 +22,31 @@ type MeetingRoomDAO struct {
 // NewMeetingRoomDAO 创建 MeetingRoomDAO 实例
 func NewMeetingRoomDAO(db *gorm.DB) *MeetingRoomDAO {
 	return &MeetingRoomDAO{db: db}
+}
+
+// WithTx 返回绑定到指定事务句柄的新 DAO 实例
+// 用法：service 层使用 s.db.Transaction(func(tx *gorm.DB) error { return s.roomDAO.WithTx(tx).MarkEnded(...) })
+// 所有 DAO 方法都通过 d.db.WithContext(ctx) 派生查询，替换 d.db 为 tx 即可让现有方法参与上游事务。
+// Task 16 P1-4：EndRoom 行锁 + 事务化 新增
+func (d *MeetingRoomDAO) WithTx(tx *gorm.DB) *MeetingRoomDAO {
+	return &MeetingRoomDAO{db: tx}
+}
+
+// GetByIDForUpdate 事务内 SELECT ... FOR UPDATE 行锁查询
+// 仅在上游已开启事务（调用方通过 WithTx(tx) 注入）时使用；否则等同于普通查询不生效。
+// Task 16 P1-4：EndRoom 行锁 新增
+func (d *MeetingRoomDAO) GetByIDForUpdate(ctx context.Context, id int64) (*model.MeetingRoom, error) {
+	var room model.MeetingRoom
+	err := d.db.WithContext(ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		First(&room, id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &room, nil
 }
 
 // Create 新建一个会议房间

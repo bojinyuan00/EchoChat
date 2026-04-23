@@ -58,6 +58,15 @@ type simpleRoomPayload struct {
 	RoomCode string `json:"room_code"`
 }
 
+// newEventContext 为每个 WS 事件生成独立 ctx（携带新 trace_id）
+// Task 16 P1-5：WS 层无 HTTP 中间件注入 trace_id，旧版 handler 一律 context.Background()，
+// 导致 signalSvc → Redis / DB / broadcaster 的整条链路日志无法通过 trace_id 串联。
+// 现改为每条 WS 消息生成独立 UUID 作为 trace_id，相当于 RPC 语义；配合 service 层
+// logs.DetachContext 用于后台 goroutine，可形成完整"WS 消息 → 业务处理 → 异步广播"的日志链路。
+func (h *MeetingWSHandler) newEventContext() context.Context {
+	return logs.WithTraceID(context.Background(), logs.GenerateTraceID())
+}
+
 // sendACK 统一发送 ACK 响应
 func (h *MeetingWSHandler) sendACK(client *ws.Client, msg *ws.Message, code int, message string, data interface{}) {
 	resp := ws.NewResponse(msg.Event, msg.Seq, code, message, data)
@@ -91,7 +100,7 @@ func (h *MeetingWSHandler) handleRoomJoin(client *ws.Client, msg *ws.Message) {
 	if !h.unmarshal(client, msg, &payload) {
 		return
 	}
-	if err := h.signalSvc.OnRoomJoin(context.Background(), client.UserID, payload.RoomCode); err != nil {
+	if err := h.signalSvc.OnRoomJoin(h.newEventContext(), client.UserID, payload.RoomCode); err != nil {
 		h.sendACK(client, msg, -1, err.Error(), nil)
 		return
 	}
@@ -104,7 +113,7 @@ func (h *MeetingWSHandler) handleRoomLeave(client *ws.Client, msg *ws.Message) {
 	if !h.unmarshal(client, msg, &payload) {
 		return
 	}
-	if err := h.signalSvc.OnRoomLeave(context.Background(), client.UserID, payload.RoomCode); err != nil {
+	if err := h.signalSvc.OnRoomLeave(h.newEventContext(), client.UserID, payload.RoomCode); err != nil {
 		h.sendACK(client, msg, -1, err.Error(), nil)
 		return
 	}
@@ -119,7 +128,7 @@ func (h *MeetingWSHandler) handleMemberStateChange(client *ws.Client, msg *ws.Me
 	if !h.unmarshal(client, msg, &payload) {
 		return
 	}
-	if err := h.signalSvc.OnMemberStateChanged(context.Background(), client.UserID, &payload); err != nil {
+	if err := h.signalSvc.OnMemberStateChanged(h.newEventContext(), client.UserID, &payload); err != nil {
 		h.sendACK(client, msg, -1, err.Error(), nil)
 		return
 	}
@@ -134,7 +143,7 @@ func (h *MeetingWSHandler) handleTransportCreate(client *ws.Client, msg *ws.Mess
 	if !h.unmarshal(client, msg, &payload) {
 		return
 	}
-	info, err := h.signalSvc.OnTransportCreate(context.Background(), client.UserID, &payload)
+	info, err := h.signalSvc.OnTransportCreate(h.newEventContext(), client.UserID, &payload)
 	if err != nil {
 		h.sendACK(client, msg, -1, err.Error(), nil)
 		return
@@ -148,7 +157,7 @@ func (h *MeetingWSHandler) handleTransportConnect(client *ws.Client, msg *ws.Mes
 	if !h.unmarshal(client, msg, &payload) {
 		return
 	}
-	if err := h.signalSvc.OnTransportConnect(context.Background(), client.UserID, &payload); err != nil {
+	if err := h.signalSvc.OnTransportConnect(h.newEventContext(), client.UserID, &payload); err != nil {
 		h.sendACK(client, msg, -1, err.Error(), nil)
 		return
 	}
@@ -161,7 +170,7 @@ func (h *MeetingWSHandler) handleProduceStart(client *ws.Client, msg *ws.Message
 	if !h.unmarshal(client, msg, &payload) {
 		return
 	}
-	result, err := h.signalSvc.OnProduceStart(context.Background(), client.UserID, &payload)
+	result, err := h.signalSvc.OnProduceStart(h.newEventContext(), client.UserID, &payload)
 	if err != nil {
 		h.sendACK(client, msg, -1, err.Error(), nil)
 		return
@@ -175,7 +184,7 @@ func (h *MeetingWSHandler) handleConsumeStart(client *ws.Client, msg *ws.Message
 	if !h.unmarshal(client, msg, &payload) {
 		return
 	}
-	info, err := h.signalSvc.OnConsumeStart(context.Background(), client.UserID, &payload)
+	info, err := h.signalSvc.OnConsumeStart(h.newEventContext(), client.UserID, &payload)
 	if err != nil {
 		h.sendACK(client, msg, -1, err.Error(), nil)
 		return
@@ -189,7 +198,7 @@ func (h *MeetingWSHandler) handleConsumeResume(client *ws.Client, msg *ws.Messag
 	if !h.unmarshal(client, msg, &payload) {
 		return
 	}
-	if err := h.signalSvc.OnConsumeResume(context.Background(), client.UserID, &payload); err != nil {
+	if err := h.signalSvc.OnConsumeResume(h.newEventContext(), client.UserID, &payload); err != nil {
 		h.sendACK(client, msg, -1, err.Error(), nil)
 		return
 	}
@@ -202,7 +211,7 @@ func (h *MeetingWSHandler) handleProducerClose(client *ws.Client, msg *ws.Messag
 	if !h.unmarshal(client, msg, &payload) {
 		return
 	}
-	if err := h.signalSvc.OnProducerClose(context.Background(), client.UserID, &payload); err != nil {
+	if err := h.signalSvc.OnProducerClose(h.newEventContext(), client.UserID, &payload); err != nil {
 		h.sendACK(client, msg, -1, err.Error(), nil)
 		return
 	}

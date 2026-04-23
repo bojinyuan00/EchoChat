@@ -22,6 +22,13 @@ func NewMeetingParticipantDAO(db *gorm.DB) *MeetingParticipantDAO {
 	return &MeetingParticipantDAO{db: db}
 }
 
+// WithTx 返回绑定到指定事务句柄的新 DAO 实例
+// 所有现有方法复用 db 字段，因此替换 db 为 tx 可让 DAO 方法参与上游事务。
+// Task 16 P1-4：EndRoom 行锁 + 事务化 新增
+func (d *MeetingParticipantDAO) WithTx(tx *gorm.DB) *MeetingParticipantDAO {
+	return &MeetingParticipantDAO{db: tx}
+}
+
 // JoinRoom 记录用户加入会议
 // 语义：
 //   - 若 (room_id, user_id) 不存在 → 创建新行，role 取参数值，joined_at = NOW()
@@ -207,11 +214,16 @@ func (d *MeetingParticipantDAO) FindActiveByUser(ctx context.Context, userID int
 	return &p, nil
 }
 
-// TransferHost 事务内完成主持人转让
-// 1) 旧 host 的 role 置为 Participant（0）
-// 2) 新 host 的 role 置为 Host（1）
-// 调用方应在同一上游事务中同时调 MeetingRoomDAO.UpdateHost 修改 meeting_rooms.host_id
-// 本方法内部已自带事务，上游无需再包裹
+// TransferHost 事务内完成主持人转让（Task 16 P1-1 强化为跨表原子事务）
+// 同一事务内完成三步：
+//  1) 旧 host 的 meeting_participants.role 置为 Participant（0）
+//  2) 新 host 的 meeting_participants.role 置为 Host（1），且必须仍在会议中（left_at IS NULL）
+//  3) meeting_rooms.host_id 原子更新为新 host
+//
+// 背景（审计 P1-1）：旧实现把 1+2 放在 DAO 事务，3 由 service 层另起 SQL 执行；
+// 两步非原子 → 第 3 步失败会造成 participant.role 与 room.host_id 不一致，
+// 进而 assertIsHost（以 room.host_id 为准）永久拒绝老新 host 的所有主持人操作。
+// 现合并到单一事务，任一子步骤失败自动回滚，跨表一致性得到保证。
 func (d *MeetingParticipantDAO) TransferHost(ctx context.Context, roomID, oldHostID, newHostID int64) error {
 	funcName := "dao.meeting_participant_dao.TransferHost"
 	logs.Info(ctx, funcName, "转让主持人",
@@ -232,6 +244,11 @@ func (d *MeetingParticipantDAO) TransferHost(ctx context.Context, roomID, oldHos
 			Update("role", constants.MeetingRoleHost).Error; err != nil {
 			return err
 		}
+		if err := tx.Model(&model.MeetingRoom{}).
+			Where("id = ?", roomID).
+			Update("host_id", newHostID).Error; err != nil {
+			return err
+		}
 		return nil
 	})
 }
@@ -242,6 +259,44 @@ func (d *MeetingParticipantDAO) UpdateRole(ctx context.Context, roomID, userID i
 		Model(&model.MeetingParticipant{}).
 		Where("room_id = ? AND user_id = ?", roomID, userID).
 		Update("role", role).Error
+}
+
+// ListJoinedRoomsByUser 用户参与过的会议列表（JOIN meeting_rooms，支持 status 过滤 + 游标分页）
+// Task 16 P1-3：替代 "ListByUser + 内存合并 + ListByIDs" 的 N+1 查询路径
+// 返回按 meeting_rooms.created_at DESC, meeting_rooms.id DESC 排序；
+// 使用 DISTINCT 避免参与者多次 join/leave 同一会议导致的行重复。
+// 由调用方自行传 limit+1 判断 has_more
+func (d *MeetingParticipantDAO) ListJoinedRoomsByUser(
+	ctx context.Context,
+	userID int64,
+	statusFilter *int,
+	beforeID int64,
+	limit int,
+) ([]model.MeetingRoom, error) {
+	if limit <= 0 {
+		return []model.MeetingRoom{}, nil
+	}
+	funcName := "dao.meeting_participant_dao.ListJoinedRoomsByUser"
+
+	q := d.db.WithContext(ctx).
+		Table("meeting_rooms AS r").
+		Select("DISTINCT r.*").
+		Joins("INNER JOIN meeting_participants AS p ON p.room_id = r.id").
+		Where("p.user_id = ?", userID)
+
+	if statusFilter != nil {
+		q = q.Where("r.status = ?", *statusFilter)
+	}
+	if beforeID > 0 {
+		q = q.Where("r.id < ?", beforeID)
+	}
+
+	var rooms []model.MeetingRoom
+	if err := q.Order("r.created_at DESC, r.id DESC").Limit(limit).Find(&rooms).Error; err != nil {
+		logs.Error(ctx, funcName, "JOIN 查询用户会议失败", zap.Int64("user_id", userID), zap.Error(err))
+		return nil, err
+	}
+	return rooms, nil
 }
 
 // ListByUser 用户历史会议列表（分页，按加入时间倒序）

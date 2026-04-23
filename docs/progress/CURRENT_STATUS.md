@@ -1,7 +1,7 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-23（Phase 2e-2 Task 15 UI 打磨 + 主持人权限四件套完成 + 媒体层稳定性补丁：6 项原创 UI 特色 + 说话者双源探测 + 主持人四件套 + 4 份 design-system 页面文档 + Playwright MCP 7 屏回归全通过；加挂 5 项 Mediasoup / 信令层回归修复）
-> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-15 ✅ / Task 16 待执行）
+> **最后更新**：2026-04-23（Phase 2e-2 Task 15 UI 打磨 + 主持人权限四件套完成 + 媒体层稳定性补丁 + Task 16 全栈 code-reviewer 审计 + P0×4 / P1×7 修复落地）
+> **当前阶段**：Phase 2e-2 会议 MVP **代码开发阶段** 🚧（Task 0-15 ✅ / Task 16 进行中：审计 ✅ / P0 ✅ / P1 ✅ / P2+Nit + E2E 脚本 + 文档同步待执行）
 > **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
 > **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（✅ 已完成）
@@ -9,6 +9,40 @@
 > **Phase 2e-1 验证报告**：`test-report-phase2e-1-notification.md`
 > **Phase 2e-2 专用设计**：`docs/plans/2026-04-21-phase2e-2-design.md`（📋 设计阶段，16 章节）
 > **Phase 2e-2 实施计划**：`docs/plans/2026-04-21-phase2e-2-implementation.plan.md`（📋 17 个 Task 共约 17 人日）
+
+---
+
+## 🧪 2026-04-23 Phase 2e-2 Task 16：code-reviewer 全栈审计 + P0/P1 修复
+
+**交付**：调用 `code-reviewer` 子代理对 Phase 2e-2 的 Go meeting 模块、media-server、frontend meeting 相关文件与三轮媒体回归补丁做了一次重写版全栈审计，发布 `docs/reviews/2026-04-23-phase2e-2-code-review.md`（P0×4 / P1×8 / P2×8 / Nit×11）。P0 与 P1 已按"先结构、后联调、最后观测"的优先级全部落地修复，后端 `go build` / `go vet` + 前端 `build:h5` 均通过。
+
+### P0 修复（commit `cdaa39d`）
+
+| # | 问题 | 修复点 |
+|---|-----|--------|
+| P0-1 | `OnProducerClose` 不校验 producer 归属，可跨用户关闭流 | `meeting_signal_service.go` 新增 `assertOwnsResource`（Redis Set `echo:meeting:res:<room>:<user>` 查询），集成到 `OnProducerClose`/`OnProduceStart`/`OnConsumeStart`/`OnConsumeResume`/`OnTransportConnect`；失败返回 `ErrResourceNotOwned` |
+| P0-2 | `OnConsumeStart` 不校验 `transport_id` 归属 | 同 P0-1 复用 `assertOwnsResource("transport", id)` |
+| P0-3 | `CreateRoom` 在 mediasoup Router 失败时仅 Warn 继续返回 | 改 fail-closed：`LeaveRoom` + `MarkEnded(system_error)` 补偿 + 返回 `ErrMediaServiceUnavailable`，controller 映射为 HTTP 500 |
+| P0-4 | 加入密码以明文 query 拼入 `uni.navigateTo` | 前端 `meetingStore.draftJoinPayload = { code, password }` 内存态传递，preview 读取后立即置空 |
+
+### P1 修复（本次提交）
+
+| # | 问题 | 修复点 |
+|---|-----|--------|
+| P1-1 | 主持人转让非原子（`TransferHost` + `UpdateHost` 两事务） | `MeetingParticipantDAO.TransferHost` 内部事务合并 `UPDATE meeting_participants.role` + `UPDATE meeting_rooms.host_id`；service / lifecycle 调用方移除冗余 `UpdateHost` |
+| P1-2 | `ListChatMessages` / `ListMyMeetings` 绕过 DAO 直查 GORM | 新增 `MeetingChatDAO.ListByRoomBefore`（反向游标）；service 移除 `s.db.WithContext` 直查 |
+| P1-3 | `ListMyMeetings` N+1 放大 6 倍（ListByUser → 去重 → ListByIDs） | 新增 `MeetingParticipantDAO.ListJoinedRoomsByUser`：`meeting_rooms` JOIN `meeting_participants` + DISTINCT + 游标分页，一次 SQL 完成 |
+| P1-4 | `EndRoom` 非事务 + 无行锁，与并发 JoinRoom 交错产生"幽灵参会者" | `EndRoom` 用 `s.db.Transaction` 包裹：`SELECT … FOR UPDATE` 行锁 → 快照活跃成员 → `MarkEnded` → `LeaveAllActive`；DAO 新增 `WithTx(*gorm.DB)` + `GetByIDForUpdate` |
+| P1-5 | 后台 goroutine 一律 `context.Background()` 丢失 trace_id | 新增 `logs.DetachContext(ctx)`（保留 trace_id 剥离 cancel/deadline），替换 `meeting_service.go` / `meeting_signal_service.go` 共 10 处 `go func(context.Background(), …)`；WS Handler 每条消息分配独立 `trace_id`（10 处） |
+| P1-6 | 前端 `_broadcastSelfState` 失败仅 `console.warn` | 新增最多 2 次指数退避重试（700ms → 2100ms），并识别 "旧 patch 已被新动作覆盖" 时放弃重试，避免乱序覆盖 |
+| P1-7 | `HandleHostGraceExpired` / `HandleEmptyRoomExpired` 依赖 DEL 返回值盲区 | 引入独立 `host_grace_handling:<code>` / `empty_ttl_handling:<code>` SETNX 处理锁（TTL 60s），本地 timer 与 cleanup scan 通过锁抢占唯一处理权，不再以主 key DEL 结果判据 |
+| P1-8 | `pushExistingRoomState` 异步 goroutine 与 REST `member.joined` 并行导致前端状态闪烁 | 改为 `OnRoomJoin` 返回前同步补推，消除并行窗口 |
+
+### 文档
+
+- `docs/reviews/2026-04-23-phase2e-2-code-review.md`：完整审计报告（4 + 8 + 8 + 11 清单 + 亮点 + 遗留建议）。
+- P2 × 8 / Nit × 11 登记到 Task 16 收尾清单（下一步批次处理）。
+- E2E Playwright 脚本化 + 文档六件套同步仍在 `t16_e2e_script` / `t16_docs` 待办里。
 
 ---
 

@@ -43,6 +43,7 @@ dist/
 
 # --- 日志 ---
 logs/
+!backend/go-service/pkg/logs/
 *.log
 npm-debug.log*
 yarn-debug.log*

@@ -1011,7 +1011,13 @@ export const useMeetingStore = defineStore('meeting', () => {
    * Task 15：向房间其他成员广播自身音视频状态
    * - 后端 meeting.member.state.changed 语义：操作自己无需 target_user_id
    * - 后端会广播给房间其他成员（不回显给本人）
-   * - 容错：WS 未连接或 ACK 失败仅 warn 日志，不影响本地状态机
+   *
+   * Task 16 P1-6：增加 sendWithAck 重试与 member_state Hash 最终一致性保障
+   * - 旧版失败仅 warn，WS 抖动期其他成员的"图标灰色"问题会重现
+   * - 现实现最多 2 次指数退避重试（700ms → 2100ms）；所有重试失败再输出 error 日志
+   * - 设计约束：总耗时上限 ~6s，避免用户切换过快时累积旧状态覆盖新状态
+   *   （每次调用前先记录 targetSnapshot，重试前若 currentRoom 已变则放弃；
+   *    若 patch 同字段已被后续 broadcast 覆盖，也放弃旧 patch 的重试）
    */
   const _broadcastSelfState = (patch) => {
     if (!currentRoom.value) return
@@ -1020,10 +1026,36 @@ export const useMeetingStore = defineStore('meeting', () => {
     if (typeof patch.audio_enabled === 'boolean') payload.audio_enabled = patch.audio_enabled
     if (typeof patch.video_enabled === 'boolean') payload.video_enabled = patch.video_enabled
     if (Object.keys(payload).length <= 1) return
-    wsService.sendWithAck(MEETING_WS_MEMBER_STATE_CHANGED, payload, 3000)
-      .catch((err) => {
-        _log('warn', '[Meeting] 上报本地音视频状态失败', err)
-      })
+
+    const targetRoomCode = currentRoom.value.room_code
+    const maxAttempts = 3
+    const backoffMs = [0, 700, 2100]
+
+    const attemptSend = (attempt) => {
+      if (!currentRoom.value || currentRoom.value.room_code !== targetRoomCode) {
+        _log('info', '[Meeting] 切换会议/已离会，放弃 state 重试', payload)
+        return
+      }
+      if (typeof patch.audio_enabled === 'boolean' && localAudioEnabled.value !== patch.audio_enabled) {
+        _log('info', '[Meeting] audio_enabled 已被后续动作覆盖，放弃旧 patch 重试', patch)
+        return
+      }
+      if (typeof patch.video_enabled === 'boolean' && localVideoEnabled.value !== patch.video_enabled) {
+        _log('info', '[Meeting] video_enabled 已被后续动作覆盖，放弃旧 patch 重试', patch)
+        return
+      }
+      wsService.sendWithAck(MEETING_WS_MEMBER_STATE_CHANGED, payload, 3000)
+        .catch((err) => {
+          if (attempt + 1 >= maxAttempts) {
+            _log('error', '[Meeting] 上报本地音视频状态失败（已用尽重试）', err, payload)
+            return
+          }
+          const delay = backoffMs[attempt + 1] || 2100
+          _log('warn', `[Meeting] 上报本地音视频状态失败，${delay}ms 后重试 (${attempt + 2}/${maxAttempts})`, err)
+          setTimeout(() => attemptSend(attempt + 1), delay)
+        })
+    }
+    attemptSend(0)
   }
 
   /**

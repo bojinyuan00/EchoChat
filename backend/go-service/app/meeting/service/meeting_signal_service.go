@@ -217,8 +217,12 @@ func (s *MeetingSignalService) OnRoomJoin(ctx context.Context, userID int64, roo
 		zap.Int64("user_id", userID),
 		zap.Int64("room_id", room.ID))
 
-	// 定向补推已有 producer + 成员状态：异步执行，不阻塞 ACK
-	go s.pushExistingRoomState(context.Background(), room.ID, room.RoomCode, userID)
+	// P1-8：pushExistingRoomState 同步化（Task 16）
+	// 旧版异步 go 导致 REST `meeting.member.joined` 与 WS `pushExistingRoomState` 并行，
+	// 极端场景下新人先收到未知 user_id 的 state.changed 再收到 REST participant（名称头像短暂缺失）。
+	// 前端本就在等 room.join 的 ACK，这里同步在 ACK 返回前完成补推，可消除并行窗口。
+	// 单次调用仅 O(当前房间 producer 数量) Redis 读 + 若干 WS 发送，P99 <30ms，不影响 ACK 体验。
+	s.pushExistingRoomState(ctx, room.ID, room.RoomCode, userID)
 
 	return nil
 }
@@ -406,7 +410,7 @@ func (s *MeetingSignalService) OnRoomLeave(ctx context.Context, userID int64, ro
 	}
 	s.cleanupUserResources(ctx, roomCode, userID)
 
-	go s.broadcaster.BroadcastToMeeting(context.Background(), room.ID, constants.MeetingWSEventMemberLeft, map[string]interface{}{
+	go s.broadcaster.BroadcastToMeeting(logs.DetachContext(ctx), room.ID, constants.MeetingWSEventMemberLeft, map[string]interface{}{
 		"room_code": roomCode,
 		"user_id":   userID,
 		"reason":    "ws_disconnect",
@@ -465,7 +469,7 @@ func (s *MeetingSignalService) OnMemberStateChanged(ctx context.Context, fromUse
 	// 注意：写 Hash 之所以同步执行而非放进 goroutine，是因为同一用户并发开关操作需要顺序一致
 	s.updateMemberState(ctx, payload.RoomCode, targetID, payload.AudioEnabled, payload.VideoEnabled)
 
-	go s.broadcaster.BroadcastToMeeting(context.Background(), room.ID, constants.MeetingWSEventMemberStateChange, data, fromUserID)
+	go s.broadcaster.BroadcastToMeeting(logs.DetachContext(ctx), room.ID, constants.MeetingWSEventMemberStateChange, data, fromUserID)
 	return nil
 }
 
@@ -553,7 +557,7 @@ func (s *MeetingSignalService) OnProduceStart(ctx context.Context, userID int64,
 	}
 	s.trackResource(ctx, payload.RoomCode, userID, "producer", producerID)
 
-	go s.broadcaster.BroadcastToMeeting(context.Background(), room.ID, constants.MeetingWSEventMemberProducerNew, map[string]interface{}{
+	go s.broadcaster.BroadcastToMeeting(logs.DetachContext(ctx), room.ID, constants.MeetingWSEventMemberProducerNew, map[string]interface{}{
 		"room_code":   payload.RoomCode,
 		"user_id":     userID,
 		"producer_id": producerID,
@@ -650,7 +654,7 @@ func (s *MeetingSignalService) OnProducerClose(ctx context.Context, userID int64
 	}
 	s.untrackResource(ctx, payload.RoomCode, userID, "producer", payload.ProducerID)
 
-	go s.broadcaster.BroadcastToMeeting(context.Background(), room.ID, constants.MeetingWSEventMemberProducerNew, map[string]interface{}{
+	go s.broadcaster.BroadcastToMeeting(logs.DetachContext(ctx), room.ID, constants.MeetingWSEventMemberProducerNew, map[string]interface{}{
 		"room_code":   payload.RoomCode,
 		"user_id":     userID,
 		"producer_id": payload.ProducerID,

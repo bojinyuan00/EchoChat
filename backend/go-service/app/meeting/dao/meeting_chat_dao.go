@@ -59,6 +59,30 @@ func (d *MeetingChatDAO) ListByRoom(ctx context.Context, roomID int64, afterID i
 	return list, err
 }
 
+// ListByRoomBefore 按房间反向游标分页查询聊天历史（id < beforeID），按 created_at DESC, id DESC 排序
+// Task 16 P1-2：ListChatMessages 回归 DAO（原 service 层直接拼 SQL 破坏分层）
+// beforeID 为 0 表示从最新的一条开始；limit <= 0 时返回空列表
+// 由调用方传 limit+1 自行判断 has_more
+func (d *MeetingChatDAO) ListByRoomBefore(ctx context.Context, roomID int64, beforeID int64, limit int) ([]model.MeetingChat, error) {
+	if limit <= 0 {
+		return []model.MeetingChat{}, nil
+	}
+	funcName := "dao.meeting_chat_dao.ListByRoomBefore"
+	q := d.db.WithContext(ctx).
+		Model(&model.MeetingChat{}).
+		Where("room_id = ?", roomID)
+	if beforeID > 0 {
+		q = q.Where("id < ?", beforeID)
+	}
+	var list []model.MeetingChat
+	if err := q.Order("created_at DESC, id DESC").Limit(limit).Find(&list).Error; err != nil {
+		logs.Error(ctx, funcName, "反向游标查询会议聊天失败",
+			zap.Int64("room_id", roomID), zap.Int64("before_id", beforeID), zap.Error(err))
+		return nil, err
+	}
+	return list, nil
+}
+
 // DeleteByRoomIDs 按房间 ID 批量删除聊天消息（会议结束 24 小时后清理）
 // 外层已有 meeting_rooms ON DELETE CASCADE，此方法用于主动定时清理（不删除 room 本身）
 func (d *MeetingChatDAO) DeleteByRoomIDs(ctx context.Context, roomIDs []int64) (int64, error) {

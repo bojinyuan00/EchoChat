@@ -408,7 +408,7 @@ func (s *MeetingService) JoinRoom(ctx context.Context, userID int64, code, passw
 
 	// 广播 payload 附带 user_name / user_avatar，前端 _onMemberJoined 直接落库，无需二次拉取
 	name, avatar := s.resolveUserDisplay(ctx, userID)
-	go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventMemberJoined, map[string]interface{}{
+	go s.broadcastToActiveParticipants(logs.DetachContext(ctx), room.ID, constants.MeetingWSEventMemberJoined, map[string]interface{}{
 		"room_code":   code,
 		"user_id":     userID,
 		"user_name":   name,
@@ -458,13 +458,11 @@ func (s *MeetingService) LeaveRoom(ctx context.Context, userID int64, code strin
 
 	if participant.Role == constants.MeetingRoleHost && len(actives) > 0 {
 		newHost := actives[0]
+		// P1-1：TransferHost 内部事务已同时更新 meeting_rooms.host_id，不再需要单独 UpdateHost
 		if txErr := s.participantDAO.TransferHost(ctx, room.ID, userID, newHost.UserID); txErr != nil {
 			logs.Warn(ctx, funcName, "主持人自动转让失败", zap.Error(txErr))
 		} else {
-			if uErr := s.roomDAO.UpdateHost(ctx, room.ID, newHost.UserID); uErr != nil {
-				logs.Warn(ctx, funcName, "UpdateHost 失败", zap.Error(uErr))
-			}
-			go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventHostChanged, map[string]interface{}{
+			go s.broadcastToActiveParticipants(logs.DetachContext(ctx), room.ID, constants.MeetingWSEventHostChanged, map[string]interface{}{
 				"room_code":    code,
 				"old_host_id":  userID,
 				"new_host_id":  newHost.UserID,
@@ -479,7 +477,7 @@ func (s *MeetingService) LeaveRoom(ctx context.Context, userID int64, code strin
 		s.lifecycleSvc.OnAllMembersLeft(ctx, code)
 	}
 
-	go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventMemberLeft, map[string]interface{}{
+	go s.broadcastToActiveParticipants(logs.DetachContext(ctx), room.ID, constants.MeetingWSEventMemberLeft, map[string]interface{}{
 		"room_code": code,
 		"user_id":   userID,
 		"reason":    constants.MeetingLeftReasonSelf,
@@ -492,6 +490,14 @@ func (s *MeetingService) LeaveRoom(ctx context.Context, userID int64, code strin
 
 // EndRoom 主持人结束会议
 // 将房间 status=Ended + reason=host_ended + 所有活跃成员 LeaveAllActive + 广播 meeting.room.ended + 关闭 mediasoup Router
+// EndRoom 主持人主动结束会议
+// Task 16 P1-4 强化为行锁 + 单事务：
+//  1. 事务内 SELECT meeting_rooms FOR UPDATE 行锁，避免与并发 JoinRoom 的 status 竞争
+//     （旧版 JoinRoom 在乐观读 status=active 之后才写 participant 行，可能出现
+//     "JoinRoom 刚读 status=active → EndRoom 改 status=ended + LeaveAll → JoinRoom 写入活跃 participant"
+//     的僵尸参与者现象，导致用户被卡在"我在会议中"的状态但房间已结束）
+//  2. 事务内依序执行 状态校验 / 活跃快照 / MarkEnded / LeaveAllActive，全部成功才提交
+//  3. 事务成功后再做 mediasoup CloseRouter 与 WS 广播（这些是外部 IO，不应拉长锁持有时间）
 func (s *MeetingService) EndRoom(ctx context.Context, userID int64, code string) error {
 	funcName := "service.meeting_service.EndRoom"
 
@@ -509,20 +515,55 @@ func (s *MeetingService) EndRoom(ctx context.Context, userID int64, code string)
 		return err
 	}
 
-	activesBefore, _ := s.participantDAO.ListActiveByRoom(ctx, room.ID)
+	var (
+		activesBefore []model.MeetingParticipant
+		endedAt       = time.Now()
+	)
 
-	now := time.Now()
-	if _, err := s.roomDAO.MarkEnded(ctx, room.ID, constants.MeetingEndedReasonHostEnded, now); err != nil {
-		return err
-	}
-	if _, err := s.participantDAO.LeaveAllActive(ctx, room.ID, constants.MeetingLeftReasonHostEnd); err != nil {
-		logs.Warn(ctx, funcName, "批量离会失败", zap.Int64("room_id", room.ID), zap.Error(err))
+	txErr := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		roomDAO := s.roomDAO.WithTx(tx)
+		participantDAO := s.participantDAO.WithTx(tx)
+
+		// 行锁：事务内持有 meeting_rooms 行级 X 锁，直到事务结束才释放
+		locked, err := roomDAO.GetByIDForUpdate(ctx, room.ID)
+		if err != nil {
+			return err
+		}
+		if locked == nil {
+			return ErrMeetingNotFound
+		}
+		// 行锁之后复检 status，避免"同时多个 host 点结束"时第二请求重复执行
+		if locked.Status == constants.MeetingStatusEnded {
+			return ErrMeetingEnded
+		}
+
+		snapshot, err := participantDAO.ListActiveByRoom(ctx, room.ID)
+		if err != nil {
+			return err
+		}
+		activesBefore = snapshot
+
+		if _, err := roomDAO.MarkEnded(ctx, room.ID, constants.MeetingEndedReasonHostEnded, endedAt); err != nil {
+			return err
+		}
+		if _, err := participantDAO.LeaveAllActive(ctx, room.ID, constants.MeetingLeftReasonHostEnd); err != nil {
+			return err
+		}
+		return nil
+	})
+	if txErr != nil {
+		if errors.Is(txErr, ErrMeetingEnded) || errors.Is(txErr, ErrMeetingNotFound) {
+			return txErr
+		}
+		logs.Error(ctx, funcName, "结束会议事务失败",
+			zap.String("room_code", code), zap.Int64("room_id", room.ID), zap.Error(txErr))
+		return txErr
 	}
 
 	payload := map[string]interface{}{
 		"room_code":    code,
 		"ended_reason": constants.MeetingEndedReasonHostEnded,
-		"ended_at":     now.Format("2006-01-02 15:04:05"),
+		"ended_at":     endedAt.Format("2006-01-02 15:04:05"),
 	}
 	// activesBefore 已经是结束前的活跃成员快照，此时 participantDAO.ListActiveByRoom 查会返回空集合
 	// 因此使用 broadcaster.PublishToUser 逐人定向推送（而非 BroadcastToMeeting 基于当前状态查库）
@@ -569,14 +610,12 @@ func (s *MeetingService) TransferHost(ctx context.Context, operatorID int64, cod
 		return err
 	}
 
+	// P1-1：TransferHost 内部事务同时更新 meeting_rooms.host_id，无需单独 UpdateHost
 	if err := s.participantDAO.TransferHost(ctx, room.ID, operatorID, target.UserID); err != nil {
 		return err
 	}
-	if err := s.roomDAO.UpdateHost(ctx, room.ID, target.UserID); err != nil {
-		return err
-	}
 
-	go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventHostChanged, map[string]interface{}{
+	go s.broadcastToActiveParticipants(logs.DetachContext(ctx), room.ID, constants.MeetingWSEventHostChanged, map[string]interface{}{
 		"room_code":   code,
 		"old_host_id": operatorID,
 		"new_host_id": target.UserID,
@@ -625,7 +664,7 @@ func (s *MeetingService) KickMember(ctx context.Context, operatorID int64, code 
 		"user_id":   targetUserID,
 		"by":        operatorID,
 	})
-	go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventMemberLeft, map[string]interface{}{
+	go s.broadcastToActiveParticipants(logs.DetachContext(ctx), room.ID, constants.MeetingWSEventMemberLeft, map[string]interface{}{
 		"room_code": code,
 		"user_id":   targetUserID,
 		"reason":    constants.MeetingLeftReasonKicked,
@@ -648,35 +687,10 @@ func (s *MeetingService) ListMyMeetings(ctx context.Context, userID int64, statu
 		limit = 50
 	}
 
-	// 多取一条用于判断 has_more；考虑到可能按 status 过滤，适度放大拉取倍数
-	fetchSize := (limit + 1) * 2
-	parts, _, err := s.participantDAO.ListByUser(ctx, userID, 0, fetchSize*3)
+	// Task 16 P1-3：改走 participantDAO.ListJoinedRoomsByUser 的 JOIN 查询
+	// 旧版两轮 (ListByUser O(N) → ListByIDs O(M))、N 放大 6 倍 → 单次 JOIN DISTINCT O(limit+1)
+	rooms, err := s.participantDAO.ListJoinedRoomsByUser(ctx, userID, statusFilter, beforeID, limit+1)
 	if err != nil {
-		return nil, false, err
-	}
-
-	if len(parts) == 0 {
-		return []model.MeetingRoom{}, false, nil
-	}
-	seen := make(map[int64]struct{}, len(parts))
-	roomIDs := make([]int64, 0, len(parts))
-	for _, p := range parts {
-		if _, ok := seen[p.RoomID]; ok {
-			continue
-		}
-		seen[p.RoomID] = struct{}{}
-		roomIDs = append(roomIDs, p.RoomID)
-	}
-
-	var rooms []model.MeetingRoom
-	q := s.db.WithContext(ctx).Model(&model.MeetingRoom{}).Where("id IN ?", roomIDs)
-	if statusFilter != nil {
-		q = q.Where("status = ?", *statusFilter)
-	}
-	if beforeID > 0 {
-		q = q.Where("id < ?", beforeID)
-	}
-	if err := q.Order("created_at DESC, id DESC").Limit(limit + 1).Find(&rooms).Error; err != nil {
 		return nil, false, err
 	}
 
@@ -871,7 +885,7 @@ func (s *MeetingService) SendChatMessage(ctx context.Context, userID int64, code
 	// 附带 user_name / user_avatar，前端聊天面板无需额外拉取
 	userName, userAvatar := s.resolveUserDisplay(ctx, userID)
 
-	go s.broadcastToActiveParticipants(context.Background(), room.ID, constants.MeetingWSEventChatMessage, map[string]interface{}{
+	go s.broadcastToActiveParticipants(logs.DetachContext(ctx), room.ID, constants.MeetingWSEventChatMessage, map[string]interface{}{
 		"room_code":   code,
 		"message_id":  chat.ID,
 		"user_id":     userID,
@@ -906,13 +920,9 @@ func (s *MeetingService) ListChatMessages(ctx context.Context, userID int64, cod
 		limit = 100
 	}
 
-	// DAO 当前接受 afterID（正向游标）；ListChats 前端通常是"查更早的"，这里直接用 beforeID 语义
-	var chats []model.MeetingChat
-	q := s.db.WithContext(ctx).Model(&model.MeetingChat{}).Where("room_id = ?", room.ID)
-	if beforeID > 0 {
-		q = q.Where("id < ?", beforeID)
-	}
-	if err := q.Order("created_at DESC, id DESC").Limit(limit + 1).Find(&chats).Error; err != nil {
+	// Task 16 P1-2：改走 chatDAO.ListByRoomBefore（反向游标），避免 service 层直接拼 SQL 破坏分层
+	chats, err := s.chatDAO.ListByRoomBefore(ctx, room.ID, beforeID, limit+1)
+	if err != nil {
 		return nil, false, err
 	}
 
