@@ -1,15 +1,15 @@
 <!--
-  加入会议表单页（Task 10）
+  加入会议表单页（Task 10；Task 16 P0-4 修复密码明文走 URL 的问题）
 
   数据流：
     用户输入会议号（可粘贴带 / 不带连字符的 9 位数字）+ 可选密码 → 点击"下一步"
-    → uni.navigateTo('/pages/meeting/preview?mode=join&code=XXX-XXX-XXX&password=xxx')
-    → 预览页选定设备后真正调用 joinAndEnter
+    → 把 { code, password } 写入 meetingStore.draftJoinPayload
+    → uni.navigateTo('/pages/meeting/preview?mode=join&code=XXX-XXX-XXX')  // URL 不再带密码
+    → 预览页从 draftJoinPayload 读密码并立即清空，再调用 joinAndEnter
 
-  邀请链接支持：
+  邀请链接支持（设计 §2.2.1）：
   - URL 参数 code=XXX-XXX-XXX（必传时直接回填）
-  - URL 参数 password=xxx（可选，从邀请短链来）
-  - 参考设计 §2.2.1：邀请链接形如 /#/pages/meeting/join?code=XXX-XXX-XXX
+  - 严禁 URL 参数 password=xxx（旧实现已下线；邀请链接走 token 机制，password 只在当前页面表单内）
 -->
 <template>
   <view class="page">
@@ -53,7 +53,9 @@
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import { useMeetingStore } from '@/store/meeting'
 
+const meetingStore = useMeetingStore()
 const rawCodeInput = ref('')
 const form = reactive({ password: '' })
 
@@ -93,17 +95,15 @@ onLoad((query) => {
     const d = digitsOf(query.code)
     if (d.length === 9) rawCodeInput.value = formatCode(d)
   }
-  if (query?.password) {
-    form.password = String(query.password)
-  }
+  // P0-4：邀请链接只允许带 code / token，不再接受 password query；历史 URL 里若仍有 password 一律忽略
 })
 
 const onNext = () => {
   if (!isFormValid.value) return
   const code = formattedCode.value
-  const passwordQuery = form.password ? `&password=${encodeURIComponent(form.password)}` : ''
+  meetingStore.draftJoinPayload = { code, password: form.password || '' }
   uni.navigateTo({
-    url: `/pages/meeting/preview?mode=join&code=${code}${passwordQuery}`
+    url: `/pages/meeting/preview?mode=join&code=${code}`
   })
 }
 

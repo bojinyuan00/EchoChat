@@ -404,7 +404,17 @@ const onJoin = async () => {
 onLoad(async (query) => {
   mode.value = query?.mode === 'join' ? 'join' : 'create'
   joinCode.value = query?.code || ''
-  joinPassword.value = query?.password ? decodeURIComponent(query.password) : ''
+  // P0-4：密码不再从 URL query 读取，改为从 meetingStore.draftJoinPayload 一次性消费
+  // 防止 URL 历史 / DevTools 留痕；读取后立即清空草稿避免二次写回
+  if (mode.value === 'join') {
+    const draft = meetingStore.draftJoinPayload
+    if (draft && (!joinCode.value || draft.code === joinCode.value)) {
+      joinPassword.value = draft.password || ''
+      meetingStore.draftJoinPayload = null
+    } else {
+      joinPassword.value = ''
+    }
+  }
 
   // 先请求权限并预览，默认拿到第一个设备
   await startPreview()

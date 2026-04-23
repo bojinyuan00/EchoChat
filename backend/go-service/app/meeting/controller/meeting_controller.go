@@ -49,6 +49,9 @@ func (ctl *MeetingController) handleError(c *gin.Context, err error, fallbackMsg
 		utils.ResponseNotFound(c, err.Error())
 	case errors.Is(err, service.ErrNotMeetingHost):
 		utils.ResponseForbidden(c, err.Error())
+	case errors.Is(err, service.ErrMediaServiceUnavailable):
+		// P0-3：媒体服务不可用应作为 5xx 返回，让前端走"稍后重试"提示，而非按"用户输入错误"处理
+		utils.ResponseError(c, err.Error())
 	case errors.Is(err, service.ErrMeetingEnded),
 		errors.Is(err, service.ErrMeetingFull),
 		errors.Is(err, service.ErrMeetingPasswordReq),

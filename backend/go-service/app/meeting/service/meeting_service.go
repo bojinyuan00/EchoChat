@@ -39,6 +39,12 @@ var (
 	ErrKickSelfForbidden     = errors.New("不能踢出自己")
 	ErrTransferToSelf        = errors.New("不能将主持人转让给自己")
 	ErrTransferTargetInvalid = errors.New("目标用户不在会议中")
+	// ErrResourceNotOwned 媒体资源归属校验失败：用户试图操作不属于自己的 transport/producer/consumer
+	// 发生场景：Web 端用户抓到他人 producerID 后调 meeting.producer.close、或跨用户挂 consumer 等横向越权尝试
+	ErrResourceNotOwned = errors.New("媒体资源归属校验失败，禁止操作他人资源")
+	// ErrMediaServiceUnavailable 媒体服务当前不可用（Router 创建失败 / Node 宕机等）
+	// 用于 CreateRoom / JoinRoom 的补偿路径，将前台错误与"用户输入错误"区分开
+	ErrMediaServiceUnavailable = errors.New("媒体服务暂时不可用，请稍后重试")
 )
 
 // Redis key 前缀（设计文档 §5.4 - Redis 数据结构）
@@ -272,11 +278,26 @@ func (s *MeetingService) CreateRoom(ctx context.Context, hostID int64, req *dto.
 	}
 
 	// Task 7 起 CreateRouter 对接真实 mediasoup；Task 8 起仅在会议首次创建时调一次（房间级资源）
+	// P0-3 修复（审计报告）：
+	// 旧版在 Router 创建失败时仅 `logs.Warn` 继续返回成功，导致 DB 存在 active 房间但 mediasoup 端无 Router，
+	// 所有入会者后续 transport.create 必失败；同时占用"一人一会议"名额，用户无法新建。
+	// 现改为 fail-closed：Router 失败 → 补偿 LeaveRoom + MarkEnded(system_error) → 返回 ErrMediaServiceUnavailable 让前端提示重试。
 	routerID, mediaErr := s.mediaOrchestrator.CreateRouter(ctx, code)
 	if mediaErr != nil {
-		logs.Warn(ctx, funcName, "mediasoup Router 创建失败",
-			zap.String("room_code", code), zap.Error(mediaErr))
-		routerID = ""
+		logs.Warn(ctx, funcName, "mediasoup Router 创建失败，执行补偿回滚",
+			zap.String("room_code", code), zap.Int64("host_id", hostID), zap.Error(mediaErr))
+
+		if _, leaveErr := s.participantDAO.LeaveRoom(ctx, room.ID, hostID, constants.MeetingLeftReasonSelf); leaveErr != nil {
+			logs.Warn(ctx, funcName, "补偿阶段 LeaveRoom 失败（已记录，清理任务会兜底）",
+				zap.Int64("room_id", room.ID), zap.Int64("host_id", hostID), zap.Error(leaveErr))
+		}
+		if _, markErr := s.roomDAO.MarkEnded(ctx, room.ID, constants.MeetingEndedReasonSystemError, time.Now()); markErr != nil {
+			logs.Warn(ctx, funcName, "补偿阶段 MarkEnded 失败（已记录，清理任务会兜底）",
+				zap.Int64("room_id", room.ID), zap.Error(markErr))
+		}
+
+		err = ErrMediaServiceUnavailable
+		return nil, nil, "", err
 	}
 
 	logs.Info(ctx, funcName, "会议创建成功",

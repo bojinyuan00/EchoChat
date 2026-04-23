@@ -91,6 +91,35 @@ func (s *MeetingSignalService) untrackResource(ctx context.Context, roomCode str
 	_ = s.redis.SRem(ctx, key, member).Err()
 }
 
+// assertOwnsResource 校验指定资源（kind: transport/producer/consumer）是否由 userID 在该 roomCode 中创建
+// 背景：WS 信令入口原本只校验"用户是否在会议中"，但客户端上报的 transport_id / producer_id / consumer_id 完全可伪造，
+// 造成任意成员可关闭他人 producer、把 consumer 挂到他人 recv transport 等横向越权（P0-1 / P0-2 审计）
+// 判据：trackResource 记录的 Redis Set 是最权威的归属来源（kind:id 写入 / untrack 时移除）
+// 返回：
+//   - nil：归属合法
+//   - ErrResourceNotOwned：Set 里不存在该元素（越权尝试）
+//   - Redis 错误时同样返回 ErrResourceNotOwned 并记录 Warn，按"fail-closed"保守拒绝，避免服务抖动打开权限口子
+func (s *MeetingSignalService) assertOwnsResource(ctx context.Context, roomCode string, userID int64, kind, id string) error {
+	if id == "" {
+		return fmt.Errorf("%s_id 不能为空", kind)
+	}
+	key := resourceTrackKey(roomCode, userID)
+	member := kind + ":" + id
+	ok, err := s.redis.SIsMember(ctx, key, member).Result()
+	if err != nil {
+		logs.Warn(ctx, "service.meeting_signal_service.assertOwnsResource", "查询资源归属失败",
+			zap.String("key", key), zap.String("member", member), zap.Error(err))
+		return ErrResourceNotOwned
+	}
+	if !ok {
+		logs.Warn(ctx, "service.meeting_signal_service.assertOwnsResource", "资源归属不匹配，拒绝越权操作",
+			zap.String("room_code", roomCode), zap.Int64("user_id", userID),
+			zap.String("kind", kind), zap.String("id", id))
+		return ErrResourceNotOwned
+	}
+	return nil
+}
+
 // updateMemberState 将某用户的音视频开关状态持久化到 Redis Hash
 // 非 nil 的字段才写入；audio/video 任意一个 nil 都不碰它，避免误覆盖另一维状态
 // 容错：任何一步失败仅 Warn 日志，不阻断业务流程（前端已发 state.changed 作为权威广播）
@@ -477,10 +506,10 @@ type TransportConnectPayload struct {
 
 // OnTransportConnect 处理 meeting.transport.connect 事件
 func (s *MeetingSignalService) OnTransportConnect(ctx context.Context, userID int64, payload *TransportConnectPayload) error {
-	if payload.TransportID == "" {
-		return fmt.Errorf("transport_id 不能为空")
-	}
 	if _, err := s.loadRoomAndParticipant(ctx, payload.RoomCode, userID); err != nil {
+		return err
+	}
+	if err := s.assertOwnsResource(ctx, payload.RoomCode, userID, "transport", payload.TransportID); err != nil {
 		return err
 	}
 	return s.mediaOrchestrator.ConnectTransport(ctx, payload.TransportID, payload.DtlsParameters)
@@ -505,11 +534,11 @@ func (s *MeetingSignalService) OnProduceStart(ctx context.Context, userID int64,
 	if payload.Kind != "audio" && payload.Kind != "video" {
 		return nil, fmt.Errorf("kind 非法，必须是 audio 或 video")
 	}
-	if payload.TransportID == "" {
-		return nil, fmt.Errorf("transport_id 不能为空")
-	}
 	room, err := s.loadRoomAndParticipant(ctx, payload.RoomCode, userID)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.assertOwnsResource(ctx, payload.RoomCode, userID, "transport", payload.TransportID); err != nil {
 		return nil, err
 	}
 	producerID, err := s.mediaOrchestrator.CreateProducer(ctx, &CreateProducerReq{
@@ -543,11 +572,16 @@ type ConsumeStartPayload struct {
 }
 
 // OnConsumeStart 处理 meeting.consume.start 事件
+// P0-2 修复：新增 transport_id 归属校验，拒绝把 consumer 挂到他人的 recv transport
+// （producer_id 归属天然不需要校验：消费他人 producer 正是订阅逻辑本身，Node 侧会验证 producer 是否存在）
 func (s *MeetingSignalService) OnConsumeStart(ctx context.Context, userID int64, payload *ConsumeStartPayload) (*ConsumerInfo, error) {
-	if payload.TransportID == "" || payload.ProducerID == "" {
-		return nil, fmt.Errorf("transport_id 与 producer_id 均不能为空")
+	if payload.ProducerID == "" {
+		return nil, fmt.Errorf("producer_id 不能为空")
 	}
 	if _, err := s.loadRoomAndParticipant(ctx, payload.RoomCode, userID); err != nil {
+		return nil, err
+	}
+	if err := s.assertOwnsResource(ctx, payload.RoomCode, userID, "transport", payload.TransportID); err != nil {
 		return nil, err
 	}
 	info, err := s.mediaOrchestrator.CreateConsumer(ctx, &CreateConsumerReq{
@@ -576,10 +610,10 @@ type ConsumeResumePayload struct {
 // 权限：仅当 userID 是会议活跃成员且 consumerID 归属该用户时允许
 // 幂等：Node 对已 active Consumer 再次 resume 不报错；Consumer 不存在则 ACK 返回友好错误
 func (s *MeetingSignalService) OnConsumeResume(ctx context.Context, userID int64, payload *ConsumeResumePayload) error {
-	if payload.ConsumerID == "" {
-		return fmt.Errorf("consumer_id 不能为空")
-	}
 	if _, err := s.loadRoomAndParticipant(ctx, payload.RoomCode, userID); err != nil {
+		return err
+	}
+	if err := s.assertOwnsResource(ctx, payload.RoomCode, userID, "consumer", payload.ConsumerID); err != nil {
 		return err
 	}
 	if err := s.mediaOrchestrator.ResumeConsumer(ctx, payload.ConsumerID); err != nil {
@@ -601,12 +635,13 @@ type ProducerClosePayload struct {
 
 // OnProducerClose 处理 meeting.producer.close 事件
 // 成功后广播给房间内其他成员（与 mediasoup 的 producerclose 级联动作平级）
+// P0-1 修复：新增 producer 归属校验，拒绝一名参会人关闭他人的 producer（横向越权，审计 P0-1）
 func (s *MeetingSignalService) OnProducerClose(ctx context.Context, userID int64, payload *ProducerClosePayload) error {
-	if payload.ProducerID == "" {
-		return fmt.Errorf("producer_id 不能为空")
-	}
 	room, err := s.loadRoomAndParticipant(ctx, payload.RoomCode, userID)
 	if err != nil {
+		return err
+	}
+	if err := s.assertOwnsResource(ctx, payload.RoomCode, userID, "producer", payload.ProducerID); err != nil {
 		return err
 	}
 	if err := s.mediaOrchestrator.CloseProducer(ctx, payload.ProducerID); err != nil {

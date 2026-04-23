@@ -121,6 +121,15 @@ export const useMeetingStore = defineStore('meeting', () => {
   const draftCreatePayload = ref(null)
 
   /**
+   * 加入会议密码草稿（Task 16 P0-4 修复）
+   * 原实现把密码明文拼在 uni.navigateTo 的 URL query 里，浏览器历史 / DevTools 都会留痕，
+   * 违背设计文档 §2.2.1 "邀请链接仅携带 token 不携带密码"的约束。
+   * 新流程：join.vue 填完密码 → 写入本字段 → 只跳转 `?mode=join&code=XXX-XXX-XXX` → preview.vue 读取后立即清空。
+   * 字段：{ code, password } 或 null
+   */
+  const draftJoinPayload = ref(null)
+
+  /**
    * 设备预览页的设备选择与显示名（Task 10）
    * preview.vue 选完设备后写入，入会时作为 mediaPrefs 传给 createAndEnter / joinAndEnter
    * 字段：{ audioDeviceId, videoDeviceId, speakerDeviceId, displayName, startAudio, startVideo }
@@ -1166,6 +1175,7 @@ export const useMeetingStore = defineStore('meeting', () => {
     localProducers,
     remoteConsumers,
     draftCreatePayload,
+    draftJoinPayload,
     devicePreview,
     speakingMap,
     uiPrefs,
