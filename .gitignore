@@ -61,7 +61,20 @@ coverage/
 *.coverprofile
 
 # --- Playwright 截图与 MCP 快照 ---
+# 用法规则：.playwright-mcp 仅默认忽略"运行时产物"（截图/日志/page 快照 yml），
+# 通过精确白名单放行"剧本文档"（如 task16/ 下的 Markdown 回归剧本）进入版本控制。
+# 注意：gitignore 语义要求父目录不能整目录排除，否则子目录 ! 规则会失效
 *.png
 !design-system/**/*.png
-.playwright-mcp/
+# 默认忽略所有运行时产物
+.playwright-mcp/*.log
+.playwright-mcp/*.yml
+.playwright-mcp/*.png
+.playwright-mcp/*.txt
+.playwright-mcp/*.jpg
 !.playwright-mcp/.gitkeep
+# Task 16 E2E 剧本文档（task15 仍保持未跟踪，避免历史截图噪声）
+.playwright-mcp/task16/**/screenshots/
+.playwright-mcp/task16/**/*.log
+.playwright-mcp/task16/**/*.png
+.playwright-mcp/task16/**/*.yml
