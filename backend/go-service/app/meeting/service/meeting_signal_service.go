@@ -708,3 +708,28 @@ func (s *MeetingSignalService) cleanupUserResources(ctx context.Context, roomCod
 			zap.Int("resource_count", len(members)))
 	}
 }
+
+// cleanupRoomRedisResidual 批量清理指定 roomCode 下一批用户的 Redis 资源追踪集合 + 音视频状态 Hash
+// Task 16 资源清理专项：
+//   - EndRoom / HandleEmptyRoomExpired 等会议销毁路径调用，避免正常 WS 断开钩子尚未触发就结束会议导致的残留
+//   - userIDs 为销毁前活跃成员快照；无活跃成员可传 nil/空切片，此时仅走上层 lifecycle 清理
+//   - 使用 Pipeline 减少 Redis 往返；失败仅 Warn，不阻断上层销毁流程
+//   - package 私有：允许 meeting_service / meeting_lifecycle_service 等同包文件直接调用
+func cleanupRoomRedisResidual(ctx context.Context, rdb *redis.Client, roomCode string, userIDs []int64) {
+	funcName := "service.meeting_signal_service.cleanupRoomRedisResidual"
+	if rdb == nil || len(userIDs) == 0 {
+		return
+	}
+	pipe := rdb.Pipeline()
+	for _, uid := range userIDs {
+		pipe.Del(ctx, resourceTrackKey(roomCode, uid))
+		pipe.Del(ctx, memberStateKey(roomCode, uid))
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		logs.Warn(ctx, funcName, "批量清理用户 Redis 残留失败（忽略，继续）",
+			zap.String("room_code", roomCode), zap.Int("user_count", len(userIDs)), zap.Error(err))
+		return
+	}
+	logs.Debug(ctx, funcName, "会议销毁，用户 Redis 残留已清理",
+		zap.String("room_code", roomCode), zap.Int("user_count", len(userIDs)))
+}

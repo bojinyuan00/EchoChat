@@ -357,8 +357,48 @@ func (s *MeetingLifecycleService) HandleEmptyRoomExpired(ctx context.Context, ro
 		"room_code": roomCode,
 		"reason":    constants.MeetingEndedReasonEmptyTTL,
 	})
+
+	// Task 16 资源清理专项：空房销毁时 activeCount==0，每个前任活跃成员的 Redis Set / Hash 理论上
+	// 应已被各自的 LeaveRoom → cleanupUserResources 清掉；此处幂等兜底清理生命周期自身持有的 timer
+	// 与 handling 锁 key（避免 OnRoomEnded 缺失导致的 handle/timers 累积）
+	cleanupRoomRedisResidual(ctx, s.redis, roomCode, nil)
+	s.cancelTimer(&s.graceTimers, roomCode)
+	// empty_ttl 主 key 已经在当前函数顶部 DEL，此处再 DEL host_grace + handling 锁 key 做收尾
+	pipe := s.redis.Pipeline()
+	pipe.Del(ctx, HostGraceKey(roomCode))
+	pipe.Del(ctx, redisKeyHostGraceHandlingLock+roomCode)
+	if _, err := pipe.Exec(ctx); err != nil {
+		logs.Warn(ctx, funcName, "清理会议剩余生命周期 key 失败（忽略）",
+			zap.String("room_code", roomCode), zap.Error(err))
+	}
+
 	logs.Info(ctx, funcName, "空房 TTL 过期，会议已销毁",
 		zap.String("room_code", roomCode), zap.Int64("room_id", room.ID))
+}
+
+// OnRoomEnded 会议结束（host 主动 EndRoom / 空房 TTL 销毁 / 其他销毁路径）统一生命周期收尾
+// Task 16 资源清理专项：
+//   1. 取消 host 宽限期 / 空房 TTL 两条本地 timer，避免 time.AfterFunc 到期后跑一轮无效 HandleXxxExpired
+//      (虽然 HandleXxxExpired 内部有 status=Ended 早退路径，但仍浪费 30s context + Redis 往返)
+//   2. DEL host_grace / empty_ttl 主 key 及对应的处理锁 key，避免 Redis 条目累积到自然过期
+// 幂等：多次调用、无 timer / 无 key 场景都安全
+func (s *MeetingLifecycleService) OnRoomEnded(ctx context.Context, roomCode string) {
+	funcName := "service.meeting_lifecycle_service.OnRoomEnded"
+
+	s.cancelTimer(&s.graceTimers, roomCode)
+	s.cancelTimer(&s.emptyTTLTimers, roomCode)
+
+	pipe := s.redis.Pipeline()
+	pipe.Del(ctx, HostGraceKey(roomCode))
+	pipe.Del(ctx, EmptyTTLKey(roomCode))
+	pipe.Del(ctx, redisKeyHostGraceHandlingLock+roomCode)
+	pipe.Del(ctx, redisKeyEmptyTTLHandlingLock+roomCode)
+	if _, err := pipe.Exec(ctx); err != nil {
+		logs.Warn(ctx, funcName, "批量清理生命周期 Redis key 失败（忽略，继续）",
+			zap.String("room_code", roomCode), zap.Error(err))
+	}
+	logs.Debug(ctx, funcName, "会议结束，生命周期 timers/keys 已清理",
+		zap.String("room_code", roomCode))
 }
 
 // RescheduleFromRedis 服务启动时扫描 Redis 已存在的 grace / empty_ttl key，按剩余 PTTL 补装本地 timer

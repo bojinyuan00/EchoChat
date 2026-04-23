@@ -177,6 +177,12 @@ export const useMeetingStore = defineStore('meeting', () => {
   /** { [userId]: { inCount: number, outCount: number } }，用于防抖 1-in / 2-out */
   const _speakingDebounce = {}
 
+  /**
+   * Task 16 资源清理专项：_broadcastSelfState 重试期间的 setTimeout 句柄集合
+   * 离会 / 结束会议时统一 clearTimeout，避免会议结束后仍有 stale 重试逻辑在 event loop 排队
+   */
+  const _pendingBroadcastTimers = new Set()
+
   // ==================== Getters ====================
 
   const isInMeeting = computed(() => {
@@ -583,6 +589,12 @@ export const useMeetingStore = defineStore('meeting', () => {
 
   const _cleanupMedia = () => {
     _stopSpeakingDetection()
+    // Task 16 资源清理：清理 _broadcastSelfState 挂起的 setTimeout 重试
+    // 防止会议结束后重试逻辑仍在 event loop 排队造成 memory pin
+    _pendingBroadcastTimers.forEach((handle) => {
+      try { clearTimeout(handle) } catch {}
+    })
+    _pendingBroadcastTimers.clear()
     if (_engine) {
       try { _engine.close() } catch (e) { _log('warn', '_cleanupMedia engine.close', e) }
       _engine = null
@@ -927,7 +939,13 @@ export const useMeetingStore = defineStore('meeting', () => {
     }
   }
 
-  /** 主持人结束会议（会广播 room.ended 给所有人） */
+  /**
+   * 主持人结束会议（后端会广播 room.ended 给所有人）
+   * Task 16 资源清理：API 成功后立即本地兜底 _cleanupMedia
+   * - 避免"API 成功但 WS 断线导致 room.ended 广播丢失 → 本地 engine/timer/AudioContext 泄漏"
+   * - 同时触发 _onRoomEnded 走 ENDED 状态，UI 展示"会议已结束"提示页
+   * - 若之后广播到达也是幂等（_engine 已 null + closed 判定）
+   */
   const endMeeting = async () => {
     if (!currentRoom.value) return
     const code = currentRoom.value.room_code
@@ -937,7 +955,20 @@ export const useMeetingStore = defineStore('meeting', () => {
       _log('warn', '[Meeting] end API 失败', err)
       throw err
     }
-    // room.ended WS 广播会触发 _onRoomEnded 清理
+    _onRoomEnded({ data: { room_code: code, reason: 'host_ended' } })
+  }
+
+  /**
+   * Task 16 资源清理：退出"会议已结束"提示页时的清理
+   * - _onRoomEnded 刻意保留了 currentRoom / participants / chatMessages 供结束页渲染
+   * - 但若用户长时间停留在结束页（或直接 reLaunch 去别处），pinia state 会一直占内存
+   * - 调用方：room.vue 的 onUnload / 结束页"返回首页"按钮
+   * - 仅在 ENDED 状态下执行 _reset；其他状态用 leave() 通道
+   */
+  const exitEndedRoom = () => {
+    if (localState.value === MEETING_LOCAL_STATE_ENDED) {
+      _reset()
+    }
   }
 
   // ==================== Actions：本地推流 ====================
@@ -1052,7 +1083,13 @@ export const useMeetingStore = defineStore('meeting', () => {
           }
           const delay = backoffMs[attempt + 1] || 2100
           _log('warn', `[Meeting] 上报本地音视频状态失败，${delay}ms 后重试 (${attempt + 2}/${maxAttempts})`, err)
-          setTimeout(() => attemptSend(attempt + 1), delay)
+          // Task 16 资源清理：把 setTimeout 句柄登记到全局 Set
+          // 离会/结束会议时 _cleanupMedia() 统一 clearTimeout，避免 stale 重试排队
+          const handle = setTimeout(() => {
+            _pendingBroadcastTimers.delete(handle)
+            attemptSend(attempt + 1)
+          }, delay)
+          _pendingBroadcastTimers.add(handle)
         })
     }
     attemptSend(0)
@@ -1224,6 +1261,7 @@ export const useMeetingStore = defineStore('meeting', () => {
     joinAndEnter,
     leave,
     endMeeting,
+    exitEndedRoom,
 
     // media
     startLocalAudio,

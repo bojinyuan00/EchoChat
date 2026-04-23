@@ -575,6 +575,18 @@ func (s *MeetingService) EndRoom(ctx context.Context, userID int64, code string)
 		logs.Warn(ctx, funcName, "关闭 mediasoup Router 失败", zap.Error(err))
 	}
 
+	// Task 16 资源清理专项：EndRoom 场景下 WS 断开钩子尚未触发（用户客户端可能仍在会议页），
+	// 需主动清每个活跃成员在 Redis 的资源追踪集合 + 音视频状态 Hash，避免短期反复开会累积垃圾条目
+	userIDs := make([]int64, 0, len(activesBefore))
+	for _, p := range activesBefore {
+		userIDs = append(userIDs, p.UserID)
+	}
+	cleanupRoomRedisResidual(ctx, s.redis, code, userIDs)
+	// 取消生命周期 timer + 清 host_grace / empty_ttl / handling 锁 key（幂等）
+	if s.lifecycleSvc != nil {
+		s.lifecycleSvc.OnRoomEnded(ctx, code)
+	}
+
 	logs.Info(ctx, funcName, "会议已结束", zap.String("room_code", code), zap.Int64("host_id", userID))
 	return nil
 }

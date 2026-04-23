@@ -602,6 +602,11 @@ onUnload(() => {
   if (meetingStore.isInMeeting && meetingStore.localState !== MEETING_LOCAL_STATE_LEAVING) {
     meetingStore.leave().catch(() => {})
   }
+  // Task 16 资源清理：若停留在"会议已结束"页面后物理返回，清空 pinia state
+  // 避免 currentRoom / participants / chatMessages 等大对象常驻内存
+  if (meetingStore.localState === MEETING_LOCAL_STATE_ENDED) {
+    meetingStore.exitEndedRoom()
+  }
 })
 </script>
 
