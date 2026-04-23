@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/echochat/backend/app/constants"
@@ -70,7 +71,8 @@ func memberStateKey(roomCode string, userID int64) string {
 
 // resourceTTL 单个用户资源追踪集合 TTL
 // 设计：会议期间维持可达即可；若用户长期不活跃由断线清理接管
-const resourceTTL = time.Hour
+// Task 16 Nit：常量已迁出至 constants.MeetingResourceTrackTTLSeconds，此处保留计算式 wrapper 方便调用侧零改动
+var resourceTTL = time.Duration(constants.MeetingResourceTrackTTLSeconds) * time.Second
 
 // trackResource 记录用户在会议中持有的媒体资源 ID
 func (s *MeetingSignalService) trackResource(ctx context.Context, roomCode string, userID int64, kind, id string) {
@@ -265,17 +267,12 @@ func (s *MeetingSignalService) pushExistingProducers(ctx context.Context, roomID
 		}
 		for _, m := range members {
 			// 格式："kind:id"；仅关心 producer
-			idx := -1
-			for j, c := range m {
-				if c == ':' {
-					idx = j
-					break
-				}
-			}
-			if idx < 0 {
+			// Nit（代码审查 2026-04-23）：改用 strings.SplitN，避免 rune 解码开销
+			parts := strings.SplitN(m, ":", 2)
+			if len(parts) != 2 {
 				continue
 			}
-			kind, id := m[:idx], m[idx+1:]
+			kind, id := parts[0], parts[1]
 			if kind != "producer" || id == "" {
 				continue
 			}
@@ -410,10 +407,12 @@ func (s *MeetingSignalService) OnRoomLeave(ctx context.Context, userID int64, ro
 	}
 	s.cleanupUserResources(ctx, roomCode, userID)
 
+	// P2-8 修复：使用常量 MeetingLeftReasonDisconnect，避免 "ws_disconnect" 等硬编码
+	// 与前端 MEETING_LEFT_REASON_LABEL 字面值不一致
 	go s.broadcaster.BroadcastToMeeting(logs.DetachContext(ctx), room.ID, constants.MeetingWSEventMemberLeft, map[string]interface{}{
 		"room_code": roomCode,
 		"user_id":   userID,
-		"reason":    "ws_disconnect",
+		"reason":    constants.MeetingLeftReasonDisconnect,
 	}, userID)
 	return nil
 }
@@ -678,23 +677,21 @@ func (s *MeetingSignalService) cleanupUserResources(ctx context.Context, roomCod
 	}
 	for _, m := range members {
 		// 格式："kind:id"
-		idx := -1
-		for i, c := range m {
-			if c == ':' {
-				idx = i
-				break
-			}
-		}
-		if idx < 0 {
+		// Nit（代码审查 2026-04-23）：原先使用 for-range + rune 匹配 ':'，对 ASCII 过度包装；
+		// 改用 strings.SplitN 限定 2 段更清晰，且避免 rune 解码开销
+		parts := strings.SplitN(m, ":", 2)
+		if len(parts) != 2 {
 			continue
 		}
-		kind, id := m[:idx], m[idx+1:]
+		kind, id := parts[0], parts[1]
 		switch kind {
 		case "producer":
 			_ = s.mediaOrchestrator.CloseProducer(ctx, id)
 		case "consumer":
 			_ = s.mediaOrchestrator.CloseConsumer(ctx, id)
-			// transport 关闭一般由 Router 级联；这里不单独处理
+		case "transport":
+			// Task 16 P2-1：补全 transport 精确清理，短暂抖动重连场景下 Router 不会级联关闭自己的 transport
+			_ = s.mediaOrchestrator.CloseTransport(ctx, id)
 		}
 	}
 	_ = s.redis.Del(ctx, key).Err()

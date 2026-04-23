@@ -60,9 +60,10 @@ minio:
 media_server:
   base_url: "http://localhost:3300"          # media-server 基础 URL（不含末尾斜杠）
   internal_token: "dev-token-abcdef1234567890"   # 与 media-server/.env MEDIA_INTERNAL_TOKEN 一致（开发环境）
-  timeout_ms: 5000                           # 创建类接口超时（毫秒）
+  timeout_ms: 10000                          # 创建类接口超时（毫秒）；Task 16 Nit：5000 → 10000 兼容 Worker 冷启动
   close_timeout_ms: 2000                     # 关闭类接口超时（毫秒）
   close_retry: 2                             # 关闭类接口失败重试次数（指数退避 200/500ms）
+  create_router_retry: 1                     # Task 16 Nit：CreateRouter 在 5xx/网络错误时的额外重试次数（默认 1 次，退避 300ms）
 
 # 会议模块生命周期参数（Phase 2e-2 Task 8 会议状态机）
 # E2E 测试可通过环境变量 ECHOCHAT_MEETING_HOST_GRACE_SECONDS 等覆盖为更短值以加速触发

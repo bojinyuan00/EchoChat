@@ -52,9 +52,10 @@ minio:
 media_server:
   base_url: "http://media-server:3300"            # Docker 网络内服务名
   internal_token: "dev-internal-token-change-me"  # 生产环境通过 ECHOCHAT_MEDIA_SERVER_INTERNAL_TOKEN 覆盖
-  timeout_ms: 5000
+  timeout_ms: 10000        # Task 16 Nit：5000 → 10000 兼容 Worker 冷启动
   close_timeout_ms: 2000
   close_retry: 2
+  create_router_retry: 1   # Task 16 Nit：CreateRouter 在 5xx/网络错误时的额外重试次数
 
 # 会议模块生命周期参数（Phase 2e-2 Task 8）
 meeting:

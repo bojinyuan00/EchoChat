@@ -48,6 +48,7 @@ import {
   MEETING_WS_CHAT_MESSAGE,
   MEETING_ROLE_HOST,
   MEETING_ENDED_REASON_LABEL,
+  MEETING_ENDED_REASON_KICKED,
   MEETING_HOST_AUTO_REASON_LABEL
 } from '@/constants/meeting'
 
@@ -408,7 +409,7 @@ export const useMeetingStore = defineStore('meeting', () => {
     const userStore = useUserStore()
     if (data.user_id === userStore.userInfo?.id) {
       _log('warn', '[Meeting] 当前用户被踢出会议')
-      lastEndedReason.value = 'kicked'
+      lastEndedReason.value = MEETING_ENDED_REASON_KICKED
       _cleanupMedia()
       localState.value = MEETING_LOCAL_STATE_ENDED
       _unregisterListeners()

@@ -26,8 +26,9 @@ func ProvideOnlineService(rdb *redis.Client, hub *ws.Hub, pubsub *ws.PubSub, fri
 }
 
 // ProvideWSHandler 创建 WebSocket Handler
-func ProvideWSHandler(hub *ws.Hub, pubsub *ws.PubSub, cfg *config.JWTConfig, onlineService *OnlineService, tokenValidator TokenValidator) *Handler {
-	return NewHandler(hub, pubsub, cfg, onlineService, tokenValidator)
+// Task 16 Nit：新增 ServerConfig 入参，用于 WS 握手 Origin 白名单
+func ProvideWSHandler(hub *ws.Hub, pubsub *ws.PubSub, jwtCfg *config.JWTConfig, serverCfg *config.ServerConfig, onlineService *OnlineService, tokenValidator TokenValidator) *Handler {
+	return NewHandler(hub, pubsub, jwtCfg, serverCfg, onlineService, tokenValidator)
 }
 
 // WSSet WebSocket 模块 Wire Provider Set

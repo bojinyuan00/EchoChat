@@ -64,7 +64,13 @@ func (ctl *MeetingController) handleError(c *gin.Context, err error, fallbackMsg
 		errors.Is(err, service.ErrRoomCodeConflict),
 		errors.Is(err, service.ErrKickSelfForbidden),
 		errors.Is(err, service.ErrTransferToSelf),
-		errors.Is(err, service.ErrTransferTargetInvalid):
+		errors.Is(err, service.ErrTransferTargetInvalid),
+		// P2-7 会议聊天服务端校验失败：内容为空 / 超长 / 触发限流
+		// 当前使用 400（由 ResponseBadRequest 返回），保持与其余业务错误一致；
+		// 未来若需要精细区分（如 ErrChatRateLimited → 429、ErrChatContentTooLong → 413），可拆分分支
+		errors.Is(err, service.ErrChatContentEmpty),
+		errors.Is(err, service.ErrChatContentTooLong),
+		errors.Is(err, service.ErrChatRateLimited):
 		utils.ResponseBadRequest(c, err.Error())
 	default:
 		logs.Warn(c.Request.Context(), "controller.meeting_controller.handleError",

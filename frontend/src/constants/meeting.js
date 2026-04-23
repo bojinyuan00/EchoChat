@@ -45,16 +45,21 @@ export const MEETING_ROLE_LABEL = {
 
 // ==================== 会议结束原因 ====================
 
+// 注意：下列 4 个值必须与后端 backend/go-service/app/constants/meeting.go::MeetingEndedReason* 保持一致
 export const MEETING_ENDED_REASON_HOST_ENDED = 'host_ended'
 export const MEETING_ENDED_REASON_EMPTY_TTL = 'empty_ttl'
 export const MEETING_ENDED_REASON_ADMIN_FORCE = 'admin_force'
 export const MEETING_ENDED_REASON_SYSTEM_ERROR = 'system_error'
+// 下列为"前端专用"原因（非后端 meeting_rooms.ended_reason 值），
+// 用于 store 将当前用户的"单端终止"归因到 ENDED 本地状态时展示
+export const MEETING_ENDED_REASON_KICKED = 'kicked'             // 当前用户被主持人移除（由 member.kicked 触发）
 
 export const MEETING_ENDED_REASON_LABEL = {
   [MEETING_ENDED_REASON_HOST_ENDED]: '主持人结束',
   [MEETING_ENDED_REASON_EMPTY_TTL]: '空房超时',
   [MEETING_ENDED_REASON_ADMIN_FORCE]: '管理员强制结束',
-  [MEETING_ENDED_REASON_SYSTEM_ERROR]: '系统异常'
+  [MEETING_ENDED_REASON_SYSTEM_ERROR]: '系统异常',
+  [MEETING_ENDED_REASON_KICKED]: '您已被主持人移出会议'
 }
 
 // ==================== 离会原因 ====================

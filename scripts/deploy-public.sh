@@ -99,6 +99,29 @@ step_validate_env() {
     warn "JWT_SECRET 长度仅 ${#JWT_SECRET} 字符，推荐 >= 64 字符（openssl rand -hex 32）"
   fi
 
+  # Task 16 Nit（代码审查 2026-04-23）：REDIS_PASSWORD 与 redis.conf requirepass 联动校验
+  # 背景：REDIS_PASSWORD 只影响 go-service / media-server 的连接侧，
+  #       若 deploy/docker/redis/redis.conf 未设置 requirepass，Redis 本身会接受无密码连接（相当于裸奔）
+  local redis_conf="$DEPLOY_DIR/docker/redis/redis.conf"
+  if [[ -f "$redis_conf" ]]; then
+    local has_requirepass
+    has_requirepass=$(grep -E '^\s*requirepass\s+\S+' "$redis_conf" || true)
+    if [[ -n "${REDIS_PASSWORD:-}" ]]; then
+      if [[ -z "$has_requirepass" ]]; then
+        err "REDIS_PASSWORD 已设置，但 $redis_conf 未启用 requirepass —— Redis 仍允许空密码登录，公网暴露时务必同步开启"
+        log_info "建议：在 redis.conf 追加 requirepass \$REDIS_PASSWORD（或在 docker-compose command 中传入 --requirepass）"
+      else
+        log_ok "Redis requirepass 已在 redis.conf 启用，与 REDIS_PASSWORD 联动"
+      fi
+    else
+      if [[ -n "$has_requirepass" ]]; then
+        warn "redis.conf 启用了 requirepass，但 deploy/.env 的 REDIS_PASSWORD 为空 —— go-service/media-server 连接会失败"
+      fi
+    fi
+  else
+    warn "未找到 $redis_conf，跳过 Redis 密码联动校验"
+  fi
+
   # TURN 开关一致性
   if [[ "${TURN_ENABLED:-false}" != "true" ]]; then
     warn "TURN_ENABLED=${TURN_ENABLED:-false}，公网部署下建议开启 TURN 作为对称 NAT fallback"

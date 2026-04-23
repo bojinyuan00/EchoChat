@@ -65,13 +65,24 @@ type HTTPMediaOrchestrator struct {
 func NewHTTPMediaOrchestrator(cfg *config.Config) *HTTPMediaOrchestrator {
 	mc := cfg.MediaServer
 	if mc.TimeoutMS <= 0 {
-		mc.TimeoutMS = 5000
+		// Task 16 Nit（代码审查 2026-04-23 第 15 条）：
+		// 原默认 5000ms 对 CreateRouter 偏紧（Worker 冷启动 + Router 首次创建在慢机上可达 6~8s），
+		// 统一将默认超时放宽到 10000ms，显式配置（config.*.yaml）不受影响
+		mc.TimeoutMS = 10000
 	}
 	if mc.CloseTimeoutMS <= 0 {
 		mc.CloseTimeoutMS = 2000
 	}
 	if mc.CloseRetry < 0 {
 		mc.CloseRetry = 0
+	}
+	if mc.CreateRouterRetry < 0 {
+		mc.CreateRouterRetry = 0
+	}
+	if mc.CreateRouterRetry == 0 {
+		// Task 16 Nit（代码审查 2026-04-23 第 15 条）：
+		// 默认允许 1 次轻量重试，300ms 退避，仅对非 404 错误生效
+		mc.CreateRouterRetry = 1
 	}
 	// 去除 base_url 末尾斜杠，统一拼接风格
 	mc.BaseURL = strings.TrimRight(mc.BaseURL, "/")
@@ -113,15 +124,42 @@ func (h *HTTPMediaOrchestrator) CreateRouter(ctx context.Context, roomCode strin
 		RouterID        string          `json:"routerId"`
 		RtpCapabilities json.RawMessage `json:"rtpCapabilities"`
 	}
-	if err := h.doRequest(ctx, requestOptions{
-		method:    http.MethodPost,
-		path:      "/internal/v1/routers",
-		body:      reqBody,
-		timeoutMS: h.cfg.TimeoutMS,
-		funcName:  funcName,
-		logFields: []zap.Field{zap.String("room_code", roomCode)},
-	}, &resp); err != nil {
-		return "", err
+
+	// Task 16 Nit：CreateRouter 在 5xx / 网络错误时允许 CreateRouterRetry 次重试（退避 300ms）
+	// - 404 不应出现在 POST /routers，若出现视为 media-server 配置异常，不重试
+	// - ctx.Err() 立即终止（上游取消或超时）
+	attempts := h.cfg.CreateRouterRetry + 1
+	var lastErr error
+	for i := 0; i < attempts; i++ {
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(300 * time.Millisecond):
+			}
+			logs.Info(ctx, funcName, "CreateRouter 重试",
+				zap.String("room_code", roomCode),
+				zap.Int("attempt", i+1))
+		}
+		err := h.doRequest(ctx, requestOptions{
+			method:    http.MethodPost,
+			path:      "/internal/v1/routers",
+			body:      reqBody,
+			timeoutMS: h.cfg.TimeoutMS,
+			funcName:  funcName,
+			logFields: []zap.Field{zap.String("room_code", roomCode), zap.Int("attempt", i+1)},
+		}, &resp)
+		if err == nil {
+			lastErr = nil
+			break
+		}
+		lastErr = err
+		if errors.Is(err, ErrMediaResourceNotFound) {
+			break
+		}
+	}
+	if lastErr != nil {
+		return "", lastErr
 	}
 
 	info := &routerInfoCache{
@@ -255,6 +293,21 @@ func (h *HTTPMediaOrchestrator) ConnectTransport(ctx context.Context, transportI
 		funcName:  funcName,
 		logFields: []zap.Field{zap.String("transport_id", transportID)},
 	}, nil)
+}
+
+// CloseTransport 调用 DELETE /internal/v1/transports/:id（Task 16 P2-1 引入）
+// 404 映射为 ErrMediaResourceNotFound（上层 cleanupUserResources 视为已清理）
+// 与 CloseProducer / CloseConsumer 保持同一重试/超时策略
+func (h *HTTPMediaOrchestrator) CloseTransport(ctx context.Context, transportID string) error {
+	funcName := "service.http_media_orchestrator.CloseTransport"
+
+	err := h.doCloseRequest(ctx, fmt.Sprintf("/internal/v1/transports/%s", transportID), funcName, []zap.Field{
+		zap.String("transport_id", transportID),
+	})
+	if errors.Is(err, ErrMediaResourceNotFound) {
+		return nil
+	}
+	return err
 }
 
 // CreateProducer 调用 POST /internal/v1/producers

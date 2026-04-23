@@ -565,15 +565,24 @@ const redirectHome = () => {
 
 let stateStopWatch = null
 
+// P2-3 修复：redirectTo 后必须 return，避免 onMounted 继续执行闪默认 UI
+// 使用 module-scoped 标记，onMounted 读取后判断是否提前退出
+let redirectingToJoin = false
+
 onLoad((query) => {
   // 刷新页面 / 直链访问 room 时 store 为空，回跳 join 避免白屏
   if (!meetingStore.isInMeeting) {
     const paramCode = (query?.code || '').replace(/\D/g, '')
+    redirectingToJoin = true
     uni.redirectTo({ url: `/pages/meeting/join${paramCode ? `?code=${paramCode}` : ''}` })
+    return
   }
 })
 
 onMounted(() => {
+  // P2-3 修复：onLoad 已 redirectTo 跳转时，避免本页继续初始化定时器与 watcher
+  if (redirectingToJoin) return
+
   const startIso = meetingStore.currentRoom?.started_at || meetingStore.currentRoom?.created_at
   startedAt.value = startIso ? Date.parse(startIso) : Date.now()
   timerHandle = setInterval(() => { nowTs.value = Date.now() }, 1000)

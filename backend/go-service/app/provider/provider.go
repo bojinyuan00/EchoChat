@@ -156,12 +156,19 @@ func provideMinioConfig(cfg *config.Config) *config.MinioConfig {
 	return &cfg.Minio
 }
 
+// provideServerConfig 从全局 Config 中提取 ServerConfig
+// Task 16 Nit：WebSocket CheckOrigin 白名单收敛需要 server.ws_allowed_origins + server.mode
+func provideServerConfig(cfg *config.Config) *config.ServerConfig {
+	return &cfg.Server
+}
+
 // InfraSet 基础设施层 Provider Set
 var InfraSet = wire.NewSet(
 	provideDBConfig,
 	provideRedisConfig,
 	provideJWTConfig,
 	provideMinioConfig,
+	provideServerConfig,
 	db.NewPostgres,
 	db.NewRedis,
 	storage.NewMinioClient,

@@ -143,6 +143,29 @@ export function getTransportStats(): { total: number } {
   return { total: transportMap.size };
 }
 
+/**
+ * 主动关闭指定 Transport（Task 16 P2-1：cleanupUserResources 补全）
+ * - 已不存在 → 抛 notFound（HTTP 层映射 404，Go orchestrator 视为已清理的幂等成功）
+ * - 已存在 → 调 transport.close()，observer 'close' 会自动从 transportMap 移除
+ * - 幂等：外层可放心重试；内部依赖 mediasoup 的 close() 本身幂等
+ */
+export function closeTransport(transportId: string): void {
+  const entry = transportMap.get(transportId);
+  if (!entry) {
+    throw notFound('transport', transportId);
+  }
+  try {
+    entry.transport.close();
+  } catch (err) {
+    // mediasoup 对重复 close 一般不抛，但仍吞错避免"部分成功"语义
+    log.warn(
+      { transportId, err: err instanceof Error ? err.message : String(err) },
+      'transport.close threw (ignored, already closed?)',
+    );
+  }
+  log.info({ transportId, userId: entry.userId, routerId: entry.routerId }, 'transport closed via API');
+}
+
 /** 测试专用：复位 transportMap，生产环境调用会抛错 */
 export function _clearTransportMap(): void {
   assertTestOnly('_clearTransportMap');

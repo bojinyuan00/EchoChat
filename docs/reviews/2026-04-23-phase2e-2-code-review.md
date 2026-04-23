@@ -191,3 +191,37 @@ Phase 2e-2 会议 MVP 的代码质量整体达到了"可交付 demo、内网试�
 | Nit | media-server | `consumer.service.ts` | 7-9 / 41 | producer.appData 资格校验 TODO |
 | Nit | frontend/media | `mediasoup-client.js` | - | in-flight 锁 reject 分支未清空 |
 | Nit | frontend/store | `meeting.js` | - | `_onMemberLeft` vs `_cleanupRemoteProducer` 清理粒度 |
+
+## Task 16 修复追踪（2026-04-24 更新）
+
+### 已修复（本次 Phase 2e-2 收尾完成）
+
+| ID | 级别 | 提交 | 结论 |
+|---|---|---|---|
+| - | P0 × 4 | cdaa39d | Media 资源归属校验 / CreateRoom 补偿 / 会议密码迁 in-memory store，详见 commit message |
+| - | P1 × 8 | ea2bf96 | 主持人转让加事务 + SELECT FOR UPDATE / ListMyMeetings 分页 / goroutine trace_id 透传 / broadcast ack 重试 / Redis TTL 分布式锁兜底 / REST+WS 顺序归一等，详见 commit message |
+| - | 资源生命周期 | f5ae095 | MeetingLifecycleService.OnRoomEnded 统一撤销 grace/TTL 定时器；Redis `resourceTrackKey` / `memberStateKey` 显式 DEL；前端 Pinia `_reset` + `_pendingBroadcastTimers` 清理 |
+| P2-1 | P2 | 本批次 | `cleanupUserResources` 新增 `transport` 分支 + media-server DELETE /transports/:id + Go 端 `CloseTransport` |
+| P2-2 | P2 | 本批次 | `preview.vue` 加 `previewSeq` 序号 + 200ms 切换防抖，杜绝快速换摄像头竞态 |
+| P2-3 | P2 | 本批次 | `room.vue` `onLoad` redirectTo 后显式 `return`，避免 onMounted 重复初始化 |
+| P2-6 | P2 | 本批次 | `generateUniqueRoomCode` 失败日志 + 达到 retry 上限返回 `ErrRoomCodeConflict` |
+| P2-7 | P2 | 本批次 | `SendChatMessage` 服务端长度 500 字符（utf8 rune）+ Redis INCR 滑动窗口 30 条/分钟 |
+| P2-8 | P2 | 本批次 | `MEETING_ENDED_REASON_LABEL` 补齐 `kicked`；后端 `OnWSDisconnect` 用 `MeetingLeftReasonDisconnect` 常量 |
+| Nit splitn | Nit | 本批次 | `meeting_signal_service.go` 的 `kind:id` 解析统一 `strings.SplitN` |
+| Nit ttl | Nit | 本批次 | `resourceTTL` 中央化到 `constants.MeetingResourceTrackTTLSeconds` |
+| Nit origin | Nit | 本批次 | `ws/handler.go` CheckOrigin 按 `server.ws_allowed_origins` + `server.mode` 收敛，同源放行，release 模式仅允许白名单 |
+| Nit timeout | Nit | 本批次 | `http_media_orchestrator.go` 默认 `TimeoutMS` 5000→10000；CreateRouter 新增 `CreateRouterRetry`（默认 1 次，300ms 退避） |
+| Nit redispass | Nit | 本批次 | `deploy-public.sh` 追加 REDIS_PASSWORD × redis.conf requirepass 联动校验；redis.conf 加 TODO 注释 |
+| Nit routepath | Nit | 本批次 | `internal-auth.ts` 按 path（剔除 query/hash）匹配白名单，避免 `?` 混淆 |
+| Nit inflight | Nit | 本批次 | `mediasoup-client.js` 走读确认 `finally` 已覆盖 resolve/reject 两路，加强注释 |
+| Nit review | Nit | 本批次 | `_onMemberLeft` 整槽关闭 vs `_onProducerNew(closed=true)` 精确匹配 producerId，粒度正确，无需改动 |
+
+### 推迟到独立阶段（登记存档）
+
+| ID | 级别 | 理由 | 跟进计划 |
+|---|---|---|---|
+| P2-4 | P2 | WS token 从 URL query 迁到首帧鉴权需要同时改 `ws/handler.go` / 前端 `websocket.js` / 反代日志脱敏，改动面大 | Phase 2f 安全专项批次单独处理 |
+| P2-5 | P2 | `MeetingChatService` 拆分属于架构重构 | Phase 2f 服务分层专项批次 |
+| Nit ports | Nit | `docker-compose.dev.yml` 200 UDP/TCP 端口暴露收敛 | 正式公网部署清单（Phase 3 前） |
+| Nit appdata | Nit | `consumer.service.ts` `producer.appData` 资格校验 | Phase 2e-3 流媒体合流时同步做 |
+| Nit rfc3339 | Nit | 广播时间格式统一 RFC3339 | 跨模块低优先级，随 Phase 2f 协议梳理 |

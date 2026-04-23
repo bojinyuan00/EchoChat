@@ -120,6 +120,12 @@ let audioContext = null
 let analyser = null
 let volumeRafId = null
 
+// P2-2 修复：快速切换摄像头/麦克风时 getUserMedia 并发竞态保护
+// - previewSeq 每调用一次 startPreview 递增，保证只有"最后一次"请求结果被挂载
+// - changeDebounceTimer 合并 200ms 内的连续切换（防止 picker 快速滚动触发多次拉流）
+let previewSeq = 0
+let changeDebounceTimer = null
+
 const hasPermission = ref(false)
 const permissionError = ref('')
 const joining = ref(false)
@@ -197,6 +203,7 @@ const startPreview = async () => {
     }
     return
   }
+  const mySeq = ++previewSeq
   stopPreviewStream()
   stopAudioMeter()
   try {
@@ -206,13 +213,21 @@ const startPreview = async () => {
         ? { deviceId: { exact: selectedVideoId.value }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } }
         : { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } }
     }
-    previewStream = await navigator.mediaDevices.getUserMedia(constraints)
+    const stream = await navigator.mediaDevices.getUserMedia(constraints)
+    if (mySeq !== previewSeq) {
+      // 期间又触发了新的 startPreview，本次结果已过期，立即关闭 track 丢弃
+      stream.getTracks().forEach(t => { try { t.stop() } catch {} })
+      return
+    }
+    previewStream = stream
     hasPermission.value = true
     permissionError.value = ''
     await nextTick()
+    if (mySeq !== previewSeq) return
     mountPreviewVideo()
     startAudioMeter(previewStream)
   } catch (err) {
+    if (mySeq !== previewSeq) return
     hasPermission.value = false
     permissionError.value = err?.name === 'NotAllowedError'
       ? '已拒绝摄像头/麦克风权限，请在浏览器地址栏左侧恢复权限后重试'
@@ -220,6 +235,17 @@ const startPreview = async () => {
     console.warn('[Preview] getUserMedia 失败', err)
   }
   // #endif
+}
+
+// P2-2 修复：设备切换防抖，避免 picker 快速滚动触发多次 getUserMedia 并发
+const scheduleRestartPreview = () => {
+  if (changeDebounceTimer) {
+    clearTimeout(changeDebounceTimer)
+  }
+  changeDebounceTimer = setTimeout(() => {
+    changeDebounceTimer = null
+    startPreview()
+  }, 200)
 }
 
 const mountPreviewVideo = () => {
@@ -309,14 +335,14 @@ const onVideoChange = (e) => {
   const d = videoDevices.value[idx]
   if (!d) return
   selectedVideoId.value = d.deviceId
-  startPreview()
+  scheduleRestartPreview()
 }
 const onAudioChange = (e) => {
   const idx = Number(e.detail.value)
   const d = audioDevices.value[idx]
   if (!d) return
   selectedAudioId.value = d.deviceId
-  startPreview()
+  scheduleRestartPreview()
 }
 const onSpeakerChange = (e) => {
   const idx = Number(e.detail.value)
@@ -427,6 +453,10 @@ onLoad(async (query) => {
 })
 
 onBeforeUnmount(() => {
+  if (changeDebounceTimer) {
+    clearTimeout(changeDebounceTimer)
+    changeDebounceTimer = null
+  }
   stopPreviewStream()
   stopAudioMeter()
 })

@@ -103,6 +103,10 @@ type MediaOrchestrator interface {
 	CreateTransport(ctx context.Context, req *CreateTransportReq) (*TransportInfo, error)
 	// ConnectTransport Transport DTLS 握手（幂等：重复 connect 对已连接 transport 视为成功）
 	ConnectTransport(ctx context.Context, transportID string, dtlsParameters json.RawMessage) error
+	// CloseTransport 主动关闭指定 Transport（Task 16 P2-1 引入）
+	// 场景：用户离会 / WS 断连时 cleanupUserResources 精确清理，避免等待 Router 级联
+	// 语义：404（Transport 已关闭/不存在）返回 ErrMediaResourceNotFound，上层可视为"已清理"幂等成功
+	CloseTransport(ctx context.Context, transportID string) error
 
 	// CreateProducer 在指定 send Transport 上创建 Producer
 	CreateProducer(ctx context.Context, req *CreateProducerReq) (producerID string, err error)
@@ -163,6 +167,11 @@ func (n *NoopMediaOrchestrator) CreateTransport(_ context.Context, req *CreateTr
 
 // ConnectTransport 占位：直接返回 nil
 func (n *NoopMediaOrchestrator) ConnectTransport(_ context.Context, _ string, _ json.RawMessage) error {
+	return nil
+}
+
+// CloseTransport 占位：直接返回 nil（Task 16 P2-1 引入）
+func (n *NoopMediaOrchestrator) CloseTransport(_ context.Context, _ string) error {
 	return nil
 }
 

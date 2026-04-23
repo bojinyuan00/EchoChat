@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/echochat/backend/app/constants"
 	"github.com/echochat/backend/app/dto"
@@ -45,6 +47,10 @@ var (
 	// ErrMediaServiceUnavailable 媒体服务当前不可用（Router 创建失败 / Node 宕机等）
 	// 用于 CreateRoom / JoinRoom 的补偿路径，将前台错误与"用户输入错误"区分开
 	ErrMediaServiceUnavailable = errors.New("媒体服务暂时不可用，请稍后重试")
+	// Task 16 P2-7：会议聊天服务端限流
+	ErrChatContentEmpty   = errors.New("消息内容不能为空")
+	ErrChatContentTooLong = errors.New("消息长度超过上限")
+	ErrChatRateLimited    = errors.New("发送过于频繁，请稍后再试")
 )
 
 // Redis key 前缀（设计文档 §5.4 - Redis 数据结构）
@@ -52,6 +58,8 @@ const (
 	redisKeyInvitePrefix       = "echo:meeting:invite:"       // 邀请 Token
 	redisKeyPasswordLockPrefix = "echo:meeting:lock:"         // 密码错误锁（code:user_id）
 	redisPasswordAttemptPrefix = "echo:meeting:pwd_attempt:"  // 密码错误计数
+	// Task 16 P2-7：会议聊天限流计数键，格式 "echo:meeting:chat_rate:<room>:<user_id>"
+	redisKeyChatRatePrefix = "echo:meeting:chat_rate:"
 )
 
 // MeetingService 会议业务服务
@@ -132,7 +140,12 @@ func (s *MeetingService) assertIsHost(ctx context.Context, room *model.MeetingRo
 }
 
 // generateUniqueRoomCode 生成唯一的 XXX-XXX-XXX 会议号，冲突最多重试 MeetingRoomCodeRetryMax 次
+// P2-6（代码审查 2026-04-23）：
+//   - 重试上限由 constants.MeetingRoomCodeRetryMax 控制（当前=3），避免死循环
+//   - 只要命中第 2 次及以后就打 Warn（正常情况下几乎不会碰撞，连续碰撞通常是码空间
+//     / 生成器被外部污染的信号，需要及早告警）
 func (s *MeetingService) generateUniqueRoomCode(ctx context.Context) (string, error) {
+	funcName := "service.meeting_service.generateUniqueRoomCode"
 	for i := 0; i < constants.MeetingRoomCodeRetryMax; i++ {
 		code, err := utils.GenerateMeetingRoomCode()
 		if err != nil {
@@ -143,9 +156,16 @@ func (s *MeetingService) generateUniqueRoomCode(ctx context.Context) (string, er
 			return "", err
 		}
 		if !exists {
+			if i > 0 {
+				logs.Warn(ctx, funcName, "会议号生成多次冲突后成功，请关注码空间健康度",
+					zap.Int("retry_count", i),
+					zap.String("code", code))
+			}
 			return code, nil
 		}
 	}
+	logs.Error(ctx, funcName, "会议号生成连续冲突达到上限，疑似码空间异常或并发洪水",
+		zap.Int("retry_max", constants.MeetingRoomCodeRetryMax))
 	return "", ErrRoomCodeConflict
 }
 
@@ -868,8 +888,23 @@ func (s *MeetingService) RedeemInviteToken(ctx context.Context, userID int64, to
 // ====== 会议内聊天 ======
 
 // SendChatMessage 会议内发送文本消息
+// Task 16 P2-7：加入服务端校验 + Redis 滑窗限流
+//   - 内容去除首尾空白后必须非空
+//   - Unicode rune 计数不得超过 MeetingChatMaxContentLen
+//   - 单用户单会议 MeetingChatRateLimitWindowS 秒内最多 MeetingChatRateLimitPerMin 条
 func (s *MeetingService) SendChatMessage(ctx context.Context, userID int64, code, content string) (*model.MeetingChat, error) {
 	funcName := "service.meeting_service.SendChatMessage"
+
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return nil, ErrChatContentEmpty
+	}
+	if runeCount := utf8.RuneCountInString(trimmed); runeCount > constants.MeetingChatMaxContentLen {
+		logs.Debug(ctx, funcName, "聊天消息超长，拒绝",
+			zap.String("room_code", code), zap.Int64("user_id", userID),
+			zap.Int("rune_count", runeCount), zap.Int("limit", constants.MeetingChatMaxContentLen))
+		return nil, ErrChatContentTooLong
+	}
 
 	room, err := s.roomDAO.GetByCode(ctx, code)
 	if err != nil {
@@ -885,10 +920,29 @@ func (s *MeetingService) SendChatMessage(ctx context.Context, userID int64, code
 		return nil, err
 	}
 
+	// Redis 滑窗限流（INCR + EXPIRE 组合；首条消息初始化窗口）
+	// 失败时仅 Warn 并放行，避免 Redis 抖动影响用户发消息
+	rateKey := fmt.Sprintf("%s%s:%d", redisKeyChatRatePrefix, code, userID)
+	cnt, rErr := s.redis.Incr(ctx, rateKey).Result()
+	if rErr != nil {
+		logs.Warn(ctx, funcName, "聊天限流 INCR 失败（放行）",
+			zap.String("key", rateKey), zap.Error(rErr))
+	} else {
+		if cnt == 1 {
+			_ = s.redis.Expire(ctx, rateKey, time.Duration(constants.MeetingChatRateLimitWindowS)*time.Second).Err()
+		}
+		if cnt > int64(constants.MeetingChatRateLimitPerMin) {
+			logs.Warn(ctx, funcName, "聊天限流触发",
+				zap.String("room_code", code), zap.Int64("user_id", userID),
+				zap.Int64("count_in_window", cnt), zap.Int("limit", constants.MeetingChatRateLimitPerMin))
+			return nil, ErrChatRateLimited
+		}
+	}
+
 	chat := &model.MeetingChat{
 		RoomID:  room.ID,
 		UserID:  userID,
-		Content: content,
+		Content: trimmed,
 	}
 	if err := s.chatDAO.Create(ctx, chat); err != nil {
 		return nil, err
@@ -903,7 +957,7 @@ func (s *MeetingService) SendChatMessage(ctx context.Context, userID int64, code
 		"user_id":     userID,
 		"user_name":   userName,
 		"user_avatar": userAvatar,
-		"content":     content,
+		"content":     trimmed,
 		"created_at":  chat.CreatedAt.Format("2006-01-02 15:04:05"),
 	}, userID)
 

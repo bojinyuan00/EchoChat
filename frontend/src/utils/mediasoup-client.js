@@ -198,6 +198,8 @@ export function createMediaEngine({ roomCode, userId, sendWithAck, logger = defa
     if (sendTransportPromise) {
       return sendTransportPromise
     }
+    // Nit（代码审查 2026-04-23 第 15 条）：in-flight 锁必须在 resolve/reject 两种结局下均置空，
+    // 否则失败后的下次调用会复用 rejected Promise 直接 throw。这里使用 finally 同时覆盖两路。
     sendTransportPromise = (async () => {
       try {
         return await _createSendTransport()
@@ -232,6 +234,7 @@ export function createMediaEngine({ roomCode, userId, sendWithAck, logger = defa
     if (recvTransportPromise) {
       return recvTransportPromise
     }
+    // Nit（同 ensureSendTransport）：finally 覆盖 resolve/reject 两路置空
     recvTransportPromise = (async () => {
       try {
         return await _createRecvTransport()

@@ -5,6 +5,8 @@ package ws
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/echochat/backend/config"
 	"github.com/echochat/backend/pkg/logs"
@@ -44,35 +46,80 @@ type MeetingDisconnectHook interface {
 	OnWSDisconnect(ctx context.Context, userID int64)
 }
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // TODO: 生产环境通过配置限制 allowed origins
-	},
-}
-
 // Handler WebSocket 连接处理器
 type Handler struct {
 	hub                   *ws.Hub
 	pubsub                *ws.PubSub
 	jwtCfg                *config.JWTConfig
+	serverCfg             *config.ServerConfig // Task 16 Nit：CheckOrigin 白名单需要
 	onlineService         *OnlineService
 	tokenValidator        TokenValidator
 	offlinePusher         OfflineMessagePusher
 	notifyConnectHook     NotifyConnectHook
 	meetingDisconnectHook MeetingDisconnectHook // Task 8 注入
+	upgrader              websocket.Upgrader
 }
 
 // NewHandler 创建 WebSocket Handler 实例
-func NewHandler(hub *ws.Hub, pubsub *ws.PubSub, jwtCfg *config.JWTConfig, onlineService *OnlineService, tokenValidator TokenValidator) *Handler {
-	return &Handler{
+// Task 16 Nit：新增 serverCfg 参数，按 server.ws_allowed_origins + server.mode 收敛 CheckOrigin
+func NewHandler(hub *ws.Hub, pubsub *ws.PubSub, jwtCfg *config.JWTConfig, serverCfg *config.ServerConfig, onlineService *OnlineService, tokenValidator TokenValidator) *Handler {
+	h := &Handler{
 		hub:            hub,
 		pubsub:         pubsub,
 		jwtCfg:         jwtCfg,
+		serverCfg:      serverCfg,
 		onlineService:  onlineService,
 		tokenValidator: tokenValidator,
 	}
+	h.upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin:     h.checkOrigin,
+	}
+	return h
+}
+
+// checkOrigin 按配置收敛 WebSocket 握手 Origin：
+//   - 同源（Origin 为空 或 Origin.Host == Request.Host）→ 放行
+//   - dev 模式（server.mode != release）+ 未配置白名单 → 放行全部（便于本地开发调试）
+//   - release 模式 / 配置了白名单 → 仅放行白名单匹配的 Origin
+//
+// 精确匹配 scheme+host+port，不做前缀/通配，避免误匹配
+func (h *Handler) checkOrigin(r *http.Request) bool {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	// 空 Origin：非浏览器场景（如 curl / server-to-server），默认放行
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		logs.Warn(r.Context(), "ws.handler.checkOrigin", "Origin 非法，拒绝",
+			zap.String("origin", origin))
+		return false
+	}
+	// 同源（Origin.Host == Request.Host）直接放行
+	if strings.EqualFold(u.Host, r.Host) {
+		return true
+	}
+	allowed := h.serverCfg.AllowedOrigins()
+	// 未配置白名单：dev 放行，release 拒绝
+	if len(allowed) == 0 {
+		if h.serverCfg.IsRelease() {
+			logs.Warn(r.Context(), "ws.handler.checkOrigin", "release 模式未配置 WSAllowedOrigins，拒绝跨源",
+				zap.String("origin", origin))
+			return false
+		}
+		return true
+	}
+	// 精确匹配白名单
+	for _, ao := range allowed {
+		if strings.EqualFold(ao, origin) {
+			return true
+		}
+	}
+	logs.Warn(r.Context(), "ws.handler.checkOrigin", "Origin 不在白名单，拒绝",
+		zap.String("origin", origin))
+	return false
 }
 
 // SetOfflinePusher 设置离线消息推送器（由 IM 模块在初始化时注入）
@@ -120,7 +167,7 @@ func (h *Handler) Upgrade(c *gin.Context) {
 		return
 	}
 
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		logs.Error(nil, funcName, "WebSocket 升级失败",
 			zap.Int64("user_id", claims.UserID), zap.Error(err))

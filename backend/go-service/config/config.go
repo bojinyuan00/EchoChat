@@ -34,11 +34,12 @@ type MeetingConfig struct {
 // 与 media-server/.env 中的 MEDIA_INTERNAL_TOKEN / HTTP_PORT 成对使用
 // BaseURL 需精确到协议与端口：http://host:port，不含末尾斜杠
 type MediaServerConfig struct {
-	BaseURL        string `mapstructure:"base_url"`         // 如 http://localhost:3300
-	InternalToken  string `mapstructure:"internal_token"`   // 与 Node 共享密钥
-	TimeoutMS      int    `mapstructure:"timeout_ms"`       // 创建类接口超时（毫秒），默认 5000
-	CloseTimeoutMS int    `mapstructure:"close_timeout_ms"` // 关闭类接口超时（毫秒），默认 2000
-	CloseRetry     int    `mapstructure:"close_retry"`      // 关闭类接口失败重试次数，默认 2
+	BaseURL           string `mapstructure:"base_url"`            // 如 http://localhost:3300
+	InternalToken     string `mapstructure:"internal_token"`      // 与 Node 共享密钥
+	TimeoutMS         int    `mapstructure:"timeout_ms"`          // 创建类接口超时（毫秒），默认 10000
+	CloseTimeoutMS    int `mapstructure:"close_timeout_ms"`    // 关闭类接口超时（毫秒），默认 2000
+	CloseRetry        int `mapstructure:"close_retry"`         // 关闭类接口失败重试次数，默认 2
+	CreateRouterRetry int `mapstructure:"create_router_retry"` // Task 16 Nit：CreateRouter 5xx/网络错误时的重试次数，默认 1
 }
 
 // MinioConfig MinIO 对象存储配置
@@ -54,6 +55,31 @@ type MinioConfig struct {
 type ServerConfig struct {
 	Port int    `mapstructure:"port"` // 监听端口
 	Mode string `mapstructure:"mode"` // 运行模式: debug/release
+	// Task 16 Nit：WebSocket 升级握手 Origin 白名单（逗号分隔）
+	// - 空串 → dev 模式（mode != release）放行全部，release 模式强制拒绝所有跨源（仅同源可建连）
+	// - 配置示例："https://app.example.com,http://localhost:5173"
+	// - 环境变量覆盖：ECHOCHAT_SERVER_WS_ALLOWED_ORIGINS="https://a.com,https://b.com"
+	WSAllowedOrigins string `mapstructure:"ws_allowed_origins"`
+}
+
+// AllowedOrigins 将逗号分隔的 WSAllowedOrigins 解析为 slice，已去空并 trim
+func (s *ServerConfig) AllowedOrigins() []string {
+	if s.WSAllowedOrigins == "" {
+		return nil
+	}
+	raw := strings.Split(s.WSAllowedOrigins, ",")
+	out := make([]string, 0, len(raw))
+	for _, o := range raw {
+		if v := strings.TrimSpace(o); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// IsRelease 判断是否为生产运行模式
+func (s *ServerConfig) IsRelease() bool {
+	return strings.EqualFold(s.Mode, "release")
 }
 
 // DatabaseConfig PostgreSQL 数据库配置

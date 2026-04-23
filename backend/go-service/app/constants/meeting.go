@@ -90,6 +90,16 @@ const (
 	MeetingEmptyRoomTTLSeconds = 300 // 空房销毁 TTL（5 分钟）
 	MeetingInviteTokenTTL      = 600 // 邀请链接 Token TTL（10 分钟）
 	MeetingChatRetentionHours  = 24  // 会议聊天保留时长（会议结束后）
+
+	// Task 16 P2-7：服务端聊天限流（防止客户端校验被绕过）
+	MeetingChatMaxContentLen    = 500 // 单条消息最大字符数（Unicode rune 计数）
+	MeetingChatRateLimitPerMin  = 30  // 单用户单会议每分钟最大条数
+	MeetingChatRateLimitWindowS = 60  // 限流滑动窗口秒数（配合 Redis INCR + EXPIRE）
+
+	// Task 16 Nit：单个用户资源追踪集合 TTL（秒）
+	// 原硬编码在 meeting_signal_service.go::resourceTTL = time.Hour；
+	// 中央化到 constants 便于统一修改 + 单元测试覆盖
+	MeetingResourceTrackTTLSeconds = 3600 // 1 小时
 )
 
 // 会议 WS 事件常量（设计文档 §6.3）
