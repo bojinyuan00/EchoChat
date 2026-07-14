@@ -18,7 +18,7 @@
 
 <script>
 import { computed } from 'vue'
-import { parseExtra, formatFileSize, getFileTypeInfo, isPreviewable } from '@/utils/file'
+import { parseExtra, formatFileSize, getFileTypeInfo, isPreviewable, normalizeMediaUrl } from '@/utils/file'
 
 export default {
   name: 'MsgFile',
@@ -36,7 +36,7 @@ export default {
     const formattedSize = computed(() => formatFileSize(fileData.value.size))
 
     const onTap = () => {
-      const url = fileData.value.url
+      const url = normalizeMediaUrl(fileData.value.url)
       if (!url) return
 
       const fileName = fileData.value.file_name || ''

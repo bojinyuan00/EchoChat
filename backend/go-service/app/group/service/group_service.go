@@ -35,6 +35,8 @@ var (
 	ErrGroupAllMuted        = errors.New("当前群已开启全体禁言")
 	ErrPendingRequestExists = errors.New("已有待处理的入群申请")
 	ErrJoinRequestNotFound  = errors.New("入群申请不存在")
+	ErrInvitationNotFound   = errors.New("群邀请不存在或已处理")
+	ErrInvitationForbidden  = errors.New("只有被邀请者本人可以处理该邀请")
 )
 
 // UserInfoProvider 获取用户信息的接口（通过接口注入，由 contact.FriendshipDAO 隐式实现）
@@ -275,6 +277,10 @@ func (s *GroupService) GetMembers(ctx context.Context, userID, groupID int64) ([
 }
 
 // InviteMembers 邀请用户入群（群主/管理员）
+//
+// 注意：这里不再直接 AddMember，而是为每个被邀请者创建 pending 的 invitation 记录
+// 并推送 group_invite 通知。被邀请者在通知中心点"接受"时走 AcceptInvitation 才真正入群。
+// 修复点：解决"被邀请者还没同意，但已经出现在群聊里并可聊天"的产品语义 bug。
 func (s *GroupService) InviteMembers(ctx context.Context, userID, groupID int64, targetIDs []int64) error {
 	funcName := "service.group_service.InviteMembers"
 	logs.Info(ctx, funcName, "邀请入群",
@@ -285,49 +291,191 @@ func (s *GroupService) InviteMembers(ctx context.Context, userID, groupID int64,
 		return err
 	}
 
+	// 现有容量 + 待处理邀请数 + 本批次候选数 不应超出上限；严格估计，防止邀请滥发
+	// 由于 pending 期间被邀请者尚未入群，这里只对现有成员数做检查，后续接受时会再次严格校验
 	count, err := s.groupDAO.GetMemberCount(ctx, group.ConversationID)
 	if err != nil {
 		return err
 	}
-	if int(count)+len(targetIDs) > group.MaxMembers {
+	if int(count) >= group.MaxMembers {
 		return ErrGroupFull
 	}
 
-	addedIDs := make([]int64, 0, len(targetIDs))
+	inviterName := s.getUserNickname(ctx, userID)
+
+	type pendingEntry struct {
+		userID    int64
+		requestID int64
+	}
+	pending := make([]pendingEntry, 0, len(targetIDs))
+
 	for _, uid := range targetIDs {
-		existing, _ := s.groupDAO.GetMember(ctx, group.ConversationID, uid)
-		if existing != nil {
+		if uid == userID {
 			continue
 		}
-		if err := s.groupDAO.AddMember(ctx, group.ConversationID, uid, constants.GroupRoleNormal); err != nil {
-			logs.Error(ctx, funcName, "添加成员失败", zap.Int64("target_id", uid), zap.Error(err))
-			return err
+
+		existing, _ := s.groupDAO.GetMember(ctx, group.ConversationID, uid)
+		if existing != nil {
+			// 已是群成员，直接跳过
+			continue
 		}
-		addedIDs = append(addedIDs, uid)
+
+		// 已有 pending 邀请则复用（幂等），避免对同一用户重复推送通知
+		existingInvite, _ := s.joinRequestDAO.GetPendingInvitationByGroupAndUser(ctx, groupID, uid)
+		var reqID int64
+		if existingInvite != nil {
+			reqID = existingInvite.ID
+		} else {
+			inv, err := s.joinRequestDAO.CreateInvitation(ctx, groupID, uid, userID)
+			if err != nil {
+				logs.Error(ctx, funcName, "创建群邀请失败", zap.Int64("target_id", uid), zap.Error(err))
+				return err
+			}
+			reqID = inv.ID
+		}
+
+		pending = append(pending, pendingEntry{userID: uid, requestID: reqID})
 	}
 
-	if len(addedIDs) > 0 {
-		inviterName := s.getUserNickname(ctx, userID)
-		addedNames := s.getUserNicknames(ctx, addedIDs)
-		s.writeSystemMessage(ctx, group.ConversationID,
-			fmt.Sprintf("%s 邀请 %s 加入了群聊", inviterName, joinNames(addedNames)))
+	if len(pending) == 0 {
+		return nil
+	}
 
-		s.pushToGroupMembers(ctx, group.ConversationID, 0, "group.member.join", map[string]interface{}{
-			"group_id":        groupID,
-			"conversation_id": group.ConversationID,
-			"user_ids":        addedIDs,
-			"operator_id":     userID,
-		})
-
-		// 向被邀请的每个用户推送入群通知，由通知中心持久化 + WS 实时弹出
-		s.pushGroupNotify(ctx, addedIDs, userID, constants.NotifyTypeGroupInvite,
+	// 针对每个被邀请者分别推送通知：extra 中带 request_id，前端 accept/reject 时回传
+	for _, p := range pending {
+		s.pushGroupNotify(ctx, []int64{p.userID}, userID, constants.NotifyTypeGroupInvite,
 			fmt.Sprintf("%s 邀请你加入「%s」", inviterName, group.Name),
 			groupID, map[string]interface{}{
-				"group_id":        groupID,
+				"group_id":     groupID,
+				"group_name":   group.Name,
+				"request_id":   p.requestID,
+				"inviter_id":   userID,
+				"inviter_name": inviterName,
+			})
+	}
+
+	return nil
+}
+
+// AcceptInvitation 接受群邀请（仅被邀请者本人可执行）
+//
+// 执行时机：被邀请者在通知中心点击"接受"按钮，前端通过 request_id 调用此接口。
+// 只有在此时才真正向群聊写入成员，并推送 group.member.join 事件 + 系统消息。
+func (s *GroupService) AcceptInvitation(ctx context.Context, userID, requestID int64) error {
+	funcName := "service.group_service.AcceptInvitation"
+	logs.Info(ctx, funcName, "接受群邀请",
+		zap.Int64("user_id", userID), zap.Int64("request_id", requestID))
+
+	req, err := s.joinRequestDAO.GetByID(ctx, requestID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrInvitationNotFound
+		}
+		return err
+	}
+	if !req.IsInvitation() || req.Status != constants.JoinRequestStatusPending {
+		return ErrInvitationNotFound
+	}
+	if req.UserID != userID {
+		return ErrInvitationForbidden
+	}
+
+	group, err := s.groupDAO.GetByID(ctx, req.GroupID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrGroupNotFound
+		}
+		return err
+	}
+	if group.Status != constants.GroupStatusNormal {
+		return ErrGroupDissolved
+	}
+
+	// 若用户已是成员（例如已通过别的渠道加入），直接标记 accepted，幂等
+	if existing, _ := s.groupDAO.GetMember(ctx, group.ConversationID, userID); existing != nil {
+		return s.joinRequestDAO.Approve(ctx, requestID, userID)
+	}
+
+	// 再次严格校验群容量，避免 pending 期间被其它成员填满
+	count, err := s.groupDAO.GetMemberCount(ctx, group.ConversationID)
+	if err != nil {
+		return err
+	}
+	if int(count) >= group.MaxMembers {
+		return ErrGroupFull
+	}
+
+	if err := s.groupDAO.AddMember(ctx, group.ConversationID, userID, constants.GroupRoleNormal); err != nil {
+		logs.Error(ctx, funcName, "添加成员失败", zap.Error(err))
+		return err
+	}
+	if err := s.joinRequestDAO.Approve(ctx, requestID, userID); err != nil {
+		logs.Warn(ctx, funcName, "更新邀请状态失败（成员已加入）", zap.Error(err))
+	}
+
+	newMemberName := s.getUserNickname(ctx, userID)
+	s.writeSystemMessage(ctx, group.ConversationID, fmt.Sprintf("%s 加入了群聊", newMemberName))
+
+	s.pushToGroupMembers(ctx, group.ConversationID, 0, "group.member.join", map[string]interface{}{
+		"group_id":        group.ID,
+		"conversation_id": group.ConversationID,
+		"user_ids":        []int64{userID},
+		"operator_id":     userID,
+	})
+
+	// 通知邀请者：对方已接受
+	if req.InviterID != nil {
+		s.pushGroupNotify(ctx, []int64{*req.InviterID}, userID, constants.NotifyTypeGroupJoinApproved,
+			fmt.Sprintf("%s 已接受你邀请加入「%s」", newMemberName, group.Name),
+			group.ID, map[string]interface{}{
+				"group_id":        group.ID,
 				"group_name":      group.Name,
 				"conversation_id": group.ConversationID,
-				"inviter_id":      userID,
-				"inviter_name":    inviterName,
+				"request_id":      requestID,
+			})
+	}
+
+	return nil
+}
+
+// RejectInvitation 拒绝群邀请（仅被邀请者本人可执行）
+// 仅将 invitation 置为 rejected，不产生群成员变动
+func (s *GroupService) RejectInvitation(ctx context.Context, userID, requestID int64) error {
+	funcName := "service.group_service.RejectInvitation"
+	logs.Info(ctx, funcName, "拒绝群邀请",
+		zap.Int64("user_id", userID), zap.Int64("request_id", requestID))
+
+	req, err := s.joinRequestDAO.GetByID(ctx, requestID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrInvitationNotFound
+		}
+		return err
+	}
+	if !req.IsInvitation() || req.Status != constants.JoinRequestStatusPending {
+		return ErrInvitationNotFound
+	}
+	if req.UserID != userID {
+		return ErrInvitationForbidden
+	}
+
+	if err := s.joinRequestDAO.Reject(ctx, requestID, userID); err != nil {
+		return err
+	}
+
+	// 通知邀请者：对方已拒绝
+	if req.InviterID != nil {
+		inviteeName := s.getUserNickname(ctx, userID)
+		groupName := ""
+		if group, gerr := s.groupDAO.GetByID(ctx, req.GroupID); gerr == nil && group != nil {
+			groupName = group.Name
+		}
+		s.pushGroupNotify(ctx, []int64{*req.InviterID}, userID, constants.NotifyTypeGroupJoinRejected,
+			fmt.Sprintf("%s 拒绝了你邀请加入「%s」", inviteeName, groupName),
+			req.GroupID, map[string]interface{}{
+				"group_id":   req.GroupID,
+				"group_name": groupName,
+				"request_id": requestID,
 			})
 	}
 

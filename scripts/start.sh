@@ -173,6 +173,7 @@ start_media() {
 
 # 等待 vite/dev server 日志里出现 Network 行并提取其中的 LAN 地址
 # 最长等待 8 秒；失败时返回空字符串（不阻塞启动流程）
+# 同时匹配 http:// 和 https://（frontend Vite 启用了 basicSsl + https，admin 是 http）
 wait_and_collect_network_urls() {
   local log_file="$1"
   local max_wait="${2:-8}"
@@ -184,18 +185,57 @@ wait_and_collect_network_urls() {
     sleep 1
     i=$((i + 1))
   done
-  grep -Eo "http://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+/?" "$log_file" 2>/dev/null \
+  grep -Eo "https?://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+/?" "$log_file" 2>/dev/null \
     | grep -v '127\.0\.0\.1' \
     | sort -u
 }
 
+# 探测本机活跃 LAN IPv4，规则与 media-server/src/utils/network.ts 中的 detectLanIpv4() 完全一致：
+#   1. 排除回环、link-local、各类虚拟网卡（utun/bridge/vmnet/docker/br-/veth/awdl/anpi 等）
+#   2. 优先级：192.168.x → 10.x → 172.16-31.x
+#   3. 取第一个候选；探不到时返回空字符串
+detect_lan_ip() {
+  ifconfig 2>/dev/null | awk '
+    /^[a-zA-Z0-9]+:/ {
+      iface = $1
+      sub(":", "", iface)
+      lower = tolower(iface)
+      virt = 0
+      if (lower ~ /^(lo|docker|br-|veth|utun|awdl|llw|gif|stf|anpi|ap[0-9]|bridge|vmnet|vnic|vboxnet|tun|tap)/) virt = 1
+    }
+    /[ \t]inet [0-9]/ {
+      if (virt) next
+      ip = $2
+      if (ip == "127.0.0.1") next
+      if (ip ~ /^169\.254\./) next
+      if (ip ~ /^192\.168\./) { print "0\t" ip; next }
+      if (ip ~ /^10\./)        { print "1\t" ip; next }
+      if (ip ~ /^172\.(1[6-9]|2[0-9]|3[0-1])\./) { print "2\t" ip; next }
+      print "3\t" ip
+    }
+  ' | sort -k1,1n | head -n1 | awk '{print $2}'
+}
+
+# 提取 media-server/.env 中 MEDIASOUP_ANNOUNCED_IP 的当前生效值（仅用于摘要展示一致性）
+read_announced_ip() {
+  local env_file="$ROOT_DIR/media-server/.env"
+  [[ -f "$env_file" ]] || { echo ""; return; }
+  grep -E '^MEDIASOUP_ANNOUNCED_IP=' "$env_file" | head -n1 | cut -d= -f2- | tr -d '"' | tr -d "'" | xargs
+}
+
 print_summary() {
+  local lan_ip
+  lan_ip="$(detect_lan_ip)"
+  local announced_ip
+  announced_ip="$(read_announced_ip)"
+
   printf "\n${COLOR_GREEN}=============== EchoChat 启动完成 ===============${COLOR_RESET}\n"
-  printf "  前台用户端 (H5):   http://localhost:5173\n"
+  printf "${COLOR_CYAN}本机访问地址${COLOR_RESET}（仅当前电脑可访问）：\n"
+  printf "  前台用户端 (H5):   https://localhost:5173  ${COLOR_YELLOW}(自签证书，浏览器需点击\"高级 → 继续访问\")${COLOR_RESET}\n"
   printf "  后台管理端:        http://localhost:3100\n"
   printf "  Go 后端 API:       http://localhost:8085\n"
-  printf "  媒体服务器 (SFU):  http://localhost:3300 (healthz: /healthz)\n"
-  printf "  MinIO 控制台:      http://localhost:9001 (echochat / echochat123456)\n"
+  printf "  媒体服务器 (SFU):  http://localhost:3300  (healthz: /healthz)\n"
+  printf "  MinIO 控制台:      http://localhost:9001  (echochat / echochat123456)\n"
 
   # 前端 / 管理端 Vite dev server 启动时 host=0.0.0.0，
   # 会输出多条 Network 行（本机每块网卡一条），这里从日志提取展示
@@ -205,24 +245,52 @@ print_summary() {
   fe_urls="$(wait_and_collect_network_urls "$fe_log" 8)"
   admin_urls="$(wait_and_collect_network_urls "$admin_log" 4)"
 
-  if [[ -n "$fe_urls" || -n "$admin_urls" ]]; then
-    printf "\n${COLOR_CYAN}局域网访问地址${COLOR_RESET}（同 WiFi/LAN 下其他设备可直接访问）：\n"
+  if [[ -n "$lan_ip" || -n "$fe_urls" || -n "$admin_urls" ]]; then
+    printf "\n${COLOR_CYAN}局域网访问地址${COLOR_RESET}（同 WiFi/LAN 下手机/平板/其他电脑可直接访问）：\n"
+
+    # 优先用 vite 实际打印的 URL（Network 行），更可靠；vite 没启动好则 fallback 到 detect_lan_ip
     if [[ -n "$fe_urls" ]]; then
       printf "  前台用户端：\n"
       while IFS= read -r line; do
         [[ -z "$line" ]] && continue
         printf "    %s\n" "$line"
       done <<< "$fe_urls"
+    elif [[ -n "$lan_ip" ]]; then
+      printf "  前台用户端：    https://%s:5173  ${COLOR_YELLOW}(HTTPS + 自签证书，移动端首次访问需点信任)${COLOR_RESET}\n" "$lan_ip"
     fi
+
     if [[ -n "$admin_urls" ]]; then
       printf "  后台管理端：\n"
       while IFS= read -r line; do
         [[ -z "$line" ]] && continue
         printf "    %s\n" "$line"
       done <<< "$admin_urls"
+    elif [[ -n "$lan_ip" ]]; then
+      printf "  后台管理端：    http://%s:3100\n" "$lan_ip"
     fi
-    printf "  提示：接口代理走前端 Vite，后端 API(8085) / 媒体(3300) 默认绑定 0.0.0.0，\n"
-    printf "        如需从其他设备访问 API/媒体，需要在前端 .env 里把 baseURL 改成本机 LAN IP。\n"
+
+    if [[ -n "$lan_ip" ]]; then
+      printf "  Go 后端 API：   http://%s:8085  ${COLOR_YELLOW}(前端会自动通过 Vite 反代访问，无需直连)${COLOR_RESET}\n" "$lan_ip"
+      printf "  媒体服务器：    http://%s:3300  ${COLOR_YELLOW}(供后端调用，移动端不直接访问)${COLOR_RESET}\n" "$lan_ip"
+    fi
+
+    printf "  ${COLOR_CYAN}提示${COLOR_RESET}：移动端浏览器只需打开\"前台用户端\"地址即可，API/WebSocket/媒体均通过 Vite 反代自动转发。\n"
+    printf "        WebRTC 音视频会议依赖 mediasoup 通告 IP，必须与下方一致；不一致 dev 模式下会自动覆盖。\n"
+  fi
+
+  # mediasoup ANNOUNCED_IP 与当前 LAN IP 一致性检查（避免再发生"IP 漂移导致音视频不通"）
+  if [[ -n "$lan_ip" ]]; then
+    printf "\n${COLOR_CYAN}WebRTC 音视频通告 IP${COLOR_RESET}：\n"
+    printf "  当前 LAN IP:                 %s\n" "$lan_ip"
+    if [[ -z "$announced_ip" ]]; then
+      printf "  media-server ANNOUNCED_IP:   ${COLOR_GREEN}(空，启动时自动探测)${COLOR_RESET}\n"
+    elif [[ "$announced_ip" == "$lan_ip" ]]; then
+      printf "  media-server ANNOUNCED_IP:   ${COLOR_GREEN}%s ✓ 与当前 LAN 一致${COLOR_RESET}\n" "$announced_ip"
+    else
+      printf "  media-server ANNOUNCED_IP:   ${COLOR_YELLOW}%s ⚠ 与当前 LAN 不一致${COLOR_RESET}\n" "$announced_ip"
+      printf "    → dev 模式下 media-server 启动时会自动覆盖为 %s（看 logs/media.log 中 AUTO-OVERRIDING 行）\n" "$lan_ip"
+      printf "    → 永久消除该提示：将 media-server/.env 的 MEDIASOUP_ANNOUNCED_IP 留空 或 改为 %s\n" "$lan_ip"
+    fi
   fi
 
   printf "\n  日志目录:          %s\n" "$LOG_DIR"

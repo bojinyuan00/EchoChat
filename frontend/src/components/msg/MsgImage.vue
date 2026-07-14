@@ -24,7 +24,7 @@
 
 <script>
 import { computed } from 'vue'
-import { parseExtra } from '@/utils/file'
+import { parseExtra, normalizeMediaUrl } from '@/utils/file'
 
 export default {
   name: 'MsgImage',
@@ -35,7 +35,14 @@ export default {
   setup(props) {
     const images = computed(() => {
       const extra = parseExtra(props.msg.extra)
-      return extra?.images || []
+      const raw = extra?.images || []
+      // 统一把后端返回的 http://localhost:9000/... 归一化为同源 /minio 路径，
+      // 避免手机端加载失败（见 utils/file.js::normalizeMediaUrl 注释）
+      return raw.map((img) => ({
+        ...img,
+        url: normalizeMediaUrl(img.url),
+        thumbnail_url: normalizeMediaUrl(img.thumbnail_url),
+      }))
     })
 
     const gridClass = computed(() => {

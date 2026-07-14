@@ -34,7 +34,7 @@ media-server/
 
 ### 环境要求
 
-- Node.js ≥ 20（Fastify 5 要求；Dockerfile 使用 `node:20-bookworm-slim`）
+- Node.js **24.x**（推荐，与仓库根 `.nvmrc` 一致；≥ 20 亦可运行，Fastify 5 最低要求。Dockerfile 自 2026-04-24 起升级为 `node:24-bookworm-slim`）
 - 构建 mediasoup 原生 worker 需要：`python3` + `make` + C++ 编译工具链（本机 macOS 已自带 Xcode CLT；Linux 见 Dockerfile）
 
 ### 本地开发

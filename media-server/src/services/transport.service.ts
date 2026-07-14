@@ -8,6 +8,7 @@ import type {
 import { config } from '../config.js';
 import { AppError, conflict, notFound } from '../utils/errors.js';
 import { childLogger } from '../utils/logger.js';
+import { resolveAnnouncedIp } from '../utils/network.js';
 import { assertTestOnly } from '../utils/test-guard.js';
 
 import { getRouter } from './router.service.js';
@@ -33,14 +34,38 @@ export interface CreatedTransportInfo {
   dtlsParameters: DtlsParameters;
 }
 
+/**
+ * 一次性缓存"实际生效的 announcedIp"，避免每次创建 transport 都重新探测 + 打日志。
+ * - undefined 表示尚未初始化
+ * - null 表示不应注入 announcedIp（mediasoup 会用 listenIp 作为 ICE candidate 地址）
+ * - string 表示具体生效值
+ */
+let cachedAnnouncedIp: string | null | undefined;
+
+export function getEffectiveAnnouncedIp(): string | null {
+  if (cachedAnnouncedIp === undefined) {
+    cachedAnnouncedIp = resolveAnnouncedIp(config.mediasoup.announcedIp, config.isProduction);
+  }
+  return cachedAnnouncedIp;
+}
+
 function buildListenIps(): Array<{ ip: string; announcedIp?: string }> {
   const entry: { ip: string; announcedIp?: string } = {
     ip: config.mediasoup.listenIp,
   };
-  if (config.mediasoup.announcedIp) {
-    entry.announcedIp = config.mediasoup.announcedIp;
+  const announced = getEffectiveAnnouncedIp();
+  if (announced) {
+    entry.announcedIp = announced;
   }
   return [entry];
+}
+
+/**
+ * 测试钩子：复位 announcedIp 缓存（单元测试中切换 env 后需要重新探测）
+ */
+export function _resetAnnouncedIpCache(): void {
+  assertTestOnly('_resetAnnouncedIpCache');
+  cachedAnnouncedIp = undefined;
 }
 
 export async function createWebRtcTransport(params: {

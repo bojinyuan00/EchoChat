@@ -266,6 +266,19 @@ export const useChatStore = defineStore('chat', () => {
     wsService.send('im.conversation.read', { conversation_id: conversationId })
   }
 
+  /**
+   * 同步本地会话列表中指定会话的免打扰状态
+   * 后端 PUT /conversations/:id/dnd 成功后调用，
+   * 让首页 chat/index.vue 上的铃铛 / 灰徽章立刻感知到变化，
+   * 避免依赖整表 fetchConversations 重新拉取
+   */
+  const setConversationDND = (conversationId, isDoNotDisturb) => {
+    const conv = conversationList.value.find(c => c.id === conversationId)
+    if (conv) {
+      conv.is_do_not_disturb = !!isDoNotDisturb
+    }
+  }
+
   /** 发送正在输入通知 */
   const sendTyping = (conversationId) => {
     wsService.send('im.typing', { conversation_id: conversationId })
@@ -612,6 +625,7 @@ export const useChatStore = defineStore('chat', () => {
     sortedConversations,
     fetchConversations,
     fetchTotalUnread,
+    setConversationDND,
     sendMessage,
     sendImageMessage,
     sendVoiceMessage,

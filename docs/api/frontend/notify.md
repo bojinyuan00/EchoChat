@@ -85,7 +85,7 @@
                 "category": "group",
                 "title": "",
                 "content": "张三 邀请你加入「产品交流群」",
-                "extra": "{\"group_id\":12,\"group_name\":\"产品交流群\",\"conversation_id\":45,\"inviter_id\":3,\"inviter_name\":\"张三\"}",
+                "extra": "{\"group_id\":12,\"group_name\":\"产品交流群\",\"request_id\":88,\"inviter_id\":3,\"inviter_name\":\"张三\"}",
                 "actor_id": 3,
                 "actor_name": "张三",
                 "actor_avatar": "",
@@ -258,4 +258,9 @@
 
 - 当前 `ws.Hub` 仅支持同一用户单连接（新连接关闭旧连接），**不提供多端已读同步**；此限制已在 `docs/plans/2026-04-20-phase2e-design.md` §3.1/§3.5 修订。
 - 管理端广播发布 UI 推迟到 Phase 2f（后端接口已落地，管理端页面未提供）。
-- `group_invite` 的"接受/拒绝"内联操作当前语义：接受仅跳转会话；拒绝调用 `leaveGroup`（由于当前 InviteMembers 为直接加入成员）。
+- `group_invite` 的"接受/拒绝"内联操作语义（2026-04-25 修复，Phase 2e-2 Post-Task16 Hotfix）：
+  - 后端 `InviteMembers` 改为创建 **pending `GroupJoinRequest`（`inviter_id IS NOT NULL`）**，不再直接 `AddMember`
+  - 通知 `extra` 带 `request_id`（入群申请/邀请共用主键）
+  - 前端接受 → `POST /api/v1/groups/invitations/:rid/accept`（仅被邀请者本人可成功；服务端二次校验群容量/群状态后 `AddMember` + 写系统消息 + 广播 `group.member.join`）
+  - 前端拒绝 → `POST /api/v1/groups/invitations/:rid/reject`（仅置 pending→rejected，无成员变动；邀请者收到"已拒绝"通知）
+  - 群主/管理员审批列表（`GET /api/v1/groups/:id/join-requests`）**仅返回用户主动申请**（`inviter_id IS NULL`），与邀请队列隔离

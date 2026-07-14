@@ -112,6 +112,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { ref, computed } from 'vue'
 import { useGroupStore } from '@/store/group'
 import { useUserStore } from '@/store/user'
+import { useChatStore } from '@/store/chat'
 import { getAvatarColor, getInitial } from '@/utils/avatar'
 import { GROUP_ROLE } from '@/constants/group'
 
@@ -120,6 +121,7 @@ export default {
   setup() {
     const groupStore = useGroupStore()
     const userStore = useUserStore()
+    const chatStore = useChatStore()
 
     const groupId = ref(0)
     const conversationId = ref(0)
@@ -159,6 +161,27 @@ export default {
 
     // ==================== 生命周期 ====================
 
+    /**
+     * 初始化免打扰开关真实状态
+     * 后端 conversation 列表已随行返回 is_do_not_disturb；
+     * 优先复用 chatStore.conversationList 避免额外请求，
+     * 若列表尚未加载（如从外部深链直达设置页）则兜底拉一次。
+     */
+    const initDNDFromStore = async () => {
+      let conv = chatStore.conversationList.find(c => c.id === conversationId.value)
+      if (!conv) {
+        try {
+          await chatStore.fetchConversations()
+        } catch (e) {
+          // 拉失败则保持默认 false；切勿阻塞其他初始化
+        }
+        conv = chatStore.conversationList.find(c => c.id === conversationId.value)
+      }
+      if (conv) {
+        isDoNotDisturb.value = !!conv.is_do_not_disturb
+      }
+    }
+
     onLoad((query) => {
       groupId.value = parseInt(query.groupId) || 0
       conversationId.value = parseInt(query.conversationId) || 0
@@ -173,6 +196,10 @@ export default {
           }
         })
         groupStore.fetchMembers(groupId.value)
+      }
+
+      if (conversationId.value) {
+        initDNDFromStore()
       }
     })
 
@@ -257,6 +284,8 @@ export default {
       try {
         await groupStore.setDoNotDisturb(conversationId.value, newVal)
         isDoNotDisturb.value = newVal
+        // 同步到 chatStore 会话列表，使首页铃铛/灰徽章立刻生效，无需等待下次 fetch
+        chatStore.setConversationDND(conversationId.value, newVal)
       } catch {
         isDoNotDisturb.value = !newVal
         uni.showToast({ title: '设置失败', icon: 'none' })

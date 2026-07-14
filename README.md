@@ -11,7 +11,7 @@ EchoChat 是一套跨端可用、可扩展、可演进的实时音视频会议�
 | 前台前端 | uniapp (Vue 3) + mediasoup-client | 多端适配（H5/App/小程序） |
 | 后台管理端 | Vue 3 + Vite + Element Plus | PC Web 管理后台 |
 | 后端服务 | Go (Gin + GORM + Wire + zap) | 业务逻辑、信令控制 |
-| 媒体服务 | Node.js + mediasoup | SFU 媒体控制与转发 |
+| 媒体服务 | Node.js 24 + mediasoup 3.19 + Fastify 5 | SFU 媒体控制与转发（`media-server/`） |
 | 数据库 | PostgreSQL 17 | 持久化数据存储 |
 | 缓存 | Redis 7 | 实时状态、会话缓存 |
 | 部署 | Docker Compose / Nginx | 容器化部署，预留 K8s |
@@ -78,8 +78,8 @@ EchoChat/
 ### 环境要求
 
 - Go 1.23+
-- Node.js 18+
-- Docker & Docker Compose
+- Node.js **24.x**（各端 `.nvmrc` 已锁定；≥20 亦可运行但不再作为推荐版本）
+- Docker & Docker Compose V2
 - PostgreSQL 17（通过 Docker 自动启动）
 - Redis 7（通过 Docker 自动启动）
 
@@ -249,7 +249,8 @@ npm run dev
 | Phase 2e-2 实施 | [docs/plans/2026-04-21-phase2e-2-implementation.plan.md](docs/plans/2026-04-21-phase2e-2-implementation.plan.md) | Task 0-16 实施计划 |
 | Phase 2e-2 代码审查 | [docs/reviews/2026-04-23-phase2e-2-code-review.md](docs/reviews/2026-04-23-phase2e-2-code-review.md) | 26 项审计结果 + Task 16 修复追踪 |
 | Phase 2e-2 验收报告 | [test-report-phase2e-2-meeting.md](test-report-phase2e-2-meeting.md) | 八章完整测试报告 |
-| 会议 MVP 部署指南 | [docs/deployment/meeting-mvp.md](docs/deployment/meeting-mvp.md) | 本机 Demo + 公网双态部署手册 |
+| **启动与部署手册** | [docs/guides/startup-and-deployment.md](docs/guides/startup-and-deployment.md) | 三种形态（混合 / 全容器 / 公网）的启动步骤、配置文件速查、端口/故障 FAQ |
+| 会议 MVP 部署指南 | [docs/deployment/meeting-mvp.md](docs/deployment/meeting-mvp.md) | 本机 Demo + 公网双态部署手册（快速版） |
 | 系统架构文档 | [docs/architecture/system-architecture.md](docs/architecture/system-architecture.md) | 架构分层与技术选型 |
 | API 接口文档 | [docs/api/](docs/api/) | 按端+模块拆分的 REST API + WebSocket 事件定义 |
 

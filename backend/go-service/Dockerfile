@@ -6,8 +6,18 @@
 # --- 第一阶段：编译 ---
 FROM golang:1.23-alpine AS builder
 
+# APK 镜像源：通过 build-arg 控制，默认走官方。国内服务器可传 --build-arg APK_MIRROR=mirrors.aliyun.com
+ARG APK_MIRROR=""
+RUN if [ -n "${APK_MIRROR}" ]; then \
+      sed -i "s|https\?://dl-cdn.alpinelinux.org|https://${APK_MIRROR}|g" /etc/apk/repositories; \
+    fi
+
 # 安装编译依赖（CGO 需要 gcc）
 RUN apk add --no-cache gcc musl-dev
+
+# Go module 代理：通过 build-arg 控制，默认走官方 proxy.golang.org。国内传 --build-arg GOPROXY=https://goproxy.cn,direct
+ARG GOPROXY=""
+ENV GOPROXY=${GOPROXY}
 
 WORKDIR /build
 
@@ -21,6 +31,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/echochat ./cmd/
 
 # --- 第二阶段：运行 ---
 FROM alpine:3.19
+
+# APK 镜像源（runtime 阶段）：同 builder
+ARG APK_MIRROR=""
+RUN if [ -n "${APK_MIRROR}" ]; then \
+      sed -i "s|https\?://dl-cdn.alpinelinux.org|https://${APK_MIRROR}|g" /etc/apk/repositories; \
+    fi
 
 # 安装运行时依赖（时区数据 + CA 证书）
 RUN apk add --no-cache ca-certificates tzdata

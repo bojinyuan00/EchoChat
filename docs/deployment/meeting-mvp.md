@@ -23,7 +23,7 @@ EchoChat 会议 MVP 按 Phase 2e-2 设计决策 D01 采用**"一套代码 + 环�
 
 ## 二、本机 Demo 部署
 
-**前置要求**：Docker Desktop（含 Compose V2）、Node 20+、Go 1.22+
+**前置要求**：Docker Desktop（含 Compose V2）、**Node 24**（各端 `.nvmrc` 已锁定；`node >= 20` 亦可运行，但 2026-04-24 起官方镜像与本地开发机统一升级至 Node 24）、Go 1.22+
 
 ### Step 1：复制环境变量文件
 

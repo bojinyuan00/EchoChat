@@ -250,7 +250,7 @@ export default {
         const userIds = selectedList.value.map(f => f.user_id || f.id)
         await groupStore.inviteMembers(groupId.value, userIds)
 
-        uni.showToast({ title: '邀请成功', icon: 'success' })
+        uni.showToast({ title: '邀请已发送，等待对方确认', icon: 'none' })
 
         setTimeout(() => {
           uni.navigateBack()

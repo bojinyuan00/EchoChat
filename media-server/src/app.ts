@@ -11,6 +11,7 @@ import { producerRoutes } from './routes/producer.route.js';
 import { routerRoutes } from './routes/router.route.js';
 import { transportRoutes } from './routes/transport.route.js';
 import { getRouterStats } from './services/router.service.js';
+import { getEffectiveAnnouncedIp } from './services/transport.service.js';
 import { logger } from './utils/logger.js';
 
 export async function buildApp() {
@@ -61,7 +62,8 @@ export async function buildApp() {
       worker: snapshot,
       listen: {
         ip: config.mediasoup.listenIp,
-        announcedIp: config.mediasoup.announcedIp ?? null,
+        announcedIp: getEffectiveAnnouncedIp(),
+        announcedIpConfigured: config.mediasoup.announcedIp ?? null,
         rtcMinPort: config.mediasoup.rtcMinPort,
         rtcMaxPort: config.mediasoup.rtcMaxPort,
       },
@@ -107,7 +109,8 @@ async function bootstrap(): Promise<void> {
         env: config.nodeEnv,
         mediasoup: {
           listenIp: config.mediasoup.listenIp,
-          announcedIp: config.mediasoup.announcedIp ?? '(none)',
+          announcedIp: getEffectiveAnnouncedIp() ?? '(none)',
+          announcedIpConfigured: config.mediasoup.announcedIp ?? '(empty)',
           rtcPortRange: `${config.mediasoup.rtcMinPort}-${config.mediasoup.rtcMaxPort}`,
         },
       },

@@ -87,6 +87,21 @@ const reviewJoinRequest = (groupId, requestId, action) => {
   return put(`/api/v1/groups/${groupId}/join-requests/${requestId}`, { action })
 }
 
+/** 接受群邀请（被邀请者本人）
+ *  对应后端 POST /api/v1/groups/invitations/:rid/accept
+ *  入参 requestId 即 notify.extra.request_id
+ */
+const acceptInvitation = (requestId) => {
+  return post(`/api/v1/groups/invitations/${requestId}/accept`)
+}
+
+/** 拒绝群邀请（被邀请者本人）
+ *  对应后端 POST /api/v1/groups/invitations/:rid/reject
+ */
+const rejectInvitation = (requestId) => {
+  return post(`/api/v1/groups/invitations/${requestId}/reject`)
+}
+
 /** 搜索公开群 */
 const searchGroups = (keyword, page = 1, pageSize = 20) => {
   return get('/api/v1/groups/search', { keyword, page, page_size: pageSize })
@@ -115,5 +130,7 @@ export default {
   getJoinRequests,
   reviewJoinRequest,
   searchGroups,
-  setDoNotDisturb
+  setDoNotDisturb,
+  acceptInvitation,
+  rejectInvitation
 }

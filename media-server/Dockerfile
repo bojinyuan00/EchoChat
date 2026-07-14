@@ -1,12 +1,28 @@
 # ==================================================
 # EchoChat media-server Dockerfile（多阶段构建）
-# 基础镜像：node:20-bookworm-slim（mediasoup 构建需要 python3 + g++）
+# 基础镜像：node:24-bookworm-slim（mediasoup 构建需要 python3 + g++）
+# 2026-04-24 升级：Node 20 → 24，与本地开发机（nvm v24.12.0）保持一致
+# 兼容性：mediasoup 3.19 + package.json engines ">=20.0.0"，Node 24 已验证可用
 # ==================================================
 
 # ---------------- Stage 1: builder ----------------
-FROM node:20-bookworm-slim AS builder
+FROM node:24-bookworm-slim AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# APT 镜像源：通过 build-arg 控制，默认走官方。国内服务器构建时传 --build-arg APT_MIRROR=mirrors.aliyun.com 可显著加速
+# 示例：docker build --build-arg APT_MIRROR=mirrors.aliyun.com .
+ARG APT_MIRROR=""
+RUN set -eux; \
+    if [ -n "${APT_MIRROR}" ]; then \
+      if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i "s|http://deb.debian.org|http://${APT_MIRROR}|g; s|http://security.debian.org|http://${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+      fi; \
+      if [ -f /etc/apt/sources.list ]; then \
+        sed -i "s|http://deb.debian.org|http://${APT_MIRROR}|g; s|http://security.debian.org|http://${APT_MIRROR}|g" /etc/apt/sources.list; \
+      fi; \
+    fi
+
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       python3 \
@@ -31,12 +47,24 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ---------------- Stage 2: runtime ----------------
-FROM node:20-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 
 ENV NODE_ENV=production \
     LOG_PRETTY=false \
     HTTP_HOST=0.0.0.0 \
     HTTP_PORT=3300
+
+# APT 镜像源（runtime 阶段）：同 builder，通过 build-arg 控制
+ARG APT_MIRROR=""
+RUN set -eux; \
+    if [ -n "${APT_MIRROR}" ]; then \
+      if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i "s|http://deb.debian.org|http://${APT_MIRROR}|g; s|http://security.debian.org|http://${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+      fi; \
+      if [ -f /etc/apt/sources.list ]; then \
+        sed -i "s|http://deb.debian.org|http://${APT_MIRROR}|g; s|http://security.debian.org|http://${APT_MIRROR}|g" /etc/apt/sources.list; \
+      fi; \
+    fi
 
 # mediasoup-worker 是原生二进制，运行时需要 libstdc++ 等基础库，slim 默认已包含
 # 健康检查需要 curl

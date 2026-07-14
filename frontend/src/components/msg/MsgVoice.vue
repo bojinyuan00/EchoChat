@@ -28,7 +28,7 @@
 
 <script>
 import { ref, computed, onBeforeUnmount } from 'vue'
-import { parseExtra } from '@/utils/file'
+import { parseExtra, normalizeMediaUrl } from '@/utils/file'
 import { useChatStore } from '@/store/chat'
 
 let _globalAudio = null
@@ -76,7 +76,7 @@ export default {
     })
 
     const onTogglePlay = () => {
-      const url = voiceData.value.url
+      const url = normalizeMediaUrl(voiceData.value.url)
       if (!url) return
 
       // 对方发来的语音一经点击即视为"已播放"，消除红点（与微信一致）

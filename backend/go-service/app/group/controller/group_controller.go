@@ -442,6 +442,52 @@ func (ctl *GroupController) ReviewJoinRequest(c *gin.Context) {
 	utils.ResponseOK(c, nil)
 }
 
+// AcceptInvitation 接受群邀请（被邀请者本人）
+// POST /api/v1/groups/invitations/:rid/accept
+func (ctl *GroupController) AcceptInvitation(c *gin.Context) {
+	ctx := c.Request.Context()
+	userID, ok := middleware.GetCurrentUserID(c)
+	if !ok {
+		utils.ResponseUnauthorized(c, "无法获取当前用户信息")
+		return
+	}
+
+	requestID, err := strconv.ParseInt(c.Param("rid"), 10, 64)
+	if err != nil {
+		utils.ResponseBadRequest(c, "邀请 ID 格式错误")
+		return
+	}
+
+	if err := ctl.groupService.AcceptInvitation(ctx, userID, requestID); err != nil {
+		ctl.handleError(c, err, "接受邀请失败")
+		return
+	}
+	utils.ResponseOK(c, nil)
+}
+
+// RejectInvitation 拒绝群邀请（被邀请者本人）
+// POST /api/v1/groups/invitations/:rid/reject
+func (ctl *GroupController) RejectInvitation(c *gin.Context) {
+	ctx := c.Request.Context()
+	userID, ok := middleware.GetCurrentUserID(c)
+	if !ok {
+		utils.ResponseUnauthorized(c, "无法获取当前用户信息")
+		return
+	}
+
+	requestID, err := strconv.ParseInt(c.Param("rid"), 10, 64)
+	if err != nil {
+		utils.ResponseBadRequest(c, "邀请 ID 格式错误")
+		return
+	}
+
+	if err := ctl.groupService.RejectInvitation(ctx, userID, requestID); err != nil {
+		ctl.handleError(c, err, "拒绝邀请失败")
+		return
+	}
+	utils.ResponseOK(c, nil)
+}
+
 // SearchGroups 搜索群聊
 // GET /api/v1/groups/search?keyword=xx&page=1&page_size=20
 func (ctl *GroupController) SearchGroups(c *gin.Context) {
@@ -532,6 +578,10 @@ func (ctl *GroupController) handleError(c *gin.Context, err error, fallbackMsg .
 		utils.ResponseBadRequest(c, err.Error())
 	case service.ErrJoinRequestNotFound:
 		utils.ResponseNotFound(c, err.Error())
+	case service.ErrInvitationNotFound:
+		utils.ResponseNotFound(c, err.Error())
+	case service.ErrInvitationForbidden:
+		utils.ResponseForbidden(c, err.Error())
 	default:
 		msg := "服务器内部错误"
 		if len(fallbackMsg) > 0 && fallbackMsg[0] != "" {

@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	groupmodel "github.com/echochat/backend/app/group/model"
 	"github.com/echochat/backend/app/im/model"
 	"github.com/echochat/backend/app/provider"
 	"github.com/echochat/backend/config"
@@ -52,10 +53,12 @@ func main() {
 	}
 
 	// 4. IM 数据库表自动迁移（开发阶段使用，生产环境配合 init.sql）
+	// 同时对 GroupJoinRequest 做 AutoMigrate，让历史库自动补齐 2026-04-25 新增的 inviter_id 列
 	if err := app.DB.AutoMigrate(
 		&model.Conversation{},
 		&model.ConversationMember{},
 		&model.Message{},
+		&groupmodel.GroupJoinRequest{},
 	); err != nil {
 		logs.Fatal(ctx, "main", "IM 表迁移失败", zap.Error(err))
 	}

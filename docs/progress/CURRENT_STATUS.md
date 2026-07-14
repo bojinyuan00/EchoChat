@@ -1,6 +1,6 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-24（Phase 2e-2 Task 16 ✅ 代码审查 + 资源生命周期审计 + P0/P1/P2/Nit 修复闭环 + Playwright 5 场景剧本 + 测试报告落盘）
+> **最后更新**：2026-04-25（Phase 2e-2 Post-Task16 Hotfix 批次：①媒体 ICE `announcedIp` 自检 ②MinIO 反代 + `normalizeMediaUrl` 修复跨端媒体 URL ③群聊免打扰状态初始化同步 ④**群邀请改为 pending 同意流程**）
 > **当前阶段**：Phase 2e-2 会议 MVP **已完成** ✅（Task 0-16 全部 ✅，分支 `feature/phase2e-2-meeting-mvp` 待合并主干）
 > **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
@@ -12,6 +12,76 @@
 > **Phase 2e-2 代码审查**：`docs/reviews/2026-04-23-phase2e-2-code-review.md`（4 P0 + 8 P1 + 8 P2 + 11 Nit，已闭环 26 项 / 推迟 5 项）
 > **Phase 2e-2 验证报告**：`test-report-phase2e-2-meeting.md`
 > **Phase 2e-2 E2E 剧本**：`.playwright-mcp/task16/scenarios/`（5 场景 + 手工回归 checklist）
+> **启动与部署手册**：`docs/guides/startup-and-deployment.md`（三种形态启动步骤 + 配置文件速查 + FAQ）
+
+---
+
+## 🔥 2026-04-25 Post-Task16 Hotfix：用户测试阶段 4 个生产型 bug 闭环 ✅
+
+Task 16 关闭后进入用户测试，陆续复现 4 个跨端/状态同步 bug，均已当日定位 + 修复 + 自验证通过。所有改动已通过 `go build ./...` / `npm run build:h5` / `ReadLints` 三检。
+
+### ① 媒体会议画面单向丢失（ICE announcedIp 不匹配）
+
+**现象**：PC 端 + 移动端（同局域网）加入同一会议，双方只看到自己的画面，看不到对方。
+
+**根因**：`media-server/.env` 中 `MEDIASOUP_ANNOUNCED_IP` 长期写死为历史活动 IP，但本地 LAN IP 已变。mediasoup 广播错误的 host candidate → 对端 ICE connectivity check 失败。
+
+**修复**：
+- **即时**：`media-server/.env` 更新为当前 `MEDIASOUP_ANNOUNCED_IP`
+- **根治**：新增 `media-server/src/utils/network.ts`（`detectLanIP()` + `validateAnnouncedIp()`），`transport.service.ts` / `app.ts` 启动时自动探测 + 强校验，配错直接在日志给出 WARN + 修复建议
+- **文档**：`.env.example` / `.env.local.example` / `.env.public.example` 同步注释
+
+### ② 语音消息在移动端 HTTPS 下播放失败（MinIO URL 跨端）
+
+**现象**：PC↔Mobile 群聊中文字/图片正常，语音消息 PC 两端都能播，**Mobile 端无论收还是自发都播放失败**。
+
+**根因**：后端 `buildURL` 对 MinIO 对象存储返回形如 `http://localhost:9000/<bucket>/<obj>` 的 URL——PC 浏览器对 `localhost` 有安全上下文豁免，Mobile 端通过 LAN HTTPS 访问时触发 **Mixed Content + `localhost` 指向手机自身** 双重问题。
+
+**修复**（不改后端 URL 生成逻辑，在前端做归一化 + Vite 代理）：
+- `frontend/vite.config.js`：新增 `/minio` → `http://localhost:9000` 反向代理（rewrite 剥去 `/minio`），让前端同源访问 MinIO
+- `frontend/src/utils/file.js`：新增 `normalizeMediaUrl(url)`，将任何形如 `http(s)://<host>:9000/...` 的 URL 重写为 `/minio/...`
+- `MsgVoice.vue` / `MsgImage.vue` / `MsgFile.vue`：所有媒体播放/查看/下载入口统一走 `normalizeMediaUrl`
+
+### ③ 群聊免打扰开关状态显示与实际不一致
+
+**现象**：会话列表已显示"🔕 灰徽章"但群设置页开关为"关闭"态；切换开关后，再次进入设置页开关又回到"关闭"态。
+
+**根因**：`pages/group/settings.vue` 对 `isDoNotDisturb` 简单 `ref(false)` 初始化，`onLoad` 里从未拉取真值；`onToggleDND` 成功后也未回写到 `chatStore.conversationList`，导致列表与设置双向不一致。
+
+**修复**：
+- `store/chat.js`：新增 `setConversationDND(conversationId, isDoNotDisturb)` action
+- `pages/group/settings.vue`：新增 `initDNDFromStore()`（优先读 store，回退 `fetchConversations`）并在 `onLoad` 调用；`onToggleDND` 后端成功后立即 `chatStore.setConversationDND(...)` 同步 UI
+
+### ④ 群邀请跳过本人同意直接入群（产品语义 bug）
+
+**现象**：群主/管理员在邀请页选人点"确认邀请"后，**被邀请者尚未在通知中心同意**，其会话列表已直接出现该群且可以聊天——违反产品约定"需被邀请者同意后才正式入群"。
+
+**根因**：历史实现里 `GroupService.InviteMembers` 直接 `AddMember`，通知只是 UI 告知；`notify/index.vue` 中"接受"仅跳转会话、"拒绝"实际调 `leaveGroup`。
+
+**修复**（扩展已有 `im_group_join_requests` 表复用 pending 状态机，**零新增表**）：
+
+- **DB schema**（`deploy/docker/postgres/init.sql` + `phase2c_migration.sql`）：`im_group_join_requests` 新增 `inviter_id BIGINT DEFAULT NULL`（`NULL`=用户主动申请；非空=管理员邀请）+ `idx_group_join_req_inviter` 索引，`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 幂等
+- **Go Model**（`backend/go-service/app/group/model/join_request.go`）：`GroupJoinRequest.InviterID *int64` + `IsInvitation()` 辅助方法；`cmd/server/main.go` `AutoMigrate` 加入 `GroupJoinRequest{}`，dev 启动自动补列
+- **DAO**（`app/group/dao/join_request_dao.go`）：
+  - 新增 `CreateInvitation(groupID, targetUserID, inviterID)` / `GetPendingInvitationByGroupAndUser(groupID, userID)`
+  - `GetPendingByGroupAndUser` / `GetListByGroup` 增加 `inviter_id IS NULL` 过滤 → 群管审批列表与邀请队列完全隔离
+- **Service**（`app/group/service/group_service.go`）：
+  - `InviteMembers` 重写：为每个 target 创建 pending invitation → 推送 `group_invite` 通知（extra 带 `request_id`），对已是成员/已存在 pending 邀请幂等跳过
+  - 新增 `AcceptInvitation(userID, requestID)`：仅被邀请者本人；校验 pending / 群状态 / 二次容量 → `AddMember` + 写系统消息 `"xxx 加入了群聊"` + 广播 `group.member.join` + 通知原邀请者"已接受"
+  - 新增 `RejectInvitation(userID, requestID)`：仅置 pending→rejected，无成员变动 + 通知原邀请者"已拒绝"
+  - 新增 error：`ErrInvitationNotFound` / `ErrInvitationForbidden`
+- **Controller/Router**（`app/group/controller/group_controller.go` + `router.go`）：
+  - `POST /api/v1/groups/invitations/:rid/accept`
+  - `POST /api/v1/groups/invitations/:rid/reject`
+  - `handleError` 新增两个 error 的 404 / 403 映射
+- **前端**（`src/api/group.js` + `src/pages/notify/index.vue` + `src/pages/group/invite.vue`）：
+  - `groupApi.acceptInvitation(requestId)` / `groupApi.rejectInvitation(requestId)`
+  - `notify/index.vue` `GROUP_INVITE` 分支改调新 API；缺失 `request_id`（理论上仅升级边缘态）给出明确 toast
+  - `invite.vue` toast 改为 `"邀请已发送，等待对方确认"`
+
+**向后兼容**：现有"用户主动申请入群"流程完全不变；`GetListByGroup` 明确不含邀请；数据幂等。
+
+**文档同步**：`docs/api/frontend/notify.md` 更新 `group_invite` extra 示例（补 `request_id`）+ 修正"当前语义"限制条目为新流程说明。
 
 ---
 
@@ -96,6 +166,46 @@
 | 构建 | go vet / go build / npm run build:h5 / npx tsc --noEmit 全绿 |
 | E2E | 5 场景剧本 + 手工回归 checklist 落盘，待用户 HTTPS 双端实机回归 |
 | 分支 | `feature/phase2e-2-meeting-mvp`（待合入主干） |
+
+---
+
+## 🛠️ 2026-04-24 部署工具链增强：Node 24 升级 + Dockerfile 镜像源可配置 + 启动手册落盘
+
+**触发**：用户准备进行"本机全容器化"形态的实机验证时发现 Dockerfile 仍使用 Node 20（本地 nvm 已升至 v24）；同时在容器构建过程中因本机代理 TUN 模式劫持 DNS 导致 `apt-get` / `apk` / Docker Hub 拉取全部失败（`198.18.0.x` fake-ip 黑洞）。由此决定：**回退 `~/.docker/daemon.json` 的 registry-mirrors 到官方**、将 Linux 发行版镜像源与 Go 模块代理**抽取为 Dockerfile `build-arg`**、并补一份**三形态启动与部署手册**。
+
+### 改动清单
+
+| 文件 | 改动 | 说明 |
+|---|---|---|
+| `media-server/Dockerfile` | `node:20-bookworm-slim` → `node:24-bookworm-slim`（builder + runtime）；新增 `ARG APT_MIRROR=""` | Debian APT 镜像源默认走官方 `deb.debian.org`；国内服务器构建可传 `--build-arg APT_MIRROR=mirrors.aliyun.com` 加速 |
+| `backend/go-service/Dockerfile` | 新增 `ARG APK_MIRROR=""` + `ARG GOPROXY=""`（builder + runtime） | Alpine APK 与 Go Module Proxy 均默认走官方；国内可传 `--build-arg APK_MIRROR=mirrors.aliyun.com --build-arg GOPROXY=https://goproxy.cn,direct` |
+| `deploy/docker-compose.dev.yml` | `go-service` / `media-server` `build.args` 暴露 `APT_MIRROR` / `APK_MIRROR` / `GO_BUILD_PROXY` | 从 `deploy/.env` 读取，默认空走官方 |
+| `deploy/.env.local.example` / `deploy/.env.public.example` | 补注释示例 `APT_MIRROR` / `APK_MIRROR` / `GO_BUILD_PROXY` | 域外留空；国内服务器按需打开 |
+| `frontend/.nvmrc` / `admin/.nvmrc` / `media-server/.nvmrc`（新建） | 内容 `24` | 为所有 Node 侧子项目锁定 nvm 版本，防止切换仓库时版本漂移 |
+| `~/.docker/daemon.json`（本机，未入库） | 清空 `registry-mirrors` | 用户要求恢复官方 Docker Hub 直连（国内阿里云 docker 镜像近期频繁返错） |
+
+### 新增文档
+
+| 文件 | 作用 |
+|---|---|
+| `docs/guides/startup-and-deployment.md`（新建） | **三形态启动与部署手册**：①本机混合模式（app 本地进程 + 中间件容器）②本机全容器化（`./scripts/start.sh full`）③生产服务器公网部署（`deploy-public.sh` + Caddy + TURN）。含前置条件、一键/单服务启动、停服、常见命令、三形态配置差异、网络加速选项、服务器部署 checklist（密码/`ANNOUNCED_IP`/防火墙/反代示例）、配置文件速查表、FAQ |
+
+### 前置要求口径变更
+
+| 文档 | 变更 |
+|---|---|
+| `docs/deployment/meeting-mvp.md` | 前置要求：**Node 20+ → Node 24**（`.nvmrc` 锁定；≥20 仍可运行） |
+| `media-server/README.md` | 环境要求：**Node ≥20 → Node 24.x（推荐）** |
+| `README.md` | 文档导航新增 "启动与部署手册" 链接 |
+
+### 保留不改
+
+`docs/plans/2026-04-21-phase2e-2-design.md` / `docs/plans/2026-04-21-phase2e-2-implementation.plan.md` 里提到的 `node:20-bookworm-slim` 属于 Task 1 成型时的真实历史快照，本次**不做历史篡改**；当前有效口径以 `.nvmrc` + `docs/deployment/meeting-mvp.md` + `docs/guides/startup-and-deployment.md` 为准。
+
+### 已知遗留（不阻塞）
+
+- 本机 TUN 代理（Clash / Surge / v2ray 等）在开启"全局/增强模式"时会拦截容器 DNS 到 `198.18.0.0/16` fake-ip，导致 `apt-get` / `apk` 对公网域名连接失败。**解法**：构建期临时切换代理至"规则模式"或"直连"；或为 Docker 单独配置 `dns: [ 1.1.1.1, 8.8.8.8 ]`。已在 `docs/guides/startup-and-deployment.md` FAQ 记录。
+- `docker compose build` 若曾被强行中断，可能残留 BuildKit 缓存 I/O 错误，执行 `docker builder prune -af && docker buildx prune -af` 即可恢复。
 
 ---
 

@@ -34,5 +34,9 @@ func RegisterRoutes(r *gin.Engine, ctrl *controller.GroupController, jwtAuth gin
 		authed.POST("/groups/:id/join-requests", ctrl.SubmitJoinRequest)
 		authed.GET("/groups/:id/join-requests", ctrl.GetJoinRequests)
 		authed.PUT("/groups/:id/join-requests/:rid", ctrl.ReviewJoinRequest)
+
+		// 群邀请（被邀请者本人接受 / 拒绝 pending invitation）
+		authed.POST("/groups/invitations/:rid/accept", ctrl.AcceptInvitation)
+		authed.POST("/groups/invitations/:rid/reject", ctrl.RejectInvitation)
 	}
 }

@@ -61,6 +61,11 @@ services:
     build:
       context: ../backend/go-service
       dockerfile: Dockerfile
+      args:
+        # 国内服务器可在 deploy/.env 里设置 APK_MIRROR=mirrors.aliyun.com、GOPROXY=https://goproxy.cn,direct
+        # 海外服务器/开发机留空走官方
+        APK_MIRROR: ${APK_MIRROR:-}
+        GOPROXY: ${GO_BUILD_PROXY:-}
     container_name: echochat-go-service
     environment:
       CONFIG_NAME: config.docker
@@ -87,6 +92,9 @@ services:
     build:
       context: ../media-server
       dockerfile: Dockerfile
+      args:
+        # 国内服务器可在 deploy/.env 里设置 APT_MIRROR=mirrors.aliyun.com
+        APT_MIRROR: ${APT_MIRROR:-}
     container_name: echochat-media-server
     environment:
       HTTP_HOST: 0.0.0.0

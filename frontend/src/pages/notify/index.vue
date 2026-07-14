@@ -239,9 +239,14 @@ const handleAccept = async (notify) => {
         uni.showToast({ title: '已批准入群申请', icon: 'success' })
       }
     } else if (notify.type === NOTIFY_TYPE_GROUP_INVITE) {
-      // 群邀请当前后端为直接加入，接受即跳转到群聊会话
+      // 群邀请采用 pending 流程：调用 accept 接口后才真正入群
       const extra = _parseExtra(notify.extra)
-      uni.showToast({ title: '已接受邀请', icon: 'success' })
+      if (!extra || !extra.request_id) {
+        uni.showToast({ title: '邀请信息缺失', icon: 'none' })
+        return
+      }
+      await groupApi.acceptInvitation(extra.request_id)
+      uni.showToast({ title: '已加入群聊', icon: 'success' })
       _navigateToGroup(extra)
     } else if (notify.type === NOTIFY_TYPE_MEETING_INVITE) {
       const extra = _parseExtra(notify.extra)
@@ -270,11 +275,14 @@ const handleReject = async (notify) => {
         uni.showToast({ title: '已拒绝入群申请', icon: 'success' })
       }
     } else if (notify.type === NOTIFY_TYPE_GROUP_INVITE) {
+      // 群邀请采用 pending 流程：调用 reject 接口后该邀请被置为 rejected，不产生群成员变动
       const extra = _parseExtra(notify.extra)
-      if (extra && extra.group_id) {
-        await groupApi.leaveGroup(extra.group_id)
-        uni.showToast({ title: '已退出群聊', icon: 'success' })
+      if (!extra || !extra.request_id) {
+        uni.showToast({ title: '邀请信息缺失', icon: 'none' })
+        return
       }
+      await groupApi.rejectInvitation(extra.request_id)
+      uni.showToast({ title: '已拒绝邀请', icon: 'success' })
     }
     await notifyStore.markRead(notify.id).catch(() => {})
   } catch (e) {

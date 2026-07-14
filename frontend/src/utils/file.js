@@ -74,3 +74,29 @@ export function parseExtra(extra) {
     return null
   }
 }
+
+/**
+ * 归一化上传资源 URL，解决跨设备访问失败问题
+ *
+ * 背景：后端 FileService.buildURL 写死返回 `http(s)://{minio.endpoint}/{bucket}/{object}`，
+ * 开发环境 endpoint = `localhost:9000`。PC 端因 localhost 指向本机 MinIO 能命中；
+ * 手机端的 localhost 是手机自己，不跑 MinIO，导致图片/语音/文件全部加载失败。
+ *
+ * 解决思路：把所有落到 `*:9000` 的绝对 URL 重写为同源相对路径 `/minio/...`，
+ * 由 vite 代理（dev）或 Nginx（prod）转发到真正的 MinIO。
+ * 这样无论 origin 是 localhost 还是局域网 IP，所有设备都能走同一条路径。
+ *
+ * 匹配规则（宽松）：
+ *   - 协议：http 或 https
+ *   - host：任意（localhost / 127.0.0.1 / 内网 IP / 公网域名皆可）
+ *   - 端口：必须是 9000（EchoChat 约定 MinIO 走 9000）
+ * 对非 9000 端口的 URL 原样返回。
+ *
+ * @param {string} url 原始 URL（可能是绝对路径或已经是相对路径）
+ * @returns {string} 归一化后的 URL
+ */
+export function normalizeMediaUrl(url) {
+  if (!url || typeof url !== 'string') return url || ''
+  // 匹配 `http(s)://<host>:9000` 前缀，整体替换为 `/minio`；其余部分（/bucket/object）原样保留
+  return url.replace(/^https?:\/\/[^/]+:9000/i, '/minio')
+}

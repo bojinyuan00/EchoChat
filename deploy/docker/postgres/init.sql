@@ -297,22 +297,25 @@ CREATE TABLE im_group_join_requests (
     group_id    BIGINT NOT NULL REFERENCES im_groups(id),
     user_id     BIGINT NOT NULL,
     message     TEXT DEFAULT '',
+    inviter_id  BIGINT DEFAULT NULL,
     reviewer_id BIGINT DEFAULT NULL,
     status      SMALLINT NOT NULL DEFAULT 0,
     created_at  TIMESTAMP(0) NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMP(0) NOT NULL DEFAULT NOW()
 );
 
-COMMENT ON TABLE  im_group_join_requests              IS '入群申请表';
-COMMENT ON COLUMN im_group_join_requests.id            IS '申请唯一标识';
+COMMENT ON TABLE  im_group_join_requests              IS '入群申请 / 群邀请表（共用）';
+COMMENT ON COLUMN im_group_join_requests.id            IS '记录唯一标识';
 COMMENT ON COLUMN im_group_join_requests.group_id      IS '目标群 ID';
-COMMENT ON COLUMN im_group_join_requests.user_id       IS '申请人用户 ID';
+COMMENT ON COLUMN im_group_join_requests.user_id       IS '申请人或被邀请者用户 ID';
 COMMENT ON COLUMN im_group_join_requests.message       IS '申请附言';
-COMMENT ON COLUMN im_group_join_requests.reviewer_id   IS '审批人用户 ID';
+COMMENT ON COLUMN im_group_join_requests.inviter_id    IS '邀请方用户 ID（管理员邀请时非空；NULL=用户主动申请）';
+COMMENT ON COLUMN im_group_join_requests.reviewer_id   IS '审批人用户 ID（申请场景=群管；邀请场景=被邀请者本人）';
 COMMENT ON COLUMN im_group_join_requests.status        IS '状态：0=待审批，1=通过，2=拒绝';
 
 CREATE INDEX idx_group_join_req_group ON im_group_join_requests(group_id, status);
 CREATE INDEX idx_group_join_req_user ON im_group_join_requests(user_id);
+CREATE INDEX idx_group_join_req_inviter ON im_group_join_requests(inviter_id);
 
 -- ============================================================
 -- im_message_reads: 群聊消息已读记录表（消息级别）

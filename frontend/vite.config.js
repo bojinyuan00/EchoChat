@@ -15,6 +15,15 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 const BACKEND = process.env.VITE_DEV_BACKEND || 'http://localhost:8085'
 const BACKEND_WS = BACKEND.replace(/^http/, 'ws')
 
+// MinIO 对象存储代理目标，默认 http://localhost:9000
+// 历史原因：后端 FileService.buildURL 直接返回 http://localhost:9000/{bucket}/{object}。
+// PC 端访问 https://localhost:5173 时，localhost:9000 恰好命中本机 MinIO（且 localhost 是
+// secure-context 例外，无 mixed-content 拦截）；但手机端访问 https://<lan-ip>:5173 时，
+// 手机自身的 localhost 并不是开发机，会导致图片/语音/文件全部加载失败。
+// 这里开一条 /minio 同源代理，让前端统一通过 vite HTTPS 终止后转发到 MinIO，
+// 配合 utils/file.js::normalizeMediaUrl 把历史消息里的绝对 URL 重写为 /minio 即可。
+const MINIO = process.env.VITE_DEV_MINIO || 'http://localhost:9000'
+
 export default defineConfig({
   plugins: [
     uni(),
@@ -34,6 +43,12 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
         secure: false,
+      },
+      '/minio': {
+        target: MINIO,
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/minio/, ''),
       },
     },
   },
