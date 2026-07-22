@@ -23,6 +23,19 @@
 - Node media-server：10 个 `/internal/v1` 生命周期接口，另含 `/internal/info`、`/healthz`、`/readyz`。
 - 本次收口只修改仓库内文档、开发脚本和部署配置；没有登录公网服务器，也没有部署、替换或修改已有 1Panel、Cloudflare 或线上容器。
 
+### 基线一致性与回归证据
+
+- `bash -n scripts/*.sh scripts/tests/*.sh`：通过。
+- `bash scripts/tests/baseline_contract_test.sh`：通过；API 路由/WS 事件/media 路由计数、Markdown 本地链接和 Compose 映射一致。
+- `bash scripts/tests/lifecycle_contract_test.sh`：通过；`full` 与 `--all` 停止语义对称，启动失败不再被吞掉。
+- `bash scripts/tests/health_contract_test.sh`：通过；HTTP 就绪/超时、PID 残留与 Docker health 状态均有覆盖。
+- `bash scripts/tests/public_compose_contract_test.sh`：通过；使用哨兵值渲染 public profile，确认 PostgreSQL、Redis、MinIO、release、WS Origin、JWT 与 media token 进入目标服务。
+- Go：`go test ./...` 与 `go vet ./...` 通过；新增 2 个配置覆盖测试，验证 Viper 对 Docker/dev 的 `ws_allowed_origins` 与公网依赖配置生效。
+- media-server：8 个测试文件、65/65 测试通过；`npm run build` 通过。
+- frontend：`npm run build:h5` 通过；仅有既有 Sass legacy API 和动态/静态混合导入警告。
+- admin：`npm run build` 通过；仅有既有大 chunk 警告。
+- 未执行真实公网启动、DNS/Cloudflare、1Panel 反代或线上容器变更；本轮公网验证止于渲染后的 Compose 配置。
+
 ---
 
 ## 🔥 2026-04-25 Post-Task16 Hotfix：用户测试阶段 4 个生产型 bug 闭环 ✅
