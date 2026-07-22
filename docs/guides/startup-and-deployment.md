@@ -94,7 +94,7 @@ npm --prefix media-server install
 | 管理端 | `./scripts/start.sh admin` |
 | 应用层全部（假设容器已在运行） | `./scripts/start.sh --no-docker` |
 
-> 脚本会检查端口占用，已被占用则**跳过**该服务启动（不会报错）。
+> 脚本会检查端口占用，已被占用则跳过重复启动。任一实际启动步骤失败时，其余步骤仍会尝试执行，但脚本最终以非 0 退出且不会输出虚假的“启动完成”。
 
 ### 2.4 前台调试（直接看日志）
 
@@ -115,8 +115,8 @@ cd admin && npm run dev
 
 ```bash
 ./scripts/stop.sh          # 停应用层，保留容器（下次 start 很快）
-./scripts/stop.sh full     # 停应用 + docker compose 全栈（数据卷保留）
-./scripts/stop.sh --all    # 同上（兼容旧写法）
+./scripts/stop.sh full     # 停本地前端/管理端 + docker compose 全栈（匹配 start full）
+./scripts/stop.sh --all    # 停全部本地进程 + compose 全栈（数据卷保留）
 ```
 
 ### 2.6 常用查看命令
@@ -189,6 +189,8 @@ GO_BUILD_PROXY=https://goproxy.cn,direct
 ```bash
 ./scripts/stop.sh full
 ```
+
+这会同时停止 `start.sh full` 拉起的本地 Vite 前端、管理端和全部 Compose 服务；只执行 `stop`，不会删除 volume。
 
 ---
 

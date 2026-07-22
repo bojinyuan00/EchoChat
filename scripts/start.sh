@@ -6,8 +6,8 @@
 #   ./scripts/start.sh backend      # 仅启动指定服务（backend|frontend|admin|media|docker）
 #   ./scripts/start.sh full         # Phase 2e-2 Task 14：docker compose 全栈启动（含 media-server 容器）
 #                                   # 会读 deploy/.env（如不存在提示 copy example），公网则用 deploy-public.sh
-# 注意：不使用 set -e，避免单个服务启动失败中断其他服务；
-# 失败时由 spawn_bg 内部打印日志末尾辅助排障
+# 注意：不使用 set -e，确保一个服务失败后仍能尝试启动其余服务；
+# main 会累计失败数并以非 0 退出，避免输出虚假的“启动完成”。
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,6 +27,19 @@ log_info()  { printf "${COLOR_CYAN}[INFO]${COLOR_RESET}  %s\n" "$*"; }
 log_ok()    { printf "${COLOR_GREEN}[OK]${COLOR_RESET}    %s\n" "$*"; }
 log_warn()  { printf "${COLOR_YELLOW}[WARN]${COLOR_RESET}  %s\n" "$*"; }
 log_err()   { printf "${COLOR_RED}[ERR]${COLOR_RESET}   %s\n" "$*"; }
+
+START_FAILURES=0
+
+run_start_step() {
+  local label="$1"
+  shift
+  if "$@"; then
+    return 0
+  fi
+  log_err "$label 启动失败"
+  START_FAILURES=$((START_FAILURES + 1))
+  return 0
+}
 
 # 判断端口是否被占用
 port_in_use() {
@@ -65,7 +78,10 @@ spawn_bg() {
 start_docker() {
   log_info "启动 Docker 中间件（Postgres/Redis/MinIO）..."
   cd "$ROOT_DIR/deploy"
-  docker compose -f docker-compose.dev.yml up -d postgres redis minio
+  if ! docker compose -f docker-compose.dev.yml up -d postgres redis minio; then
+    log_err "Docker 中间件启动命令执行失败"
+    return 1
+  fi
   log_ok "Docker 中间件已启动"
 }
 
@@ -300,6 +316,14 @@ print_summary() {
   printf "${COLOR_GREEN}=================================================${COLOR_RESET}\n"
 }
 
+finish_start() {
+  if (( START_FAILURES > 0 )); then
+    log_err "启动流程结束，但有 $START_FAILURES 个服务失败；请查看上方错误与 .run/logs"
+    return 1
+  fi
+  print_summary
+}
+
 main() {
   local target="${1:-all}"
   local skip_docker=false
@@ -310,12 +334,14 @@ main() {
 
   case "$target" in
     all)
-      $skip_docker || start_docker || log_err "Docker 中间件启动异常，请检查 Docker Desktop 是否运行"
-      start_backend  || true
-      start_media    || true
-      start_frontend || true
-      start_admin    || true
-      print_summary
+      if ! $skip_docker; then
+        run_start_step "Docker 中间件" start_docker
+      fi
+      run_start_step "Go 后端" start_backend
+      run_start_step "媒体服务器" start_media
+      run_start_step "前台用户端" start_frontend
+      run_start_step "后台管理端" start_admin
+      finish_start
       ;;
     docker)   start_docker ;;
     backend)  start_backend ;;
@@ -323,11 +349,11 @@ main() {
     admin)    start_admin ;;
     media)    start_media ;;
     full)
-      start_full || log_err "compose 全栈启动异常"
+      run_start_step "Docker Compose 全栈" start_full
       # full 模式下仍用本地进程跑前台 + 管理端（热更体验更好，符合开发机场景）
-      start_frontend || true
-      start_admin    || true
-      print_summary
+      run_start_step "前台用户端" start_frontend
+      run_start_step "后台管理端" start_admin
+      finish_start
       ;;
     *)
       log_err "未知参数: $target"
