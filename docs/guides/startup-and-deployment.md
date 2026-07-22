@@ -196,6 +196,8 @@ GO_BUILD_PROXY=https://goproxy.cn,direct
 
 ## 四、形态 3：生产服务器公网部署
 
+本节默认服务器上已经有可用的 Docker Compose（例如由现有 1Panel 环境提供）。EchoChat 部署脚本不会安装、升级或替换 1Panel，也不会修改 1Panel 中已有的其他应用。
+
 ### 4.1 前置条件
 
 | 资源 | 要求 |
@@ -235,8 +237,10 @@ vim deploy/.env
 |---|---|---|
 | `DEPLOY_MODE` | `public` | 已预填，勿改 |
 | `POSTGRES_PASSWORD` | `openssl rand -base64 24` | Postgres 强密码 |
-| `REDIS_PASSWORD` | `openssl rand -base64 24` | Redis 强密码，**必须同步修改** `deploy/docker/redis/redis.conf` 打开 `requirepass` |
+| `REDIS_PASSWORD` | `openssl rand -base64 24` | Redis 强密码；Compose 自动同时注入服务端 `requirepass`、健康检查和 Go 客户端 |
 | `MINIO_ROOT_PASSWORD` | 同上 | MinIO 控制台密码 |
+| `GO_SERVER_MODE` | `release` | 公网必须为 release |
+| `WS_ALLOWED_ORIGINS` | `https://chat.example.com` | 允许建立 WebSocket 的 HTTPS 前端 Origin；多个值用逗号分隔 |
 | `JWT_SECRET` | `openssl rand -hex 32` | 64 字符随机串 |
 | `MEDIA_INTERNAL_TOKEN` | `openssl rand -hex 32` | Go ↔ Node 内部鉴权 |
 | `MEDIASOUP_ANNOUNCED_IP` | `203.0.113.42` | **服务器公网 IP**（写内网 IP 或 127.0.0.1 会导致远端建不连） |
@@ -284,12 +288,15 @@ sudo iptables-save | sudo tee /etc/iptables/rules.v4    # 持久化
 ./scripts/deploy-public.sh
 ```
 
-脚本会按 4 步依次执行：
+脚本会按 5 步依次执行：
 
-1. **校验 .env**：所有 `_REPLACE_WITH_*_` 占位符是否改完、`JWT_SECRET` 长度 ≥ 32、`ANNOUNCED_IP` 必填、`REDIS_PASSWORD` 与 `redis.conf` 的 `requirepass` 联动一致（Task 16 P0 修复）
+1. **校验 .env**：占位符、强密码、`ANNOUNCED_IP`、`GO_SERVER_MODE=release` 和 HTTPS Origin
 2. **本机端口探测**：防止已有其它服务占用 8085 / 3300 / 3478
-3. **Docker 环境**：daemon 可访问、Compose V2 存在
-4. **启动**：`docker compose --profile public up -d --build`（包含 coturn 容器）
+3. **现有 Docker 环境**：daemon 可访问、Compose V2 存在；不安装或替换 1Panel/Docker
+4. **只读预检**：渲染最终 Compose 配置，失败时不创建或修改容器
+5. **启动**：`docker compose --profile public up -d --build`（包含 coturn 容器）
+
+> 当前公网脚本不构建或启动前端/管理端生产容器，也不配置域名与反向代理；这些将在后续公网部署阶段与现有 1Panel 反代共存设计后完成。
 
 ### 4.6 反向代理 + HTTPS（强烈建议）
 
@@ -371,7 +378,7 @@ gunzip -c /backup/echochat-2026-04-24.sql.gz \
 | `deploy/.env.public.example` | 公网模板 | 偶尔：改默认值或加新字段 |
 | `deploy/docker-compose.dev.yml` | 5+1 个服务的容器定义 | 加服务 / 改端口映射 |
 | `deploy/docker/postgres/init.sql` | Postgres 初始 schema（首次启动执行） | 改初始数据 |
-| `deploy/docker/redis/redis.conf` | Redis 配置，含 `requirepass` 注释 | 公网部署时**必须打开** requirepass |
+| `deploy/docker/redis/redis.conf` | Redis 通用配置 | 通常无需改；密码由 Compose 根据 `REDIS_PASSWORD` 自动启用 |
 
 ### 5.2 Go 后端
 

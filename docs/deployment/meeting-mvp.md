@@ -2,7 +2,7 @@
 
 > **适用阶段**：Phase 2e-2（会议 MVP ✅ 已完成）
 > **覆盖形态**：本机 Demo（零配置）+ 公网部署（含 TURN）
-> **最后更新**：2026-04-24（Phase 2e-2 Task 16 收官：E2E 回归 + 代码审查修复 + 资源生命周期审计；本指南 Task 14 双态部署脚本仍为最新有效版本，Task 16 追加 `REDIS_PASSWORD` 与 `redis.conf requirepass` 联动校验，详见 [Task 16 收官说明](../progress/CURRENT_STATUS.md)）
+> **最后复核**：2026-07-22（公网环境变量到 Compose/Go/Redis/MinIO 的传递链已补齐；Redis 密码无需手工编辑 `redis.conf`）
 
 ## 一、双态部署总览
 
@@ -60,7 +60,7 @@ MinIO 控制台:      http://localhost:9001 (echochat / echochat123456)
 ./scripts/status.sh
 # 预期全部 ● RUNNING
 
-curl http://localhost:8085/healthz         # Go backend
+curl http://localhost:8085/health          # Go backend
 curl http://localhost:3300/healthz         # media-server
 curl http://localhost:3300/readyz          # mediasoup worker 已就绪
 ```
@@ -68,9 +68,9 @@ curl http://localhost:3300/readyz          # mediasoup worker 已就绪
 ### 停止
 
 ```bash
-./scripts/stop.sh full              # 停止 docker compose 全栈（保留数据卷）
+./scripts/stop.sh full              # 停本地前端/管理端 + compose 全栈（保留数据卷）
 ./scripts/stop.sh                   # 仅停应用层（保留所有容器）
-./scripts/stop.sh --all             # 含数据库中间件
+./scripts/stop.sh --all             # 停全部本地进程 + compose 全栈
 ```
 
 ---
@@ -79,7 +79,7 @@ curl http://localhost:3300/readyz          # mediasoup worker 已就绪
 
 **前置要求**：
 - 服务器有**公网 IP** 或已解析 A 记录的域名
-- Docker 已安装
+- 服务器上已有可用 Docker Compose（可由现有 1Panel 环境提供）；本脚本不会部署、升级或替换 1Panel
 - 云安全组/iptables 可由你控制（不能仅有 80/443 的 PaaS）
 
 ### Step 1：复制模板并替换所有占位符
@@ -105,6 +105,9 @@ openssl rand -base64 24 # 数据库密码 / TURN 密码
 | `MEDIASOUP_ANNOUNCED_IP` | `203.0.113.42` | **必填**服务器公网 IP；不能写 `127.0.0.1` |
 | `TURN_ENABLED` | `true` | 对称 NAT fallback 必备 |
 | `TURN_USERNAME / TURN_PASSWORD` | 自设 | 避免 TURN 账号被互联网滥用 |
+| `REDIS_PASSWORD` | 强随机串 | Compose 自动用于 Redis `requirepass`、健康检查与 Go 连接 |
+| `GO_SERVER_MODE` | `release` | 公网强制 release 模式 |
+| `WS_ALLOWED_ORIGINS` | `https://chat.example.com` | 实际 HTTPS 前端 Origin；多个值用逗号分隔 |
 | `JWT_SECRET` | 64 hex | 生产必改 |
 | `MEDIA_INTERNAL_TOKEN` | 32 hex | Go ↔ Node 内部鉴权，必须与 `media-server/.env` 一致 |
 
@@ -143,14 +146,15 @@ sudo iptables -I INPUT -p tcp --dport 8085 -j ACCEPT
 ./scripts/deploy-public.sh
 ```
 
-脚本会按 4 步依次执行：
+脚本会按 5 步依次执行：
 
 1. **校验 `.env`**：占位符、长度、`ANNOUNCED_IP` 必填、`DEPLOY_MODE=public` 等
 2. **本机端口检查**：TCP:8085 / TCP:3300 / 潜在冲突
-3. **Docker 环境**：docker daemon + compose v2 可访问
-4. **启动**：`TURN_ENABLED=true` 时用 `--profile public`（含 coturn），否则跳过
+3. **现有 Docker 环境**：docker daemon + compose v2 可访问
+4. **Compose 只读预检**：使用最终 `.env` 渲染配置，失败时不启动容器
+5. **启动**：`TURN_ENABLED=true` 时用 `--profile public`（含 coturn），否则跳过
 
-启动完成后会打印访问地址。此时用浏览器访问 `http://<ANNOUNCED_IP>:5173`（或你放通的端口）即可。
+本脚本当前只启动 Postgres、Redis、MinIO、Go、media-server 和可选 coturn，不包含前端/管理端生产镜像、域名、HTTPS 或 1Panel 反向代理配置。因此完成本步骤代表“后端与媒体栈可部署”，还不能直接通过 5173 对公网提供正式页面。
 
 ### 验证
 
@@ -166,13 +170,13 @@ docker logs echochat-coturn | tail -20
 公网验证要点：
 - 用**两台不同网络**的设备（比如手机 4G + 家里 WiFi）分别入会，双向能看到对端画面
 - Chrome 调 `chrome://webrtc-internals` 看 `Remote candidate type` —— 对称 NAT 场景能看到 `relay` 类型，说明 TURN 生效
-- `curl http://<ANNOUNCED_IP>:8085/healthz` 返回 200
+- `curl http://<ANNOUNCED_IP>:8085/health` 返回 200
 
 ### 停止
 
 ```bash
 ./scripts/stop.sh full
-# 等价于：docker compose -f deploy/docker-compose.dev.yml --profile public stop
+# 同时清理可能由 full 模式启动的本地前端/管理端，并停止 public profile 容器；数据卷保留
 ```
 
 ---

@@ -7,6 +7,7 @@
 server:
   port: 8085          # 服务监听端口
   mode: debug         # 运行模式：debug（开发）/ release（生产）
+  ws_allowed_origins: "" # 可通过 ECHOCHAT_SERVER_WS_ALLOWED_ORIGINS 覆盖
 
 # PostgreSQL 数据库配置
 database:

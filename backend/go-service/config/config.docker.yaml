@@ -6,6 +6,8 @@
 server:
   port: 8085
   mode: debug
+  # 公网通过 ECHOCHAT_SERVER_WS_ALLOWED_ORIGINS 覆盖；release 模式必须显式配置。
+  ws_allowed_origins: ""
 
 database:
   host: postgres

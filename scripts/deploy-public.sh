@@ -22,6 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEPLOY_DIR="$ROOT_DIR/deploy"
 ENV_FILE="$DEPLOY_DIR/.env"
+COMPOSE_FILE="$DEPLOY_DIR/docker-compose.dev.yml"
 
 COLOR_GREEN='\033[0;32m'
 COLOR_YELLOW='\033[0;33m'
@@ -44,7 +45,7 @@ warn()  { log_warn "$*"; WARN_COUNT=$((WARN_COUNT + 1)); }
 # Step 1：env 文件校验
 # ------------------------------------------------------------
 step_validate_env() {
-  log_info "=== Step 1/4: 校验 deploy/.env ==="
+  log_info "=== Step 1/5: 校验 deploy/.env ==="
 
   if [[ ! -f "$ENV_FILE" ]]; then
     err "deploy/.env 不存在"
@@ -59,7 +60,26 @@ step_validate_env() {
 
   # DEPLOY_MODE 必须是 public（防止误把 local 的 env 复制过来）
   if [[ "${DEPLOY_MODE:-}" != "public" ]]; then
-    warn "deploy/.env 中 DEPLOY_MODE=\"${DEPLOY_MODE:-<unset>}\"，不是 public；确认你要走公网部署？"
+    err "deploy/.env 的 DEPLOY_MODE 必须为 public"
+  fi
+
+  if [[ "${GO_SERVER_MODE:-}" != "release" ]]; then
+    err "GO_SERVER_MODE 必须为 release"
+  fi
+
+  if [[ -z "${WS_ALLOWED_ORIGINS:-}" ]]; then
+    err "WS_ALLOWED_ORIGINS 不能为空"
+  elif [[ "$WS_ALLOWED_ORIGINS" == _REPLACE_WITH_* ]]; then
+    err "WS_ALLOWED_ORIGINS 仍是占位符，请填写实际 HTTPS Origin"
+  else
+    local origin
+    IFS=',' read -r -a origins <<<"$WS_ALLOWED_ORIGINS"
+    for origin in "${origins[@]}"; do
+      if [[ "$origin" != https://* ]]; then
+        err "WS_ALLOWED_ORIGINS 中每一项都必须以 https:// 开头"
+        break
+      fi
+    done
   fi
 
   # MEDIASOUP_ANNOUNCED_IP 必填
@@ -83,14 +103,9 @@ step_validate_env() {
   for var in "${placeholders[@]}"; do
     local val="${!var:-}"
     if [[ -z "$val" ]]; then
-      # REDIS_PASSWORD 允许为空（仅内网访问时）
-      if [[ "$var" == "REDIS_PASSWORD" ]]; then
-        warn "$var 为空（仅当 Redis 不对公网暴露时可接受）"
-      else
-        err "$var 为空"
-      fi
+      err "$var 为空"
     elif [[ "$val" == _REPLACE_WITH_* ]]; then
-      err "$var 仍是占位符（${val}），请替换为真实值"
+      err "$var 仍是占位符，请替换为真实值"
     fi
   done
 
@@ -99,28 +114,7 @@ step_validate_env() {
     warn "JWT_SECRET 长度仅 ${#JWT_SECRET} 字符，推荐 >= 64 字符（openssl rand -hex 32）"
   fi
 
-  # Task 16 Nit（代码审查 2026-04-23）：REDIS_PASSWORD 与 redis.conf requirepass 联动校验
-  # 背景：REDIS_PASSWORD 只影响 go-service / media-server 的连接侧，
-  #       若 deploy/docker/redis/redis.conf 未设置 requirepass，Redis 本身会接受无密码连接（相当于裸奔）
-  local redis_conf="$DEPLOY_DIR/docker/redis/redis.conf"
-  if [[ -f "$redis_conf" ]]; then
-    local has_requirepass
-    has_requirepass=$(grep -E '^\s*requirepass\s+\S+' "$redis_conf" || true)
-    if [[ -n "${REDIS_PASSWORD:-}" ]]; then
-      if [[ -z "$has_requirepass" ]]; then
-        err "REDIS_PASSWORD 已设置，但 $redis_conf 未启用 requirepass —— Redis 仍允许空密码登录，公网暴露时务必同步开启"
-        log_info "建议：在 redis.conf 追加 requirepass \$REDIS_PASSWORD（或在 docker-compose command 中传入 --requirepass）"
-      else
-        log_ok "Redis requirepass 已在 redis.conf 启用，与 REDIS_PASSWORD 联动"
-      fi
-    else
-      if [[ -n "$has_requirepass" ]]; then
-        warn "redis.conf 启用了 requirepass，但 deploy/.env 的 REDIS_PASSWORD 为空 —— go-service/media-server 连接会失败"
-      fi
-    fi
-  else
-    warn "未找到 $redis_conf，跳过 Redis 密码联动校验"
-  fi
+  log_ok "Redis 密码将由 Compose 同时注入 redis-server、健康检查和 Go 客户端"
 
   # TURN 开关一致性
   if [[ "${TURN_ENABLED:-false}" != "true" ]]; then
@@ -139,7 +133,7 @@ step_validate_env() {
 # ------------------------------------------------------------
 # 说明：云安全组需要在云控制台放通，本脚本只能检测本机 iptables + 当前占用
 step_check_ports() {
-  log_info "=== Step 2/4: 本机端口占用检查 ==="
+  log_info "=== Step 2/5: 本机端口占用检查 ==="
 
   local ports=(
     "8085/tcp|Go backend API"
@@ -190,7 +184,7 @@ step_check_ports() {
 # Step 3：Docker 环境自检
 # ------------------------------------------------------------
 step_check_docker() {
-  log_info "=== Step 3/4: Docker 环境自检 ==="
+  log_info "=== Step 3/5: 现有 Docker 环境自检 ==="
 
   if ! command -v docker >/dev/null 2>&1; then
     err "未检测到 docker 命令"
@@ -212,10 +206,22 @@ step_check_docker() {
 }
 
 # ------------------------------------------------------------
+# Step 4：渲染后的 Compose 配置预检（只读，不创建容器）
+# ------------------------------------------------------------
+step_validate_compose() {
+  log_info "=== Step 4/5: 渲染 Compose 配置 ==="
+  if ! docker compose --env-file "$ENV_FILE" --profile public -f "$COMPOSE_FILE" config --quiet; then
+    err "Compose 配置渲染失败，拒绝启动任何容器"
+    return 1
+  fi
+  log_ok "Compose 配置渲染通过"
+}
+
+# ------------------------------------------------------------
 # Step 4：启动 public profile
 # ------------------------------------------------------------
 step_launch() {
-  log_info "=== Step 4/4: 启动 docker compose (public profile) ==="
+  log_info "=== Step 5/5: 启动 docker compose (public profile) ==="
 
   if (( ERR_COUNT > 0 )); then
     log_err "前面校验有错误，拒绝启动（先修正后再跑脚本）"
@@ -225,10 +231,10 @@ step_launch() {
   cd "$DEPLOY_DIR"
   if [[ "${TURN_ENABLED:-false}" == "true" ]]; then
     log_info "TURN_ENABLED=true，使用 --profile public 启动（含 coturn）"
-    docker compose -f docker-compose.dev.yml --profile public up -d --build
+    docker compose --env-file "$ENV_FILE" --profile public -f "$COMPOSE_FILE" up -d --build
   else
     log_info "TURN_ENABLED=false，跳过 coturn（仅默认服务）"
-    docker compose -f docker-compose.dev.yml up -d --build
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build
   fi
 
   log_ok "启动指令已发出，等待 healthcheck（最多 180 秒）..."
@@ -247,6 +253,10 @@ step_launch() {
     sleep 3
     waited=$((waited + 3))
   done
+  if (( waited >= 180 )); then
+    log_err "等待 media-server healthy 超过 180 秒"
+    return 1
+  fi
 
   printf "\n${COLOR_GREEN}=============== 公网部署完成 ===============${COLOR_RESET}\n"
   printf "  Go 后端 API:    http://${MEDIASOUP_ANNOUNCED_IP}:8085\n"
@@ -264,6 +274,7 @@ main() {
   step_validate_env || exit 1
   step_check_ports   # Step 2，不会 return 1，只收集 warn
   step_check_docker || exit 1   # Step 3
+  step_validate_compose || exit 1 # Step 4，只读预检
   # 二次确认（至少暴露 1 个明显错误时已退出，这里只对警告放行）
   if [[ "${1:-}" != "--yes" ]] && (( WARN_COUNT > 0 )); then
     printf "\n${COLOR_YELLOW}上述 %d 个警告仅提示，不阻塞启动。继续部署？(y/N): ${COLOR_RESET}" "$WARN_COUNT"

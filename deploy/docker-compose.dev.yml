@@ -23,14 +23,24 @@ services:
   redis:
     image: redis:7
     container_name: echochat-redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     ports:
       - "6379:6379"
     volumes:
       - redisdata:/data
       - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf
-    command: redis-server /usr/local/etc/redis/redis.conf
+    command:
+      - sh
+      - -c
+      - |
+        if [ -n "$$REDIS_PASSWORD" ]; then
+          exec redis-server /usr/local/etc/redis/redis.conf --requirepass "$$REDIS_PASSWORD"
+        else
+          exec redis-server /usr/local/etc/redis/redis.conf
+        fi
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping; else redis-cli ping; fi"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -69,7 +79,16 @@ services:
     container_name: echochat-go-service
     environment:
       CONFIG_NAME: config.docker
-      # 透传关键环境变量，config.docker.yaml 内部引用（可选覆盖）
+      # Viper 使用 ECHOCHAT_ + 点号转下划线读取覆盖值。
+      ECHOCHAT_SERVER_MODE: ${GO_SERVER_MODE:-debug}
+      ECHOCHAT_SERVER_WS_ALLOWED_ORIGINS: ${WS_ALLOWED_ORIGINS:-}
+      ECHOCHAT_DATABASE_USER: ${POSTGRES_USER:-echochat}
+      ECHOCHAT_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-echochat_dev_2026}
+      ECHOCHAT_DATABASE_DBNAME: ${POSTGRES_DB:-echochat}
+      ECHOCHAT_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      ECHOCHAT_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-echochat}
+      ECHOCHAT_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-echochat123456}
+      ECHOCHAT_MINIO_BUCKET: ${MINIO_BUCKET:-echochat}
       ECHOCHAT_JWT_SECRET: ${JWT_SECRET:-}
       ECHOCHAT_MEDIA_SERVER_INTERNAL_TOKEN: ${MEDIA_INTERNAL_TOKEN:-}
     ports:
