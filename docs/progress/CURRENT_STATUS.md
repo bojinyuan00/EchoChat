@@ -1,8 +1,8 @@
 # EchoChat 项目开发进度
 
-> **最后更新**：2026-04-25（Phase 2e-2 Post-Task16 Hotfix 批次：①媒体 ICE `announcedIp` 自检 ②MinIO 反代 + `normalizeMediaUrl` 修复跨端媒体 URL ③群聊免打扰状态初始化同步 ④**群邀请改为 pending 同意流程**）
+> **最后复核**：2026-07-22（当前实现基线一致性收口；下方 2026-04-25 起内容按时间倒序保留历史交付记录）
 > **当前阶段**：Phase 2e-2 会议 MVP **已完成** ✅（Task 0-16 全部 ✅，分支 `feature/phase2e-2-meeting-mvp` 待合并主干）
-> **当前分支**：`feature/phase2e-2-meeting-mvp`（从 `feature/phase2c-group-read-receipt` 衍生）
+> **当前代码基线**：分支名称以当前 checkout 的 `git branch --show-current` 为准；文档不再把 2026-04-25 的历史功能分支写成永久“当前分支”
 > **Phase 2e 整体设计**：`docs/plans/2026-04-20-phase2e-design.md`（三子阶段路线图 + 后续规划清单）
 > **Phase 2e-1 专用设计**：`docs/plans/2026-04-20-phase2e-1-design.md`（✅ 已完成）
 > **Phase 2e-1 实施计划**：`docs/plans/2026-04-20-phase2e-1-implementation.plan.md`（✅ 11 个 Task 全部完成）
@@ -13,6 +13,15 @@
 > **Phase 2e-2 验证报告**：`test-report-phase2e-2-meeting.md`
 > **Phase 2e-2 E2E 剧本**：`.playwright-mcp/task16/scenarios/`（5 场景 + 手工回归 checklist）
 > **启动与部署手册**：`docs/guides/startup-and-deployment.md`（三种形态启动步骤 + 配置文件速查 + FAQ）
+
+---
+
+## 2026-07-22 当前实现口径复核
+
+- Go 会议控制面：12 个 REST 接口；会议 WebSocket 为 16 个唯一事件（9 C→S、8 S→C，`meeting.member.state.changed` 双向重叠）。
+- Go 群聊前台：19 个 REST 接口；管理端：3 个 REST 接口；IM 模块：9 个 REST 接口。
+- Node media-server：10 个 `/internal/v1` 生命周期接口，另含 `/internal/info`、`/healthz`、`/readyz`。
+- 本次收口只修改仓库内文档、开发脚本和部署配置；没有登录公网服务器，也没有部署、替换或修改已有 1Panel、Cloudflare 或线上容器。
 
 ---
 

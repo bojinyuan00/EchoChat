@@ -60,7 +60,7 @@ EchoChat/
 │       ├── config/        # 配置文件
 │       ├── pkg/           # 公共包 (db / logs / middleware / utils)
 │       └── router/        # 路由聚合
-├── media-server/          # mediasoup Node 媒体服务 (Phase 2e-2 Task 0-2 已落地 9 REST API；Task 7 起 Go 通过 HTTPMediaOrchestrator 接入；Task 14 纳入 docker-compose 双态编排)
+├── media-server/          # mediasoup Node 媒体服务（当前 10 个 /internal/v1 生命周期接口；另有内部信息与公开健康接口）
 ├── deploy/                # 部署配置 (Docker Compose + 三份 .env 双态模板)
 ├── design-system/         # UI 设计系统 (ui-ux-pro-max 生成)
 ├── docs/                  # 项目文档
@@ -214,8 +214,8 @@ npm run dev
 ### Phase 2e-2 — 多人音视频会议 MVP ✅（2026-04-24 完成）
 
 - [x] 技术栈：mediasoup Node 媒体控制层 + C++ SFU Worker + mediasoup-client（WebRTC）
-- [x] 控制面：Go 会议 service + 9 REST API + 14 WS 事件（创建 / 加入 / 离开 / 主持人四件套 / 邀请 / 聊天 / 生命周期）
-- [x] 媒体面：Node 媒体服务 12 内部 REST（Router / Transport / Producer / Consumer / Stats）+ Token 内部鉴权
+- [x] 控制面：Go 会议 service + 12 个 REST 接口 + 16 个 WebSocket 事件（9 C→S / 8 S→C，`state.changed` 双向重叠）
+- [x] 媒体面：Node 媒体服务 10 个 `/internal/v1` 生命周期接口 + `/internal/info`，并提供 `/healthz`、`/readyz` 健康接口
 - [x] 前端会议闭环：Hub → 预览 → 房间（网格 / 演讲者 / 工具栏 / 聊天 / 成员列表 / 主持人菜单）
 - [x] 会议生命周期：host 掉线 2 分钟宽限 + 自动转让 + 空房 5 分钟 TTL + 定时兜底清理
 - [x] 双态部署：本机 Docker Compose 即装即用 + 公网（announcedIp + coturn `--profile public`）

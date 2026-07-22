@@ -80,33 +80,33 @@ stateDiagram-v2
 
 ### 3.1 新建
 
-- [`backend/go-service/app/meeting/service/meeting_lifecycle_service.go`](backend/go-service/app/meeting/service/meeting_lifecycle_service.go)（约 350 行）
+- [`backend/go-service/app/meeting/service/meeting_lifecycle_service.go`](../../backend/go-service/app/meeting/service/meeting_lifecycle_service.go)（约 350 行）
   - 统一封装 5 个钩子：`OnHostDisconnect / OnHostReconnect / HandleHostGraceExpired / OnAllMembersLeft / HandleEmptyRoomExpired`
   - 内部 `sync.Map[roomCode]*time.Timer` 管理本地 AfterFunc
   - 暴露 `RescheduleFromRedis(ctx)`（服务启动时扫描已存在的 grace/empty_ttl key 补装 timer）
-- [`backend/go-service/app/meeting/task/meeting_cleanup_task.go`](backend/go-service/app/meeting/task/meeting_cleanup_task.go)（约 180 行）
+- [`backend/go-service/app/meeting/task/meeting_cleanup_task.go`](../../backend/go-service/app/meeting/task/meeting_cleanup_task.go)（约 180 行）
   - 启动时先 `lifecycleSvc.RescheduleFromRedis` 一次
   - 每 30s：扫 `echo:meeting:host_grace:*` 找出 `TTL ≤ 0` 或 timer 已丢失的 key → 再次触发 `HandleHostGraceExpired`；同理处理 `empty_ttl` key
   - 每 10 分钟：`roomDAO.ListStaleActive(hoursNoActivity=4)` → `EndRoom(..., reason=system_error)` 兜底
   - 每 24 小时：`chatDAO.DeleteByRoomIDs(olderThan=24h)` 聊天清理
-- [`docs/verify/meeting_t8_verify.mjs`](docs/verify/meeting_t8_verify.mjs)（约 250 行）E2E 脚本
+- [`docs/verify/meeting_t8_verify.mjs`](../verify/meeting_t8_verify.mjs)（约 250 行）E2E 脚本
 
 ### 3.2 修改（业务逻辑）
 
-- [`backend/go-service/app/meeting/service/meeting_service.go`](backend/go-service/app/meeting/service/meeting_service.go)
+- [`backend/go-service/app/meeting/service/meeting_service.go`](../../backend/go-service/app/meeting/service/meeting_service.go)
   - `JoinRoom` L307-316：**移除** `mediaOrchestrator.CreateRouter` 调用，改为复用已存在 Router（查 Redis `echo:meeting:room:{code}` router_id 字段或直接从 HTTPMediaOrchestrator sync.Map 读）
   - `LeaveRoom` L381-384：全员退出时从"立即 MarkEnded+CloseRouter"改为**调 `lifecycleSvc.OnAllMembersLeft(ctx, code)`**
   - `JoinRoom` 新增 L260 后：检查 `echo:meeting:empty_ttl:{code}` 存在即 `lifecycleSvc.CancelEmptyTTL(ctx, code)` 恢复房间
   - `CreateRoom` L213 保留（房间首创 Router）
-- [`backend/go-service/app/meeting/service/http_media_orchestrator.go`](backend/go-service/app/meeting/service/http_media_orchestrator.go)
+- [`backend/go-service/app/meeting/service/http_media_orchestrator.go`](../../backend/go-service/app/meeting/service/http_media_orchestrator.go)
   - `CreateRouter` 前置查 `roomRouterCache` sync.Map，命中即直接 return（底层幂等防御，对业务层误调零影响）
-- [`backend/go-service/app/meeting/service/meeting_signal_service.go`](backend/go-service/app/meeting/service/meeting_signal_service.go)
+- [`backend/go-service/app/meeting/service/meeting_signal_service.go`](../../backend/go-service/app/meeting/service/meeting_signal_service.go)
   - 新增公开方法 `OnWSDisconnect(ctx context.Context, userID int64)`：`participantDAO.FindActiveByUser` → 存在则调 `cleanupUserResources`；若 `room.HostID == userID` 则额外 `lifecycleSvc.OnHostDisconnect`
   - `OnRoomJoin` 新增 L112 前：若该用户是 room.HostID 则调 `lifecycleSvc.OnHostReconnect`（支持主持人重连恢复）
 
 ### 3.3 WS 断线钩子集成
 
-- [`backend/go-service/app/ws/handler.go`](backend/go-service/app/ws/handler.go)
+- [`backend/go-service/app/ws/handler.go`](../../backend/go-service/app/ws/handler.go)
   - 新增字段 `meetingDisconnectHook MeetingDisconnectHook`（接口，可选，避免循环依赖）
   - `SetOnDisconnect` 回调 L115-123：在 `UserOffline` 之后追加 `hook.OnWSDisconnect(ctx, userID)`
 - `app/ws/interfaces.go`（新增 10 行）定义接口：
@@ -119,14 +119,14 @@ stateDiagram-v2
 
 ### 3.4 配置 + 启动
 
-- [`backend/go-service/config/config.go`](backend/go-service/config/config.go) 新增 `MeetingConfig { HostGraceSeconds int; EmptyRoomTTLSeconds int; CleanupIntervalSeconds int; StaleRoomHours int }`
+- [`backend/go-service/config/config.go`](../../backend/go-service/config/config.go) 新增 `MeetingConfig { HostGraceSeconds int; EmptyRoomTTLSeconds int; CleanupIntervalSeconds int; StaleRoomHours int }`
 - `config.dev.yaml` / `config.docker.yaml` 默认值：120 / 300 / 30 / 4
 - `cmd/server/main.go` L82 后追加：`app.MeetingCleanupTask.Start()` + `defer Stop()`
 - `app/provider/provider.go`：`App` 结构体新增 `MeetingCleanupTask *task.MeetingCleanupTask`
 
 ### 3.5 DAO 扩展
 
-- [`backend/go-service/app/meeting/dao/meeting_room_dao.go`](backend/go-service/app/meeting/dao/meeting_room_dao.go)
+- [`backend/go-service/app/meeting/dao/meeting_room_dao.go`](../../backend/go-service/app/meeting/dao/meeting_room_dao.go)
   - `ListStaleActive(ctx, hoursNoActivity int, limit int) ([]int64, error)`：`status != ended AND started_at < NOW() - hoursNoActivity`
   - `FindActiveByCode(ctx, code) (*MeetingRoom, error)`（若不存在直接复用已有 GetByCode）
 
@@ -149,7 +149,7 @@ stateDiagram-v2
 ## 五、测试/验收
 
 - 单元：psql 手工脚本验证 `TransferHost` 事务在冲突时回滚（复用 Task 3 风格）
-- E2E 脚本 [`docs/verify/meeting_t8_verify.mjs`](docs/verify/meeting_t8_verify.mjs)（TEST 模式下 `HostGraceSeconds=2`、`EmptyRoomTTLSeconds=3`、`CleanupIntervalSeconds=1`）：
+- E2E 脚本 [`docs/verify/meeting_t8_verify.mjs`](../verify/meeting_t8_verify.mjs)（TEST 模式下 `HostGraceSeconds=2`、`EmptyRoomTTLSeconds=3`、`CleanupIntervalSeconds=1`）：
   1. host 掉线 → 2s 内读 `host_grace` 存在 → 第二成员 3s 后收 `meeting.host.changed`，room.HostID 在 DB 已更新
   2. host 掉线 → 1s 内重连 → `host_grace` 被 DEL → host 身份保留
   3. 全员 leave → `empty_ttl` 存在 → 新用户 join → key 被 DEL + 房间 status 仍 Active

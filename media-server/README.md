@@ -2,6 +2,8 @@
 
 EchoChat 多人音视频会议（Phase 2e-2）的 SFU 节点。内部使用 [mediasoup](https://mediasoup.org/) 进行 WebRTC 媒体转发，外部用 [Fastify](https://fastify.dev/) 暴露内部 REST API，供 Go backend 调度；与 Go backend 之间使用 `X-Internal-Token` 鉴权，**不直接对公网暴露**。
 
+> **当前实现（2026-07-22 复核）**：当前实现：10 个 `/internal/v1` 生命周期接口（Router 2、Transport 3、Producer 2、Consumer 3），另有鉴权接口 `GET /internal/info`，以及公开健康接口 `GET /healthz`、`GET /readyz`。下方 Task 2 的“9 个接口”是当时的历史验收口径，随后新增了关闭 Transport 接口。
+
 > 配套文档：
 > - [Phase 2e-2 设计文档](../docs/plans/2026-04-21-phase2e-2-design.md)
 > - [Phase 2e-2 实施计划](../docs/plans/2026-04-21-phase2e-2-implementation.plan.md)
@@ -124,7 +126,7 @@ docker run --rm \
 
 ## 后续任务
 
-- **Task 2 ✅**：`/internal/v1/routers`、`/transports`、`/produce`、`/consume` 等 9 个内部 REST API 全部落地（58 单元/集成测试，覆盖率 80.89%）。
+- **Task 2 ✅（历史口径）**：当时 `/internal/v1/routers`、`/transports`、`/produce`、`/consume` 等 9 个内部 REST API 全部落地（58 单元/集成测试，覆盖率 80.89%）；当前接口总数见本文顶部复核说明。
 - **Task 7 ✅**（2026-04-21）：Go 侧 `HTTPMediaOrchestrator` 通过 `X-Internal-Token` 已完整接入本服务的 `/internal/v1/*`；Go↔Node 媒体链路在端到端脚本 `docs/verify/meeting_t7_verify.mjs` 中 **16/16 PASS**，媒体 Router/Transport/Producer/Consumer 生命周期均由 Go 驱动。
 - **Task 9 ✅**（2026-04-21）：前端接入 mediasoup-client 完成，`meeting.consume.resume` WS 事件全链路打通；本服务 `/internal/v1/consumers/:id/resume` 已被 Go 侧使用。
 - **Task 14 ✅**（2026-04-24）：纳入 `deploy/docker-compose.dev.yml` 双态部署编排，Dockerfile 镜像由 compose 直接 build；配套 `deploy/.env.local.example`（本机 Demo，`MEDIASOUP_ANNOUNCED_IP=""` 自动走内网）与 `deploy/.env.public.example`（公网部署，强制填写公网 IP + 可选 coturn）。本服务现在通过 `scripts/start.sh full` 以容器身份启动，公网部署走 `scripts/deploy-public.sh`。详见 `docs/deployment/meeting-mvp.md`。

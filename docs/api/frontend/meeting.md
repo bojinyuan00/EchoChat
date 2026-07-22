@@ -3,7 +3,7 @@
 > 通用规范（认证、响应包络、通用错误码）见 [README.md](../README.md)
 > 会议内实时信令（Transport / Producer / Consumer / 控制事件）通过 WebSocket 完成，见 [websocket.md](../websocket.md)
 
-**实施状态**：本文档对应 Phase 2e-2 Task 5 / Task 6 / Task 7 / Task 9 已落地的 12 个 REST 接口 + **14 个** WebSocket 信令事件（Task 9 新增 `meeting.consume.resume`），统一前缀 `/api/v1/meeting`（REST）与 `/ws`（WebSocket），全部需要 JWT 认证。Task 5/6/7/9 完成时间：2026-04-21。自 Task 7 起 **Go 后端直连 Node media-server**，`transport.id` / `iceCandidates` / `dtlsParameters.fingerprints` 等字段均由真实 mediasoup 返回（不再是 stub 占位）；自 Task 9 起 `CreateRoom` / `JoinRoom` 响应同时返回 `router_id` + `rtp_capabilities`，供前端 `mediasoupClient.Device.load()` 直接初始化。
+**实施状态**：当前实现包含 12 个 REST 接口 + **16 个唯一 WebSocket 事件**：9 个 C→S、8 个 S→C，其中 `meeting.member.state.changed` 为双向事件，去重后总数为 16。统一前缀为 `/api/v1/meeting`（REST）与 `/ws`（WebSocket），全部需要 JWT 认证。自 Task 7 起 **Go 后端直连 Node media-server**，`transport.id` / `iceCandidates` / `dtlsParameters.fingerprints` 等字段均由真实 mediasoup 返回（不再是 stub 占位）；自 Task 9 起 `CreateRoom` / `JoinRoom` 响应同时返回 `router_id` + `rtp_capabilities`，供前端 `mediasoupClient.Device.load()` 直接初始化。
 
 **设计口径**：以 [`docs/plans/2026-04-21-phase2e-2-design.md`](../../plans/2026-04-21-phase2e-2-design.md) §6.2 为单一事实来源（SSOT）。
 
@@ -385,7 +385,7 @@
 
 ## WebSocket 信令协议（Task 6）
 
-全部会议相关实时信令走 `/ws?token=<access_token>` 统一通道，共 **14 个 `meeting.*` 事件**：**9 个** 客户端→服务端（C→S）操作事件（Task 9 新增 `meeting.consume.resume`）+ 5 个服务端→客户端（S→C）广播事件 + 2 个补充业务事件（聊天 + 被踢定向推送，与 REST 广播复用）。
+全部会议相关实时信令走 `/ws?token=<access_token>` 统一通道，共 **16 个唯一 `meeting.*` 事件**：**9 个**客户端→服务端（C→S）操作事件 + **8 个**服务端→客户端（S→C）广播/定向事件；`meeting.member.state.changed` 同时属于两个方向，因此 `9 + 8 - 1 = 16`。
 
 ### 帧格式
 
