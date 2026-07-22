@@ -46,11 +46,39 @@ port_in_use() {
   lsof -iTCP:"$1" -sTCP:LISTEN -n -P >/dev/null 2>&1
 }
 
+# 等待 HTTP 服务真正可用，而不是只判断进程或端口存在。
+# 参数：name url pid timeout_seconds；pid 可传空（例如容器服务）。
+wait_for_http() {
+  local name="$1"
+  local url="$2"
+  local pid="${3:-}"
+  local timeout="${4:-60}"
+  local waited=0
+
+  while (( waited < timeout )); do
+    if curl --insecure --fail --silent --show-error --max-time 2 "$url" >/dev/null 2>&1; then
+      log_ok "$name 已就绪 ($url)"
+      return 0
+    fi
+    if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+      log_err "$name 进程已退出，未能通过健康检查"
+      return 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  log_err "$name 在 ${timeout}s 内未就绪: $url"
+  return 1
+}
+
 # 将命令以后台方式启动，并记录 PID 与日志
 # 启动失败时自动打印日志末尾帮助排障，但不中断其他服务的启动
 spawn_bg() {
   local name="$1"; shift
   local workdir="$1"; shift
+  local health_url="$1"; shift
+  local timeout="$1"; shift
   local log_file="$LOG_DIR/$name.log"
   local pid_file="$RUN_DIR/$name.pid"
   (
@@ -58,11 +86,10 @@ spawn_bg() {
     nohup "$@" >"$log_file" 2>&1 &
     echo $! >"$pid_file"
   )
-  sleep 1
   local pid
   pid="$(cat "$pid_file" 2>/dev/null || echo '')"
-  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-    log_ok "$name 已启动 (PID=$pid)  日志: $log_file"
+  if [[ -n "$pid" ]] && wait_for_http "$name" "$health_url" "$pid" "$timeout"; then
+    log_ok "$name 已启动并就绪 (PID=$pid)  日志: $log_file"
     return 0
   fi
   log_err "$name 启动失败，日志末尾："
@@ -132,35 +159,42 @@ start_full() {
     waited=$((waited + 3))
   done
   if (( waited >= 180 )); then
-    log_warn "等待 media-server healthy 超过 180 秒，可能仍在 mediasoup worker 初始化中，请手动验证"
+    log_err "等待 media-server healthy 超过 180 秒"
+    return 1
   fi
+
+  wait_for_http "容器化 media-server" "http://127.0.0.1:3300/readyz" "" 30 || return 1
+  wait_for_http "容器化 Go 后端" "http://127.0.0.1:8085/health" "" 60 || return 1
 }
 
 start_backend() {
   if port_in_use 8085; then
-    log_warn "端口 8085 已被占用，跳过 Go 后端启动"
-    return 0
+    log_warn "端口 8085 已被占用，验证现有 Go 后端..."
+    wait_for_http "Go 后端（现有进程）" "http://127.0.0.1:8085/health" "" 3
+    return
   fi
   log_info "启动 Go 后端 (port 8085)..."
-  spawn_bg "backend" "$ROOT_DIR/backend/go-service" go run cmd/server/main.go
+  spawn_bg "backend" "$ROOT_DIR/backend/go-service" "http://127.0.0.1:8085/health" 60 go run cmd/server/main.go
 }
 
 start_frontend() {
   if port_in_use 5173; then
-    log_warn "端口 5173 已被占用，跳过前台启动"
-    return 0
+    log_warn "端口 5173 已被占用，验证现有前台..."
+    wait_for_http "前台用户端（现有进程）" "https://127.0.0.1:5173" "" 3
+    return
   fi
   log_info "启动前台用户端 (port 5173)..."
-  spawn_bg "frontend" "$ROOT_DIR/frontend" npm run dev:h5
+  spawn_bg "frontend" "$ROOT_DIR/frontend" "https://127.0.0.1:5173" 60 npm run dev:h5
 }
 
 start_admin() {
   if port_in_use 3100; then
-    log_warn "端口 3100 已被占用，跳过管理端启动"
-    return 0
+    log_warn "端口 3100 已被占用，验证现有管理端..."
+    wait_for_http "后台管理端（现有进程）" "http://127.0.0.1:3100" "" 3
+    return
   fi
   log_info "启动后台管理端 (port 3100)..."
-  spawn_bg "admin" "$ROOT_DIR/admin" npm run dev
+  spawn_bg "admin" "$ROOT_DIR/admin" "http://127.0.0.1:3100" 60 npm run dev
 }
 
 # 启动 Node 媒体服务器（mediasoup SFU，默认端口 3300）
@@ -172,8 +206,9 @@ start_media() {
     return 0
   fi
   if port_in_use 3300; then
-    log_warn "端口 3300 已被占用，跳过媒体服务器启动"
-    return 0
+    log_warn "端口 3300 已被占用，验证现有媒体服务器..."
+    wait_for_http "媒体服务器（现有进程）" "http://127.0.0.1:3300/readyz" "" 3
+    return
   fi
   if [[ ! -f "$media_dir/.env" && -f "$media_dir/.env.example" ]]; then
     log_info "media-server/.env 不存在，从 .env.example 复制"
@@ -184,7 +219,7 @@ start_media() {
     return 1
   fi
   log_info "启动媒体服务器 (port 3300)..."
-  spawn_bg "media" "$media_dir" npm run dev
+  spawn_bg "media" "$media_dir" "http://127.0.0.1:3300/readyz" 90 npm run dev
 }
 
 # 等待 vite/dev server 日志里出现 Network 行并提取其中的 LAN 地址
@@ -368,4 +403,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${ECHOCHAT_SCRIPT_SOURCE_ONLY:-0}" != "1" ]]; then
+  main "$@"
+fi
